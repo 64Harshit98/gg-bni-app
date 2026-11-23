@@ -146,7 +146,7 @@ const IconMore = ({ className }: { className?: string }) => <Icon className={cla
 const IconTrash = ({ className }: { className?: string }) => <Icon className={className}><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v5M14 11v5" /></Icon>;
 const IconUser = ({ className }: { className?: string }) => <Icon className={className}><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></Icon>;
 const IconLock = ({ className }: { className?: string }) => <Icon className={className}><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></Icon>;
-const IconKey = ({ className }: { className?: string }) => <Icon className={className}><circle cx="8" cy="15" r="4" /><path d="m11 12 9-9M16 7l3 3M14 9l2 2" /></Icon>;
+//const IconKey = ({ className }: { className?: string }) => <Icon className={className}><circle cx="8" cy="15" r="4" /><path d="m11 12 9-9M16 7l3 3M14 9l2 2" /></Icon>;
 const IconClose = ({ className }: { className?: string }) => <Icon className={className}><path d="M6 6l12 12M18 6 6 18" /></Icon>;
 const IconCheck = ({ className }: { className?: string }) => <Icon className={className}><path d="M5 12.5l4.5 4.5L19 7" /></Icon>;
 
@@ -589,15 +589,6 @@ const CatalogueUserSetting: React.FC = () => {
                             <div>
                                 <span className={labelCls}>Account</span>
                                 <div className="border border-[#f3e1d2] rounded-sm divide-y divide-[#f3e1d2]">
-                                    {/* UI only — no backend wired yet */}
-                                    <div className="flex items-center gap-3 p-3 opacity-60" title="Coming soon">
-                                        <IconKey className="w-[18px] h-[18px] text-[#45556c]" />
-                                        <div className="flex-1 min-w-0">
-                                            <b className="block text-[13px]">Reset password</b>
-                                            <small className="block text-xs text-[#5b6b86]">Send a new password on WhatsApp</small>
-                                        </div>
-                                        <button type="button" disabled className={BTN_SECONDARY_SM}>Send</button>
-                                    </div>
                                     {/* UI only — no backend wired yet */}
                                     <div className="flex items-center gap-3 p-3 opacity-60" title="Coming soon">
                                         <IconLock className="w-[18px] h-[18px] text-[#45556c]" />

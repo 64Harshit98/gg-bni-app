@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { doc, getDoc, getDocs, collection, query, where } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
 import { storage } from '../../../lib/Firebase'; // Ensure 'storage' is exported from your Firebase config
+import { getFirestoreOperations } from '../../../lib/ItemsFirebase';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { botMasterService } from '../../../Pages/Additional/Whatsapp/WhatsappApi';
 import { sendCompanyWhatsappMessage } from '../../../Pages/Additional/Whatsapp/sendCompanyWhatsappMessage';
@@ -58,19 +59,22 @@ const buildBillItems = async (
         const salesPrice = Number(item.salesPrice || 0);
         const actualPrice = item.effectiveUnitPrice ?? item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
 
-        let targetImageUrl = item.imageUrl;
-        if (!targetImageUrl && availableItems.length > 0) {
-            const catalogItem = availableItems.find(master => String(master.id) === String(item.itemId || item.id));
-            if (catalogItem && catalogItem.imageUrl) {
-                targetImageUrl = catalogItem.imageUrl;
-            }
-        }
+        const catalogItem = availableItems.find(
+            master => String(master.id) === String(item.itemId || item.id)
+        );
+        const catalogImageUrl = catalogItem?.imageUrl;
 
         let base64Image = "";
-        if (targetImageUrl) {
-            base64Image = await convertImageUrlToBase64(targetImageUrl, item.name);
-        } else if (availableItems.length > 0) {
-            console.warn(`⚠️ 3. Item [${item.name}] has NO imageUrl in both Order AND Catalog.`);
+        // 1st try: order item ki apni image
+        if (item.imageUrl) {
+            base64Image = await convertImageUrlToBase64(item.imageUrl, item.name);
+        }
+        // 2nd try: order ki image nahi thi ya fetch fail hui -> catalogue ki image
+        if (!base64Image && catalogImageUrl && catalogImageUrl !== item.imageUrl) {
+            base64Image = await convertImageUrlToBase64(catalogImageUrl, item.name);
+        }
+        if (!base64Image) {
+            console.warn(`⚠️ Item [${item.name}] ki image Order aur Catalog dono mein nahi mili.`);
         }
 
         const basePriceForDiscount = mrp > 0 ? mrp : salesPrice;
@@ -155,6 +159,18 @@ const fetchCreditNoteBalance = async (
         return 0;
     }
 };
+// business_info.name is where the company name is edited; companies/{id}.name
+// (companyInfo) keeps the name from signup and goes stale after a rename.
+// Same source Journal uses (getBusinessInfo), so the name always matches the PDF.
+const resolveCompanyName = async (companyId: string, companyInfo: any): Promise<string> => {
+    try {
+        const info: any = await getFirestoreOperations(companyId).getBusinessInfo();
+        return info?.name || companyInfo?.name || '';
+    } catch {
+        return companyInfo?.name || '';
+    }
+};
+
 // The order-total/paid/due formula used for the generated bill and (as of
 // this consolidation) the reminder message too. Treats a 'Paid' order as
 // fully settled (dueAmount forced to 0) even if the stored paidAmount field
@@ -431,7 +447,7 @@ export const useOrderCommunication = ({
                 return;
             }
 
-            const itemsWithBase64 = await buildBillItems(Order.items, convertImageUrlToBase64);
+            const itemsWithBase64 = await buildBillItems(Order.items, convertImageUrlToBase64, availableItems);
             const { paidAmount, advancePaid, dueAmount } = computeStatusAwareAmounts(Order);
 
             const rawBillData = buildRawBillData({
@@ -522,7 +538,7 @@ export const useOrderCommunication = ({
             const businessSnap = await getDoc(businessDocRef);
             const businessData = businessSnap.exists() ? businessSnap.data() : {};
 
-            const itemsWithBase64 = await buildBillItems(Order.items, convertImageUrlToBase64);
+            const itemsWithBase64 = await buildBillItems(Order.items, convertImageUrlToBase64, availableItems);
             const { paidAmount, advancePaid, dueAmount } = computeStatusAwareAmounts(Order);
 
             const rawBillData = buildRawBillData({
@@ -557,7 +573,7 @@ export const useOrderCommunication = ({
                 to: phone,
                 messageType: 'order',
                 fileUrl,
-                templateVariables: [name, companyInfo?.name || '', 'order', Order.orderId, formattedAmount],
+                templateVariables: [name, await resolveCompanyName(currentUser.companyId, companyInfo), 'order', Order.orderId, formattedAmount],
                 refCollection: 'Orders',
                 refId: Order.id,
             });
@@ -614,7 +630,7 @@ export const useOrderCommunication = ({
             // --- Build the bill PDF, same prep as handlePdfAction/handleSendWhatsapp ---
             const businessData = businessSnap.exists() ? businessSnap.data() : {};
 
-            const itemsWithBase64 = await buildBillItems(Order.items, convertImageUrlToBase64);
+            const itemsWithBase64 = await buildBillItems(Order.items, convertImageUrlToBase64, availableItems);
 
             const rawBillData = buildRawBillData({
                 order: Order,
@@ -702,7 +718,7 @@ export const useOrderCommunication = ({
 
             const businessData = businessSnap.exists() ? businessSnap.data() : {};
 
-            const itemsWithBase64 = await buildBillItems(Order.items, convertImageUrlToBase64);
+            const itemsWithBase64 = await buildBillItems(Order.items, convertImageUrlToBase64, availableItems);
 
             const rawBillData = buildRawBillData({
                 order: Order,
@@ -735,7 +751,7 @@ export const useOrderCommunication = ({
                 to: phone,
                 messageType: 'reminder',
                 fileUrl,
-                templateVariables: [name, companyInfo?.name || '', dueAmt, `order #${Order.orderId}`, totalAmt],
+                templateVariables: [name, await resolveCompanyName(currentUser.companyId, companyInfo), dueAmt, `order #${Order.orderId}`, totalAmt],
                 refCollection: 'Orders',
                 refId: Order.id,
             });
@@ -752,6 +768,87 @@ export const useOrderCommunication = ({
         }
     };
 
+    // Opens the OS share sheet with the order bill PDF attached (Web Share API, files).
+    const handleSharePdf = async (Order: Order) => {
+        if (!currentUser?.companyId) return;
+
+        setPdfLoadingOrderId(Order.id);
+
+        try {
+            const businessDocRef = doc(db, 'companies', currentUser.companyId, 'business_info', currentUser.companyId);
+            const businessSnap = await getDoc(businessDocRef);
+            const businessData = businessSnap.exists() ? businessSnap.data() : {};
+
+            const itemsWithBase64 = await buildBillItems(Order.items, convertImageUrlToBase64, availableItems);
+
+            const customerPhone = (Order.billingDetails?.phone || Order.userLoginPhone || '').toString().trim();
+            const [previousBalance, creditNoteBalance] = await Promise.all([
+                fetchPreviousBalance(currentUser.companyId, customerPhone, Order.id),
+                fetchCreditNoteBalance(currentUser.companyId, customerPhone),
+            ]);
+
+            const { paidAmount, advancePaid, dueAmount } = computeStatusAwareAmounts(Order);
+
+            const rawBillData = buildRawBillData({
+                order: Order,
+                companyInfo,
+                businessData,
+                companyId: currentUser.companyId,
+                items: itemsWithBase64,
+                grandTotal: Order.totalAmount,
+                paidAmount,
+                advancePaid,
+                dueAmount,
+                previousBalance,
+                creditNoteBalance,
+                billingExtras: {
+                    billDiscount: Number(Order.manualDiscount || 0),
+                    extraExpenseName: (Order.expenses || []).map(e => e.name).join(', '),
+                    extraExpenseAmount: (Order.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0),
+                    extraExpenses: (Order.expenses || []).map(e => ({ name: e.name, amount: parseFloat(String(e.amount)) || 0 })),
+                },
+            });
+
+            const preparedData = await prepareCatalogueBillData({
+                ...rawBillData,
+                isEstimate: billType === 'estimate'
+            });
+
+            const pdfBlob = await CatalogueBill(preparedData, "blob");
+            if (!pdfBlob) throw new Error("Failed to generate PDF Blob.");
+
+            const safeNum = Order.orderId.replace(/[\/\\?%*:|"<>]/g, '-');
+            const file = new File([pdfBlob], `${safeNum}.pdf`, { type: 'application/pdf' });
+
+            if (!navigator.canShare || !navigator.canShare({ files: [file] })) {
+                setModal({ message: 'Sharing PDF files is not supported on this device.', type: State.ERROR });
+                return;
+            }
+
+            const name = Order.userName || Order.billingDetails?.name || 'Customer';
+            const amountText = Number(Order.totalAmount).toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
+            const dueText = dueAmount > 0
+                ? `\nBalance due: ${dueAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}`
+                : '';
+            const companyName = await resolveCompanyName(currentUser.companyId, companyInfo);
+            const from = companyName ? ` from ${companyName}` : '';
+
+            await navigator.share({
+                files: [file],
+                title: `Order ${Order.orderId}`,
+                text: `Hello ${name},\n\nHere is your order bill #${Order.orderId}${from}.\nAmount: ${amountText}${dueText}\n\nThank you!`,
+            });
+        } catch (err: any) {
+            // User closed the share sheet: not an error
+            if (err?.name !== 'AbortError') {
+                console.error('Share PDF Error:', err);
+                setModal({ message: 'Failed to share order bill PDF.', type: State.ERROR });
+            }
+        } finally {
+            setPdfLoadingOrderId(null);
+        }
+    };
+
     return {
         selectedOrderForAction, setSelectedOrderForAction,
         pdfLoadingOrderId, setPdfLoadingOrderId,
@@ -764,5 +861,6 @@ export const useOrderCommunication = ({
         handleSendWhatsappSnapto,
         handleSendReminder,
         handleSendReminderSnapto,
+        handleSharePdf,
     };
 };

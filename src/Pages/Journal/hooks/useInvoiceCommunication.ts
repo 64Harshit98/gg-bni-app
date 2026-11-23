@@ -621,6 +621,50 @@ export const useInvoiceCommunication = ({
     }
   };
 
+  // Opens the OS share sheet with the bill PDF attached (Web Share API, files).
+  const handleSharePdf = async (invoice: Invoice) => {
+    if (!currentUser?.companyId) return;
+
+    setPdfGenerating(invoice.id);
+    try {
+      const dataForPdf = await preparePdfData(
+        { ...invoice, isEstimate: billType === 'estimate' } as any,
+        isPosBasicPlan
+      );
+      if (!dataForPdf) throw new Error('Could not prepare PDF data');
+
+      const pdfBlob = await generatePdfBlob(dataForPdf);
+      const safeNum = invoice.invoiceNumber.replace(/[\/\\?%*:|"<>]/g, '-');
+      const file = new File([pdfBlob], `${safeNum}.pdf`, { type: 'application/pdf' });
+
+      if (!navigator.canShare || !navigator.canShare({ files: [file] })) {
+        setModal({ message: 'Sharing PDF files is not supported on this device.', type: State.ERROR });
+        return;
+      }
+
+      const amountText = invoice.amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
+      const dueText =
+        invoice.status === 'Unpaid' && (invoice.dueAmount || 0) > 0
+          ? `\nBalance due: ${(invoice.dueAmount || 0).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}`
+          : '';
+      const from = dataForPdf.companyName ? ` from ${dataForPdf.companyName}` : '';
+
+      await navigator.share({
+        files: [file],
+        title: `Bill ${invoice.invoiceNumber}`,
+        text: `Hello ${invoice.partyName || 'Customer'},\n\nHere is your invoice #${invoice.invoiceNumber}${from}.\nAmount: ${amountText}${dueText}\n\nThank you!`,
+      });
+    } catch (err: any) {
+      // User closed the share sheet: not an error
+      if (err?.name !== 'AbortError') {
+        console.error('Share PDF Error:', err);
+        setModal({ message: 'Failed to share bill PDF.', type: State.ERROR });
+      }
+    } finally {
+      setPdfGenerating(null);
+    }
+  };
+
   const handleShowQr = (invoice: Invoice) => {
     setInvoiceToPrint(null);
     setShowQrModal(invoice);
@@ -659,6 +703,7 @@ export const useInvoiceCommunication = ({
     handleSendWhatsappSnapto,
     handleSendReminder,
     handleSendReminderSnapto,
+    handleSharePdf,
     handleShowQr,
     handlePrintQr,
   };

@@ -10,6 +10,7 @@ import {
   EyeOff,
   FileText,
   Info,
+  Layers,
   Package,
   Percent,
   Search,
@@ -370,6 +371,8 @@ const ItemReport: React.FC = () => {
     // Averages are over the group/location/search set, not the issue filter,
     // so the cards don't jump when the user peeks at "No MRP" items.
     const totalItems = baseItems.length;
+    // Net stock across the group/location/search set (negative stock reduces the total)
+    const totalStock = baseItems.reduce((sum, item) => sum + (item.stock || 0), 0);
     const avgOf = (pick: (i: ItemRow) => number) =>
       totalItems > 0 ? baseItems.reduce((sum, item) => sum + (pick(item) || 0), 0) / totalItems : 0;
     const averageMrp = avgOf((i) => i.mrp);
@@ -384,6 +387,7 @@ const ItemReport: React.FC = () => {
       filteredItems: newFilteredItems,
       summary: {
         totalItems,
+        totalStock,
         averageMrp,
         averagePurchasePrice,
         averageSalePrice,
@@ -625,8 +629,13 @@ const ItemReport: React.FC = () => {
       const cardY = 50;
       const cardH = 32;
       const kpiPad = 6;
-      const colWs = [62, 62, contentW - 124];
-      const colXs = [M, M + colWs[0], M + colWs[0] + colWs[1]];
+      const colWs = [52, 52, 52, contentW - 156];
+      const colXs = [
+        M,
+        M + colWs[0],
+        M + colWs[0] + colWs[1],
+        M + colWs[0] + colWs[1] + colWs[2],
+      ];
 
       doc.setFillColor(255, 255, 255);
       doc.roundedRect(M, cardY, contentW, cardH, PDF_RADIUS, PDF_RADIUS, 'F');
@@ -638,6 +647,7 @@ const ItemReport: React.FC = () => {
       doc.roundedRect(M, cardY, contentW, cardH, PDF_RADIUS, PDF_RADIUS, 'S');
       doc.line(colXs[1], cardY, colXs[1], cardY + cardH);
       doc.line(colXs[2], cardY, colXs[2], cardY + cardH);
+      doc.line(colXs[3], cardY, colXs[3], cardY + cardH);
 
       // Total items
       doc.setFont('helvetica', 'normal');
@@ -663,8 +673,24 @@ const ItemReport: React.FC = () => {
       doc.setTextColor(INK[0], INK[1], INK[2]);
       doc.text(`${Math.round(summary.averageMarginPercentage)}%`, colXs[1] + kpiPad, cardY + 20);
 
+      // Total stock
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9.5);
+      doc.setTextColor(100, 110, 135);
+      doc.text('Total stock', colXs[2] + kpiPad, cardY + 9);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(15);
+      doc.setTextColor(INK[0], INK[1], INK[2]);
+      doc.text(summary.totalStock.toLocaleString('en-IN'), colXs[2] + kpiPad, cardY + 20);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(120, 128, 150);
+      doc.text('units across listed items', colXs[2] + kpiPad, cardY + 27);
+
       // How to read this report
-      const lx = colXs[2] + kpiPad;
+
+      // How to read this report
+      const lx = colXs[3] + kpiPad;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9.5);
       doc.setTextColor(100, 110, 135);
@@ -994,8 +1020,22 @@ const ItemReport: React.FC = () => {
       const headerRow = summaryLabelRow + 3; // 11
       const notesRow = headerRow + 1; // 12
       const dataStartRow = headerRow + 2; // 13
-      const totalRows = dataStartRow + filteredItems.length; // no footer row — see Change 5
+      const totalsRow = dataStartRow + filteredItems.length; // TOTAL row sits right below the last item
+      const totalRows = totalsRow + 1;
       const aoa: any[][] = Array.from({ length: totalRows }, () => Array(colCount).fill(null));
+
+      // Totals over exactly the rows being exported (filteredItems)
+      const sumOf = (pick: (i: ItemRow) => number) =>
+        filteredItems.reduce((sum, item) => sum + (Number(pick(item)) || 0), 0);
+      const excelTotals = {
+        stock: sumOf((i) => i.stock),
+        restock: sumOf((i) => i.restockQuantity),
+        opening: sumOf((i) => i.openingBalance),
+        stockIn: sumOf((i) => i.stockIn),
+        stockOut: sumOf((i) => i.stockOut),
+        closing: sumOf((i) => i.closingBalance),
+        value: sumOf((i) => i.valueOfItem),
+      };
 
       // Row 0 – Title (Company Name alongside)
       aoa[0][0] = companyName
@@ -1007,7 +1047,7 @@ const ItemReport: React.FC = () => {
         : `Period: ${new Date(fromDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })} to ${new Date(toDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}`;
 
       // Row 1 – Meta
-      aoa[1][0] = `Generated: ${generationDate}   |   ${periodText}   |   ${groupLabel}   |   Total Items: ${summary.totalItems}`;
+      aoa[1][0] = `Generated: ${generationDate}   |   ${periodText}   |   ${groupLabel}   |   Total Items: ${filteredItems.length}   |   Total Stock: ${excelTotals.stock.toLocaleString('en-IN')}`;
 
       // Row 2 – "LEGEND" label
       aoa[2][0] = 'LEGEND';
@@ -1022,13 +1062,32 @@ const ItemReport: React.FC = () => {
       aoa[summaryLabelRow][0] = 'SUMMARY';
 
       // Row 9 – Summary values (single merged cell)
-      aoa[summaryLabelRow + 1][0] = `Avg MRP: ₹${summary.averageMrp.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Avg Cost: ₹${summary.averagePurchasePrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Avg Sale: ₹${summary.averageSalePrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Avg Margin: ₹${summary.averageProfitMargin.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Margin %: ${summary.averageMarginPercentage.toFixed(1)}%`;
+      const money = (n: number) =>
+        n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      aoa[summaryLabelRow + 1][0] =
+        `Total Stock: ${excelTotals.stock.toLocaleString('en-IN')}   |   ` +
+        `Total Stock Value: ₹${money(excelTotals.value)}   |   ` +
+        `Avg MRP: ₹${money(summary.averageMrp)}   |   ` +
+        `Avg Cost: ₹${money(summary.averagePurchasePrice)}   |   ` +
+        `Avg Sale: ₹${money(summary.averageSalePrice)}   |   ` +
+        `Avg Margin: ₹${money(summary.averageProfitMargin)}   |   ` +
+        `Margin %: ${summary.averageMarginPercentage.toFixed(1)}%`;
 
       // Row 11 – Column headers
       COLS.forEach((c, i) => { aoa[headerRow][i] = c.header; });
 
       // Row 12 – Notes (same per-column descriptions as the Import template)
       COLS.forEach((c, i) => { aoa[notesRow][i] = c.note; });
+
+      // Last row – Column totals (below the final item)
+      aoa[totalsRow][0] = `TOTAL (${filteredItems.length} items)`;
+      aoa[totalsRow][10] = excelTotals.stock;      // Stock
+      aoa[totalsRow][12] = excelTotals.restock;    // Restock Level
+      aoa[totalsRow][16] = excelTotals.opening;    // Opening Bal.
+      aoa[totalsRow][17] = excelTotals.stockIn;    // Stock In
+      aoa[totalsRow][18] = excelTotals.stockOut;   // Stock Out
+      aoa[totalsRow][19] = excelTotals.closing;    // Closing Bal.
+      aoa[totalsRow][20] = excelTotals.value;      // Value (₹)
 
       // Rows 13+ – Data (column order matches Bulk Import parser exactly)
       filteredItems.forEach((item, idx) => {
@@ -1084,6 +1143,7 @@ const ItemReport: React.FC = () => {
         { hpt: 28 }, // 11 headers
         { hpt: 24 }, // 12 notes (required offset row for Bulk Import)
         ...filteredItems.map(() => ({ hpt: 20 })),
+        { hpt: 24 }, // totals row
       ];
 
       worksheet['!merges'] = [
@@ -1189,6 +1249,22 @@ const ItemReport: React.FC = () => {
           bblr,
         ));
       });
+
+      // Totals row styling
+      const totalCols = [10, 12, 16, 17, 18, 19, 20];
+      for (let ci = 0; ci < colCount; ci++) {
+        const addr = XLSX.utils.encode_cell({ r: totalsRow, c: ci });
+        style(addr, s(
+          { sz: 10, bold: true, color: { rgb: '166534' } },
+          solidFill('DCFCE7'),
+          { horizontal: ci === 0 ? 'left' : 'center', vertical: 'center' },
+          allBorders,
+        ));
+        if (totalCols.includes(ci)) {
+          worksheet[addr].t = 'n';
+          worksheet[addr].z = ci === 20 ? '#,##0.00' : '#,##0.##';
+        }
+      }
 
       // Numeric column indices (for right-align + number formatting)
       const numericCols = new Set([2, 3, 4, 5, 6, 7, 10, 12, 13, 16, 17, 18, 19, 20]);
@@ -1334,6 +1410,14 @@ const ItemReport: React.FC = () => {
       hint: scopeLabel,
       icon: Tag,
       iconClass: 'bg-orange-50 text-orange-600',
+      valueClass: 'text-slate-900',
+    },
+    {
+      label: 'Total stock',
+      value: summary.totalStock.toLocaleString('en-IN'),
+      hint: 'units across listed items',
+      icon: Layers,
+      iconClass: 'bg-purple-50 text-purple-600',
       valueClass: 'text-slate-900',
     },
     {
@@ -1600,9 +1684,13 @@ const ItemReport: React.FC = () => {
         </div>
       )}
       {/* SUMMARY — 2 cols up to laptop width (sidebar eats tablet width), 4 cols on xl+ */}
-      <div className="mb-3 grid grid-cols-2 gap-2.5 md:mb-3 md:gap-4 xl:grid-cols-4">
-        {statCards.map(({ label, value, hint, icon: Icon, iconClass, valueClass }) => (
-          <div key={label} className="min-w-0 rounded-sm border border-line bg-white shadow-card p-3 md:p-4">
+      <div className="mb-3 grid grid-cols-2 gap-2.5 md:mb-3 md:gap-4 xl:grid-cols-5">
+        {statCards.map(({ label, value, hint, icon: Icon, iconClass, valueClass }, idx) => (
+          <div
+            key={label}
+            className={`min-w-0 rounded-sm border border-line bg-white shadow-card p-3 md:p-4 ${idx === statCards.length - 1 && statCards.length % 2 === 1 ? 'col-span-2 xl:col-span-1' : ''
+              }`}
+          >
             <div className="flex items-center gap-2">
               <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-sm md:h-7 md:w-7 ${iconClass}`}>
                 <Icon size={14} />

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from "framer-motion";
 import { useNavigate } from 'react-router-dom';
-import { FiArrowLeft, FiArrowLeftCircle, FiEdit, FiMessageCircle, FiPhone, FiPrinter, FiTrash2 } from 'react-icons/fi';
+import { FiArrowLeft, FiArrowLeftCircle, FiEdit, FiMessageCircle, FiPhone, FiPrinter, FiShare2, FiTrash2 } from 'react-icons/fi';
 import { ROUTES } from '../../../constants/routes.constants';
 import { CustomCard } from '../../../Components/CustomCard';
 import { Spinner } from '../../../constants/Spinner';
@@ -18,6 +18,7 @@ interface OrderCardProps {
     openEditor: (order: Order) => void;
     setSelectedOrderForAction: (order: Order | null) => void;
     pdfLoadingOrderId: string | null;
+    handleSharePdf: (order: Order) => void;
     handleSendReminder: (order: Order) => void;
     handleSendReminderSnapto: (order: Order) => void;
     companyId: string | undefined;
@@ -119,6 +120,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
     openEditor,
     setSelectedOrderForAction,
     pdfLoadingOrderId,
+    handleSharePdf,
     handleSendReminder,
     handleSendReminderSnapto,
     companyId,
@@ -733,11 +735,28 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                 {pdfLoadingOrderId === Order.id ? <Spinner /> : compact ? <FiPrinter className="w-4 h-4" /> : 'Print'}
             </button>
 
+            {!isUpcomingStatus && typeof navigator !== 'undefined' && 'share' in navigator && (
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        handleSharePdf(Order);
+                    }}
+                    disabled={pdfLoadingOrderId === Order.id}
+                    aria-label="Share bill PDF"
+                    title="Share bill PDF"
+                    className={compact ? ICON_BTN_SECONDARY : BTN_SECONDARY}
+                >
+                    {pdfLoadingOrderId === Order.id ? <Spinner /> : compact ? <FiShare2 className="w-4 h-4" /> : 'Share'}
+                </button>
+            )}
+
             {isUpcomingStatus && confirmButton}
 
             {!isUpcomingStatus && isFinalStage && (
                 <>
-                    {/* RETURN – both PAID and UNPAID */}
+                    {/* RETURN – both PAID and UNPAID.
+                        Paid order: Return is the only main action → orange primary.
+                        Unpaid order: Settle is primary, so Return stays secondary. */}
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
@@ -746,7 +765,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                                 { state: { selectedOrder: Order.orderId } }
                             );
                         }}
-                        className={BTN_SECONDARY}
+                        className={isPaid || due <= 0 ? BTN_PRIMARY : BTN_SECONDARY}
                     >
                         Return
                     </button>

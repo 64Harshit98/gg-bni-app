@@ -2,14 +2,41 @@ import { useState } from 'react';
 import {
     doc,
     getDoc,
-    serverTimestamp,
     updateDoc,
+    increment,
+    runTransaction,
+    serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
 import { deriveTaxContext, retaxDraftOrder } from '../../CheckOut/checkOut.calculations';
 import type { Order, OrderStatus } from '../orders.types';
 import { useOptionalLoyaltySettings } from '../../../context/SettingsContext';
 import { setOrderStatusWithLoyalty } from '../orderLoyalty';
+
+// Upcoming → Confirmed: order ko next voucher number do.
+// Same counter jo checkout (usePlaceOrder) use karta hai, isliye numbers repeat/skip nahi honge.
+// orderNumberAssigned flag se double-click ya retry par number dobara nahi katta.
+const assignOrderNumber = async (companyId: string, orderDocId: string): Promise<string | null> => {
+    const settingsRef = doc(db, 'companies', companyId, 'settings', 'catalogue-sales-settings');
+    const orderRef = doc(db, 'companies', companyId, 'Orders', orderDocId);
+
+    return runTransaction(db, async (tx) => {
+        const [settingsSnap, orderSnap] = await Promise.all([tx.get(settingsRef), tx.get(orderRef)]);
+        if (!orderSnap.exists()) return null;
+
+        const existing = orderSnap.data();
+        if (existing.orderNumberAssigned) return (existing.orderId as string) || null;
+
+        const s = settingsSnap.exists() ? settingsSnap.data() : {};
+        const prefix = s.voucherPrefix || 'SLS-';
+        const current = Number(s.currentVoucherNumber || 1001);
+        const invoice = `${prefix}${current}`;
+
+        tx.update(orderRef, { orderId: invoice, invoiceNumber: invoice, orderNumberAssigned: true });
+        tx.set(settingsRef, { currentVoucherNumber: current + 1, updatedAt: serverTimestamp() }, { merge: true });
+        return invoice;
+    });
+};
 
 interface UseOrderStatusParams {
     Orders: Order[];
@@ -75,51 +102,11 @@ export const useOrderStatus = ({ currentUser }: UseOrderStatusParams) => {
                 }
             }
 
-            //  STOCK DECREASE WHEN CONFIRMED
-            // Skip for cart orders — they already deducted stock at placement
-            if (nextStatus === "Confirmed") {
-                const freshSnap = await getDoc(OrderRef);
-                const freshData = freshSnap.data();
-                const wasPlacedViaCart = !!freshData?.orderedBy;
-
-                if (!wasPlacedViaCart) {
-                    const items = freshData?.items || [];
-
-                    await Promise.all(
-                        items.map(async (item: any) => {
-                            try {
-                                const itemId = item.itemId || item.id;
-                                if (!itemId) return;
-
-                                const itemRef = doc(
-                                    db,
-                                    "companies",
-                                    currentUser.companyId,
-                                    "items",
-                                    itemId
-                                );
-
-                                const snap = await getDoc(itemRef);
-                                if (!snap.exists()) {
-                                    return;
-                                }
-
-                                const currentStock = Number(snap.data().stock || 0);
-
-                                const deductQty =
-                                    Number(item.quantity || 0) *
-                                    Number(item.unitMultiplier || 1);
-
-                                await updateDoc(itemRef, {
-                                    stock: currentStock - deductQty
-                                });
-
-                            } catch (err) {
-                                console.error("Stock update failed:", err);
-                            }
-                        })
-                    );
-                }
+            // Upcoming → Confirmed: pehle next order number, phir status.
+            // Number allocate na ho to order draft id ke saath Confirmed nahi hoga.
+            if (nextStatus === "Confirmed" && currentStatus === "Upcoming") {
+                const assignedId = await assignOrderNumber(currentUser.companyId, orderId);
+                if (!assignedId) return;
             }
 
             // Draft → order: put GST on its lines (current GST settings + each item's current
@@ -145,6 +132,29 @@ export const useOrderStatus = ({ currentUser }: UseOrderStatusParams) => {
             await setOrderStatusWithLoyalty(
                 currentUser.companyId, orderId, nextStatus, loyaltySettings, loyaltyActor, { isLead: false },
             );
+
+            // Stock status ke BAAD, background mein: UI ko iska wait nahi karna padta.
+            // Cart orders (orderedBy set) ka stock placement par hi kat chuka hota hai.
+            // increment() se read-then-write wali race bhi khatam.
+            if (nextStatus === "Confirmed" && !orderData.orderedBy) {
+                const companyId = currentUser.companyId;
+                void Promise.all(
+                    ((orderData.items as any[]) || []).map(async (item: any) => {
+                        try {
+                            const itemId = item.itemId || item.id;
+                            if (!itemId) return;
+                            const deductQty =
+                                Number(item.quantity || 0) * Number(item.unitMultiplier || 1);
+                            await updateDoc(
+                                doc(db, "companies", companyId, "items", itemId),
+                                { stock: increment(-deductQty) }
+                            );
+                        } catch (err) {
+                            console.error("Stock update failed:", err);
+                        }
+                    })
+                );
+            }
 
         } catch (err) {
             console.error("Error updating status:", err);

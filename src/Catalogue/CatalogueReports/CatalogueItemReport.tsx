@@ -10,6 +10,7 @@ import {
   EyeOff,
   FileText,
   Info,
+  Layers,
   Package,
   Percent,
   Search,
@@ -172,7 +173,7 @@ const CatalogueItemReport: React.FC = () => {
   const [isRangeOpen, setIsRangeOpen] = useState(false);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
-    // ---- custom field filter / sort ----
+  // ---- custom field filter / sort ----
   const [cfLabel, setCfLabel] = useState('');
   const [cfWhen, setCfWhen] = useState('');
   const [cfText, setCfText] = useState('');
@@ -305,7 +306,7 @@ const CatalogueItemReport: React.FC = () => {
       }
       // When a specific location is selected, only show items that actually
       // have stock there.
-            if (locationFilter && (item.stock || 0) <= 0) return false;
+      if (locationFilter && (item.stock || 0) <= 0) return false;
 
       if (cfLabel) {
         const v = getCustomValue(item, cfLabel);
@@ -328,8 +329,8 @@ const CatalogueItemReport: React.FC = () => {
       return item.itemGroupId === appliedItemGroupId || (!!selectedGroup && item.itemGroupId === selectedGroup.name);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [itemsWithLocationStock, searchQuery, locationFilter, appliedItemGroupId, itemGroups,
-      cfLabel, cfType, cfText, cfMin, cfMax, cfFrom, cfTo]);
+  }, [itemsWithLocationStock, searchQuery, locationFilter, appliedItemGroupId, itemGroups,
+    cfLabel, cfType, cfText, cfMin, cfMax, cfFrom, cfTo]);
 
   const issueCounts = useMemo(
     () =>
@@ -356,7 +357,7 @@ const CatalogueItemReport: React.FC = () => {
       return 0;
     });
 
-        if (cfLabel && cfSortDir) {
+    if (cfLabel && cfSortDir) {
       const dir = cfSortDir === 'asc' ? 1 : -1;
       newFilteredItems.sort((a, b) => {
         const va = getCustomValue(a, cfLabel), vb = getCustomValue(b, cfLabel);
@@ -371,6 +372,8 @@ const CatalogueItemReport: React.FC = () => {
     // Averages are over the group/location/search set, not the issue filter,
     // so the cards don't jump when the user peeks at "No MRP" items.
     const totalItems = baseItems.length;
+    // Net stock across the group/location/search set (negative stock reduces the total)
+    const totalStock = baseItems.reduce((sum, item) => sum + (item.stock || 0), 0);
     const avgOf = (pick: (i: ItemRow) => number) =>
       totalItems > 0 ? baseItems.reduce((sum, item) => sum + (pick(item) || 0), 0) / totalItems : 0;
     const averageMrp = avgOf((i) => i.mrp);
@@ -384,6 +387,7 @@ const CatalogueItemReport: React.FC = () => {
       filteredItems: newFilteredItems,
       summary: {
         totalItems,
+        totalStock,
         averageMrp,
         averagePurchasePrice,
         averageSalePrice,
@@ -391,7 +395,7 @@ const CatalogueItemReport: React.FC = () => {
         averageMarginPercentage,
       },
     };
-    }, [baseItems, issueFilter, sortConfig, cfLabel, cfType, cfSortDir]);
+  }, [baseItems, issueFilter, sortConfig, cfLabel, cfType, cfSortDir]);
 
   // Start from the top of the list whenever what's listed changes.
   useEffect(() => {
@@ -419,7 +423,7 @@ const CatalogueItemReport: React.FC = () => {
     setIsRangeOpen(false);
   };
 
-    const handleSort = (key: keyof Item) => {
+  const handleSort = (key: keyof Item) => {
     setCfSortDir(null);   // normal column sort overrides custom sort
     const direction = sortConfig.key === key && sortConfig.direction === 'asc' ? 'desc' : 'asc';
     setSortConfig({ key, direction });
@@ -433,7 +437,7 @@ const CatalogueItemReport: React.FC = () => {
     tax: item.tax || 0,
     itemGroupId: getGroupName(item.itemGroupId),
     stock: item.stock || 0,
-        barcode: item.barcode || '-',
+    barcode: item.barcode || '-',
     restockQuantity: item.restockQuantity || 0,
     cf: cfLabel ? getCustomValue(item, cfLabel) : '',
   });
@@ -635,8 +639,13 @@ const CatalogueItemReport: React.FC = () => {
       const cardY = 50;
       const cardH = 32;
       const kpiPad = 6;
-      const colWs = [62, 62, contentW - 124];
-      const colXs = [M, M + colWs[0], M + colWs[0] + colWs[1]];
+      const colWs = [52, 52, 52, contentW - 156];
+      const colXs = [
+        M,
+        M + colWs[0],
+        M + colWs[0] + colWs[1],
+        M + colWs[0] + colWs[1] + colWs[2],
+      ];
 
       pdf.setFillColor(255, 255, 255);
       pdf.roundedRect(M, cardY, contentW, cardH, PDF_RADIUS, PDF_RADIUS, 'F');
@@ -648,6 +657,7 @@ const CatalogueItemReport: React.FC = () => {
       pdf.roundedRect(M, cardY, contentW, cardH, PDF_RADIUS, PDF_RADIUS, 'S');
       pdf.line(colXs[1], cardY, colXs[1], cardY + cardH);
       pdf.line(colXs[2], cardY, colXs[2], cardY + cardH);
+      pdf.line(colXs[3], cardY, colXs[3], cardY + cardH);
 
       // Total items
       pdf.setFont('helvetica', 'normal');
@@ -673,8 +683,22 @@ const CatalogueItemReport: React.FC = () => {
       pdf.setTextColor(INK[0], INK[1], INK[2]);
       pdf.text(`${Math.round(summary.averageMarginPercentage)}%`, colXs[1] + kpiPad, cardY + 20);
 
+      // Total stock
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9.5);
+      pdf.setTextColor(100, 110, 135);
+      pdf.text('Total stock', colXs[2] + kpiPad, cardY + 9);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(15);
+      pdf.setTextColor(INK[0], INK[1], INK[2]);
+      pdf.text(summary.totalStock.toLocaleString('en-IN'), colXs[2] + kpiPad, cardY + 20);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(8.5);
+      pdf.setTextColor(120, 128, 150);
+      pdf.text('units across listed items', colXs[2] + kpiPad, cardY + 27);
+
       // How to read this report
-      const lx = colXs[2] + kpiPad;
+      const lx = colXs[3] + kpiPad;
       pdf.setFont('helvetica', 'normal');
       pdf.setFontSize(9.5);
       pdf.setTextColor(100, 110, 135);
@@ -737,21 +761,21 @@ const CatalogueItemReport: React.FC = () => {
           content: e.stock < 0 ? '' : e.stock.toLocaleString('en-IN'),
           styles: { halign: 'right' as const, textColor: e.stock ? INK : LIGHT },
         },
-                numCell(e.restockQuantity),
+        numCell(e.restockQuantity),
         ...(cfLabel
           ? [{ content: pdfSafe(e.cf) || '—', styles: { halign: 'left' as const, textColor: e.cf ? INK : LIGHT } }]
           : []),
       ]);
 
       // Item | Group | Barcode | MRP | Purchase | Discount | Tax | Stock | Restock  (total = 269mm)
-            const COLW = cfLabel
+      const COLW = cfLabel
         ? [38, 26, 28, 28, 34, 25, 14, 22, 24, 30]
         : [52, 32, 34, 28, 34, 25, 14, 22, 28];
 
       autoTable(pdf, {
         startY: listY + 4,
         margin: { top: 26, bottom: 22, left: M, right: M },
-                head: [[
+        head: [[
           'Item', 'Group', 'Barcode', 'MRP (Rs.)', 'Purchase price (Rs.)', 'Discount', 'Tax', 'Stock', 'Restock qty',
           ...(cfLabel ? [pdfSafe(cfLabel)] : []),
         ]],
@@ -771,14 +795,14 @@ const CatalogueItemReport: React.FC = () => {
           fontSize: 9.5,
         },
         columnStyles: COLW.reduce((acc: any, w, i) => {
-                    acc[i] = { cellWidth: w, ...(i >= 3 && i <= 8 ? { halign: 'right' } : {}) };
+          acc[i] = { cellWidth: w, ...(i >= 3 && i <= 8 ? { halign: 'right' } : {}) };
           return acc;
         }, {}),
         didParseCell: (data) => {
           data.cell.styles.valign = 'middle';
 
           // Header numeric columns right-aligned (matches body)
-                    if (data.section === 'head' && data.column.index >= 3 && data.column.index <= 8) {
+          if (data.section === 'head' && data.column.index >= 3 && data.column.index <= 8) {
             data.cell.styles.halign = 'right';
           }
 
@@ -925,7 +949,7 @@ const CatalogueItemReport: React.FC = () => {
         R: { bg: 'FEE2E2', txt: 'DC2626' },
         O: { bg: 'DCFCE7', txt: '15803D' },
         L: { bg: 'E0F2FE', txt: '0369A1' },
-                X: { bg: 'FFEDD5', txt: 'C2410C' },
+        X: { bg: 'FFEDD5', txt: 'C2410C' },
         C: { bg: 'F3E8FF', txt: '7E22CE' },
       };
 
@@ -933,11 +957,11 @@ const CatalogueItemReport: React.FC = () => {
         { type: 'R', marker: '★  Required', desc: 'Must be filled in for a clean re-import — item will be skipped if missing' },
         { type: 'O', marker: '●  Optional', desc: 'Improves data quality; blank is fine on re-import' },
         { type: 'L', marker: '▲  Lookup', desc: 'Matched by name on re-import (category/location)' },
-                { type: 'X', marker: '■  Report Only', desc: 'Ledger figures for this report — ignored if this file is re-uploaded' },
+        { type: 'X', marker: '■  Report Only', desc: 'Ledger figures for this report — ignored if this file is re-uploaded' },
         { type: 'C', marker: '◆  Custom', desc: 'Your custom fields (IMEI, Expiry Date...). Header = field name, re-import friendly' },
       ];
 
-            // Columns 1-16 match the Bulk Import template; 17-21 are report-only; then custom fields.
+      // Columns 1-16 match the Bulk Import template; 17-21 are report-only; then custom fields.
       const BASE_COLS = [
         { header: '★ Item Name', note: 'Full product name  e.g. Amul Butter 500g', type: 'R', width: 28 },
         { header: '● Barcode', note: 'Optional (Leave blank to auto-generate)', type: 'O', width: 18 },
@@ -959,7 +983,7 @@ const CatalogueItemReport: React.FC = () => {
         { header: '■ Stock In', note: 'Received during period (report only)', type: 'X', width: 12 },
         { header: '■ Stock Out', note: 'Sold/consumed during period (report only)', type: 'X', width: 12 },
         { header: '■ Closing Bal.', note: 'Stock at period end (report only)', type: 'X', width: 14 },
-                { header: '■ Value (₹)', note: 'Closing stock value (report only)', type: 'X', width: 15 },
+        { header: '■ Value (₹)', note: 'Closing stock value (report only)', type: 'X', width: 15 },
       ];
       // one column per custom field used anywhere in the items
       const customCols = customLabels.map((l) => ({
@@ -983,11 +1007,25 @@ const CatalogueItemReport: React.FC = () => {
       const headerRow = summaryLabelRow + 3;
       const notesRow = headerRow + 1;
       const dataStartRow = headerRow + 2;
-      const totalRows = dataStartRow + filteredItems.length;
+      const totalsRow = dataStartRow + filteredItems.length; // TOTAL row sits right below the last item
+      const totalRows = totalsRow + 1;
       const aoa: any[][] = Array.from({ length: totalRows }, () => Array(colCount).fill(null));
 
+      // Totals over exactly the rows being exported (filteredItems)
+      const sumOf = (pick: (i: ItemRow) => number) =>
+        filteredItems.reduce((sum, item) => sum + (Number(pick(item)) || 0), 0);
+      const excelTotals = {
+        stock: sumOf((i) => i.stock),
+        restock: sumOf((i) => i.restockQuantity),
+        opening: sumOf((i) => i.openingBalance),
+        stockIn: sumOf((i) => i.stockIn),
+        stockOut: sumOf((i) => i.stockOut),
+        closing: sumOf((i) => i.closingBalance),
+        value: sumOf((i) => i.valueOfItem),
+      };
+
       aoa[0][0] = companyName ? `SELLAR  ·  Item Report  —  ${companyName}` : 'SELLAR  ·  Item Report';
-      aoa[1][0] = `Generated: ${generationDate}   |   ${periodText}   |   ${groupLabel}   |   Total Items: ${summary.totalItems}`;
+      aoa[1][0] = `Generated: ${generationDate}   |   ${periodText}   |   ${groupLabel}   |   Total Items: ${summary.totalItems}   |   Total Stock: ${excelTotals.stock.toLocaleString('en-IN')}`;
       aoa[2][0] = 'LEGEND';
       legendRows.forEach((l, i) => {
         aoa[legendStartRow + i][0] = l.marker;
@@ -996,7 +1034,14 @@ const CatalogueItemReport: React.FC = () => {
       aoa[summaryLabelRow][0] = 'SUMMARY';
       const money = (n: number) =>
         n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      aoa[summaryLabelRow + 1][0] = `Avg MRP: ₹${money(summary.averageMrp)}   |   Avg Cost: ₹${money(summary.averagePurchasePrice)}   |   Avg Sale: ₹${money(summary.averageSalePrice)}   |   Avg Margin: ₹${money(summary.averageProfitMargin)}   |   Margin %: ${summary.averageMarginPercentage.toFixed(1)}%`;
+      aoa[summaryLabelRow + 1][0] =
+        `Total Stock: ${excelTotals.stock.toLocaleString('en-IN')}   |   ` +
+        `Total Stock Value: ₹${money(excelTotals.value)}   |   ` +
+        `Avg MRP: ₹${money(summary.averageMrp)}   |   ` +
+        `Avg Cost: ₹${money(summary.averagePurchasePrice)}   |   ` +
+        `Avg Sale: ₹${money(summary.averageSalePrice)}   |   ` +
+        `Avg Margin: ₹${money(summary.averageProfitMargin)}   |   ` +
+        `Margin %: ${summary.averageMarginPercentage.toFixed(1)}%`;
       COLS.forEach((c, i) => {
         aoa[headerRow][i] = c.header;
         aoa[notesRow][i] = c.note;
@@ -1030,7 +1075,15 @@ const CatalogueItemReport: React.FC = () => {
         aoa[r][19] = item.closingBalance ?? item.stock ?? 0;
         aoa[r][20] = item.valueOfItem ?? 0;
       });
-      // No footer/TOTAL row — it would be misread as an invalid item on re-import.
+      // Last row – Column totals (below the final item)
+      aoa[totalsRow][0] = `TOTAL (${filteredItems.length} items)`;
+      aoa[totalsRow][10] = excelTotals.stock;      // Stock
+      aoa[totalsRow][12] = excelTotals.restock;    // Restock Level
+      aoa[totalsRow][16] = excelTotals.opening;    // Opening Bal.
+      aoa[totalsRow][17] = excelTotals.stockIn;    // Stock In
+      aoa[totalsRow][18] = excelTotals.stockOut;   // Stock Out
+      aoa[totalsRow][19] = excelTotals.closing;    // Closing Bal.
+      aoa[totalsRow][20] = excelTotals.value;      // Value (₹)
 
       const worksheet = XLSX.utils.aoa_to_sheet(aoa);
       worksheet['!cols'] = COLS.map((c) => ({ wch: c.width }));
@@ -1046,6 +1099,7 @@ const CatalogueItemReport: React.FC = () => {
         { hpt: 28 },
         { hpt: 24 },
         ...filteredItems.map(() => ({ hpt: 20 })),
+        { hpt: 24 }, // totals row
       ];
       worksheet['!merges'] = [
         { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },
@@ -1084,6 +1138,22 @@ const CatalogueItemReport: React.FC = () => {
         style(XLSX.utils.encode_cell({ r: headerRow, c: i }), s({ sz: 9, bold: true, color: { rgb: txt } }, solidFill(bg), { horizontal: 'center', vertical: 'center', wrapText: true }, allBorders));
         style(XLSX.utils.encode_cell({ r: notesRow, c: i }), s({ sz: 7, italic: true, color: { rgb: '64748B' } }, solidFill('FFF8F2'), { horizontal: 'center', vertical: 'center', wrapText: true }, bblr));
       });
+
+      // Totals row styling
+      const totalCols = [10, 12, 16, 17, 18, 19, 20];
+      for (let ci = 0; ci < colCount; ci++) {
+        const addr = XLSX.utils.encode_cell({ r: totalsRow, c: ci });
+        style(addr, s(
+          { sz: 10, bold: true, color: { rgb: '9A3412' } },
+          solidFill('FFEDD5'),
+          { horizontal: ci === 0 ? 'left' : 'center', vertical: 'center' },
+          allBorders,
+        ));
+        if (totalCols.includes(ci)) {
+          worksheet[addr].t = 'n';
+          worksheet[addr].z = ci === 20 ? '#,##0.00' : '#,##0.##';
+        }
+      }
 
       const numericCols = new Set([2, 3, 4, 5, 6, 7, 10, 12, 13, 16, 17, 18, 19, 20]);
       filteredItems.forEach((item, idx) => {
@@ -1210,6 +1280,14 @@ const CatalogueItemReport: React.FC = () => {
       hint: scopeLabel,
       icon: Tag,
       iconClass: 'bg-orange-50 text-orange-600',
+      valueClass: 'text-slate-900',
+    },
+    {
+      label: 'Total stock',
+      value: summary.totalStock.toLocaleString('en-IN'),
+      hint: 'units across listed items',
+      icon: Layers,
+      iconClass: 'bg-purple-50 text-purple-600',
       valueClass: 'text-slate-900',
     },
     {
@@ -1408,7 +1486,7 @@ const CatalogueItemReport: React.FC = () => {
           </div>
         )}
       </div>
-            {/* CUSTOM FIELD FILTER */}
+      {/* CUSTOM FIELD FILTER */}
       {customLabels.length > 0 && (
         <div className="mb-4 flex flex-col gap-2.5 md:flex-row md:flex-wrap md:items-center">
           <div className="md:w-56">
@@ -1432,19 +1510,19 @@ const CatalogueItemReport: React.FC = () => {
                   buttonClassName="!h-[38px]"
                   options={isExpiryField
                     ? [
-                        { value: 'expired', label: 'Already expired' },
-                        { value: 'next30', label: 'Expiring in next 30 days' },
-                        { value: 'thisMonth', label: 'Expiring this month' },
-                        { value: 'nextMonth', label: 'Expiring next month' },
-                        { value: 'month', label: 'Pick a month' },
-                        { value: 'upto', label: 'Up to a date' },
-                      ]
+                      { value: 'expired', label: 'Already expired' },
+                      { value: 'next30', label: 'Expiring in next 30 days' },
+                      { value: 'thisMonth', label: 'Expiring this month' },
+                      { value: 'nextMonth', label: 'Expiring next month' },
+                      { value: 'month', label: 'Pick a month' },
+                      { value: 'upto', label: 'Up to a date' },
+                    ]
                     : [
-                        { value: 'thisMonth', label: 'This month' },
-                        { value: 'nextMonth', label: 'Next month' },
-                        { value: 'month', label: 'Pick a month' },
-                        { value: 'upto', label: 'Up to a date' },
-                      ]}
+                      { value: 'thisMonth', label: 'This month' },
+                      { value: 'nextMonth', label: 'Next month' },
+                      { value: 'month', label: 'Pick a month' },
+                      { value: 'upto', label: 'Up to a date' },
+                    ]}
                   value={cfWhen}
                   onChange={changeCfWhen}
                   placeholder="Any date"
@@ -1479,9 +1557,13 @@ const CatalogueItemReport: React.FC = () => {
       )}
 
       {/* SUMMARY — 2 cols up to laptop width (sidebar eats tablet width), 4 cols on xl+ */}
-      <div className="mb-3 grid grid-cols-2 gap-2.5 md:gap-4 xl:grid-cols-4">
-        {statCards.map(({ label, value, hint, icon: Icon, iconClass, valueClass }) => (
-          <div key={label} className="min-w-0 rounded-sm border border-[#f6e1d0] bg-white p-3 shadow-card md:p-4">
+      <div className="mb-3 grid grid-cols-2 gap-2.5 md:gap-4 xl:grid-cols-5">
+        {statCards.map(({ label, value, hint, icon: Icon, iconClass, valueClass }, idx) => (
+          <div
+            key={label}
+            className={`min-w-0 rounded-sm border border-[#f6e1d0] bg-white p-3 shadow-card md:p-4 ${idx === statCards.length - 1 && statCards.length % 2 === 1 ? 'col-span-2 xl:col-span-1' : ''
+              }`}
+          >
             <div className="flex items-center gap-2">
               <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-sm md:h-7 md:w-7 ${iconClass}`}>
                 <Icon size={14} />
@@ -1557,7 +1639,7 @@ const CatalogueItemReport: React.FC = () => {
               ]}
               value={mobileSortValue}
               onChange={(v) => {
-                                const [key, direction] = v.split(':') as [keyof Item, 'asc' | 'desc'];
+                const [key, direction] = v.split(':') as [keyof Item, 'asc' | 'desc'];
                 setCfSortDir(null);
                 setSortConfig({ key, direction });
               }}
@@ -1577,7 +1659,7 @@ const CatalogueItemReport: React.FC = () => {
                   <th className="px-4 py-3 text-left font-semibold uppercase tracking-wide">Group</th>
                   {renderSortHeader('MRP', 'mrp', 'right')}
                   {renderSortHeader('Cost price', 'purchasePrice', 'right')}
-                                    <th className="px-4 py-3 text-right font-semibold uppercase tracking-wide">Stock value</th>
+                  <th className="px-4 py-3 text-right font-semibold uppercase tracking-wide">Stock value</th>
                   {cfLabel && (
                     <th className="px-4 py-3 text-left font-semibold">
                       <button
@@ -1594,7 +1676,7 @@ const CatalogueItemReport: React.FC = () => {
               <tbody>
                 {filteredItems.length === 0 && (
                   <tr>
-                                        <td colSpan={cfLabel ? 8 : 7} className="px-4 py-10 text-center text-sm text-slate-500">
+                    <td colSpan={cfLabel ? 8 : 7} className="px-4 py-10 text-center text-sm text-slate-500">
                       No items match these filters. Clear a filter or try a different search.
                     </td>
                   </tr>
@@ -1640,7 +1722,7 @@ const CatalogueItemReport: React.FC = () => {
                           <span className="text-xs font-medium text-amber-600">No cost</span>
                         )}
                       </td>
-                                            <td className="whitespace-nowrap px-4 py-3 text-right text-slate-700">
+                      <td className="whitespace-nowrap px-4 py-3 text-right text-slate-700">
                         {hasCost && stock > 0 ? inrRound(item.valueOfItem) : <span className="text-slate-400">—</span>}
                       </td>
                       {cfLabel && (() => {
@@ -1691,7 +1773,7 @@ const CatalogueItemReport: React.FC = () => {
                   <span className="shrink-0">
                     {hasMrp ? `MRP ${inr(item.mrp)}` : <span className="font-medium text-amber-600">No MRP</span>}
                     {' · '}
-                                        {hasCost ? `Cost ${inr(item.purchasePrice)}` : <span className="font-medium text-amber-600">No cost</span>}
+                    {hasCost ? `Cost ${inr(item.purchasePrice)}` : <span className="font-medium text-amber-600">No cost</span>}
                   </span>
                 </div>
                 {cfLabel && (() => {

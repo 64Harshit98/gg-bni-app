@@ -224,6 +224,26 @@ interface PartySuggestion {
     shippingPinCode?: string;
 }
 
+// Shipping is "distinct" only if something is filled AND it differs from billing.
+// (Saved bills/parties store shipping = billing when it was linked, so "filled" alone isn't enough.)
+const normStr = (v?: string) => (v || '').trim();
+const isShippingDistinct = (b: {
+    name?: string; number?: string; address?: string; gst?: string; state?: string; pin?: string;
+}, s: {
+    name?: string; number?: string; address?: string; gst?: string; state?: string; pin?: string;
+}) => {
+    const anyShipping = !!(normStr(s.name) || normStr(s.number) || normStr(s.address) || normStr(s.gst));
+    if (!anyShipping) return false;
+    const same =
+        normStr(s.name) === normStr(b.name) &&
+        normStr(s.number) === normStr(b.number) &&
+        normStr(s.address) === normStr(b.address) &&
+        normStr(s.gst) === normStr(b.gst) &&
+        normStr(s.state) === normStr(b.state) &&
+        normStr(s.pin) === normStr(b.pin);
+    return !same;
+};
+
 // Which customer a personal remark belongs to: the phone once it's complete, or
 // the name for a customer without a phone. '' = no customer identified yet.
 const customerRemarkId = (name: string, number: string) => {
@@ -731,7 +751,10 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             // Edit mode: use prop directly, ignore session storage
             // If this bill already had distinct shipping details saved earlier, keep them unlinked.
             // Otherwise default to "same as billing" so the box isn't empty.
-            const hasDistinctShipping = !!(initialShippingName || initialShippingNumber || initialShippingAddress || initialShippingGST);
+            const hasDistinctShipping = isShippingDistinct(
+                { name: initialPartyName, number: initialPartyNumber, address: initialPartyAddress, gst: initialPartyGST, state: initialPlaceOfSupply, pin: initialPartyPinCode },
+                { name: initialShippingName, number: initialShippingNumber, address: initialShippingAddress, gst: initialShippingGST, state: initialShippingState, pin: initialShippingPinCode },
+            );
             finalIsSameAsBilling = !hasDistinctShipping;
 
             if (initialTransportDetails) {
@@ -1011,11 +1034,16 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         setPartyPinCode(party.pinCode || '');
         setShippingPinCode(party.shippingPinCode || '');
         setShippingGST(party.shippingGST || '');
+        // Linked unless this party really has a different shipping address saved.
+        // Without this, an old "false" stays stuck and shipping stops following billing.
+        setIsSameAsBilling(!isShippingDistinct(
+            { name: party.name, number: party.number, address: party.address, gst: party.gstNumber, state: party.state, pin: party.pinCode },
+            { name: party.shippingName, number: party.shippingNumber, address: party.shippingAddress, gst: party.shippingGST, state: party.shippingState, pin: party.shippingPinCode },
+        ));
         setUseCredit(false);
         setUseDebit(false);
         setShowSuggestions(false);
     };
-
     const handleAmountChange = (modeId: string, amount: string) => {
         const numAmount = parseFloat(amount) || 0;
         setSelectedPayments(prev => ({ ...prev, [modeId]: Math.max(0, numAmount) }));

@@ -36,7 +36,9 @@ interface BillDetailProps {
   onSettle: (invoice: Invoice) => void;
   onPrint: (invoice: Invoice) => void;
   onPrintQr: (invoice: Invoice) => void;
-    onTransport: (invoice: Invoice) => void;
+  onTransport: (invoice: Invoice) => void;
+  /** Opens the native (OS) share sheet for this bill; button hidden if the browser has no Web Share API. */
+  onShare?: (invoice: Invoice) => void;
   /** Opens the PDC cheque edit modal for one entry of invoice.paymentHistory. */
   onEditPdc?: (invoice: Invoice, paymentIndex: number) => void;
   /** Sends through the connected WhatsApp provider; leave out when none is connected. */
@@ -59,7 +61,8 @@ export const BillDetail: React.FC<BillDetailProps> = ({
   onSettle,
   onPrint,
   onPrintQr,
-   onTransport,
+  onTransport,
+  onShare,
   onEditPdc,
   onRemind,
   onReturn,
@@ -80,7 +83,7 @@ export const BillDetail: React.FC<BillDetailProps> = ({
   const partyPhone = (invoice.partyNumber || '').replace(/\D/g, '');
   const paidVia = activeModes
     .map(([key]) => (key === 'upi' ? 'UPI' : key.charAt(0).toUpperCase() + key.slice(1)))
-       .join(' + ');
+    .join(' + ');
 
   // PDC payments with their ORIGINAL index in paymentHistory (the edit handler matches by index)
   const pdcEntries = (invoice.paymentHistory || [])
@@ -221,7 +224,7 @@ export const BillDetail: React.FC<BillDetailProps> = ({
         ) : null}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 xl:flex-row-reverse">
+      <div className="flex flex-wrap items-center gap-2 max-xl:[&>button]:px-2.5 xl:flex-row-reverse">
         {invoice.status === 'Unpaid' && (
           <button
             onClick={(e) => { e.stopPropagation(); onSettle(invoice); }}
@@ -260,6 +263,16 @@ export const BillDetail: React.FC<BillDetailProps> = ({
             className={`${BTN_SECONDARY} xl:px-3`}
           >
             Transport
+          </button>
+        )}
+
+        {onShare && typeof navigator !== 'undefined' && 'share' in navigator && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onShare(invoice); }}
+            disabled={pdfGenerating === invoice.id}
+            className={`${BTN_SECONDARY} xl:px-3`}
+          >
+            {pdfGenerating === invoice.id ? <Spinner /> : 'Share'}
           </button>
         )}
 
@@ -509,7 +522,7 @@ export const BillDetail: React.FC<BillDetailProps> = ({
         <dt className="pt-2 mt-1 border-t border-[#dfe6fb] text-base font-semibold text-[#0f172b]">Total</dt>
         <dd className="pt-2 mt-1 border-t border-[#dfe6fb] text-right text-base font-semibold text-[#0f172b] tabular-nums" title={fmt(invoice.amount)}>{fmtCompact(invoice.amount)}</dd>
 
-                {activeModes.map(([key, val]) => (
+        {activeModes.map(([key, val]) => (
           <React.Fragment key={key}>
             <dt className="text-[#45556c]">Paid via {key === 'upi' ? 'UPI' : key.charAt(0).toUpperCase() + key.slice(1)}</dt>
             <dd className="text-right tabular-nums font-medium text-[#008236]" title={fmt(Number(val))}>{fmtCompact(Number(val))}</dd>

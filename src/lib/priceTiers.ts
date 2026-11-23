@@ -23,6 +23,7 @@ export const toPriceTierForm = (t: PriceTier | PriceTierForm): PriceTierForm => 
 // Form state -> what gets validated and saved
 export const fromPriceTierForm = (t: PriceTierForm): PriceTier => ({
   ...t,
+    barcode: (t.barcode ?? '').trim(),
   quantity: parseInt(t.quantity, 10) || 0,
   mrp: parseFloat(t.mrp) || 0,
   salesPrice: parseFloat(t.salesPrice) || 0,

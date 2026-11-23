@@ -23,6 +23,7 @@ import type { QuantitySlab, AddOnGroup, CustomField } from '../constants/models'
 import { type PriceTierForm, toPriceTierForm, fromPriceTierForm, emptyPriceTierForm } from '../lib/priceTiers';
 import { validateQuantitySlabs, buildAddOnPicks, validateCustomFields, cleanCustomFields, PRESET_CUSTOM_LABELS, canonicalCustomLabel, collectCustomLabels, fieldTypeOf } from '../constants/models';
 import { useAddOnTemplates } from '../lib/addOnTemplates';
+import { findBarcodeConflict } from '../lib/barcodeConflicts';
 import { ItemStockLocations } from './ItemStockLocation';
 import SearchableSelect from './SearchableSelect';
 
@@ -798,10 +799,26 @@ useEffect(() => {
         const newBarcode = String(formData.barcode || '').trim();
         const oldBarcode = String((item as any).barcode || '').trim();
 
-        if (!newBarcode) {
+               if (!newBarcode) {
             setModal({ message: "Barcode is required and cannot be empty.", type: State.ERROR });
             return;
         }
+
+        // Main + pricing-option barcodes must not clash with any OTHER item's main or pricing-option barcode
+        const barcodeConflict = findBarcodeConflict(
+            allItemsForVariants,
+            item.id,
+            [
+                { barcode: newBarcode },
+                ...activeTiers.map(t => ({ label: t.label, barcode: t.barcode || '' })),
+            ],
+            [oldBarcode, ...((item as any).priceTiers ?? []).map((t: any) => String(t.barcode || '').trim())]
+        );
+        if (barcodeConflict) {
+            setModal({ message: barcodeConflict, type: State.ERROR });
+            return;
+        }
+
         setIsSaving(true);
         setModal(null);
         setUploadProgress(null);

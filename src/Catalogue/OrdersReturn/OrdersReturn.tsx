@@ -147,7 +147,7 @@ const Section: React.FC<{
       {caption && <span className="ml-auto text-xs text-[#5b6b86]">{caption}</span>}
       {right && <div className={`w-full sm:w-auto ${caption ? '' : 'sm:ml-auto'}`}>{right}</div>}
     </div>
-    <div className={flush ? '' : 'grid gap-3 p-4'}>{children}</div>
+    <div className={flush ? 'min-w-0' : 'grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 p-4'}>{children}</div>
   </section>
 );
 
@@ -159,7 +159,7 @@ const Fact: React.FC<{ label: string; children: React.ReactNode }> = ({ label, c
 );
 
 const factInput =
-  'w-full bg-transparent text-[13px] font-semibold text-[#0f172b] outline-none truncate tabular-nums focus:text-[#c2410c]';
+  'block w-full min-w-0 max-w-full bg-transparent text-[13px] font-semibold text-[#0f172b] outline-none truncate tabular-nums focus:text-[#c2410c]';
 
 const fieldBase =
   'flex h-10 items-center gap-2 rounded-sm border border-[#7a8aa3] bg-white px-3 text-[#5b6b86] focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-[#ea580c]';
@@ -598,7 +598,7 @@ const OrdersReturnPage: React.FC = () => {
 
         {/* --- LEFT PANEL --- */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <div className="relative min-h-0 w-full flex-1 space-y-3.5 overflow-y-auto bg-[#fff5ec] p-3 sm:p-4 xl:p-5">
+          <div className="relative min-h-0 w-full min-w-0 flex-1 space-y-3.5 overflow-y-auto overflow-x-hidden bg-[#fff5ec] p-3 pb-6 sm:p-4 sm:pb-6 xl:p-5">
 
             {/* Original order */}
             <div ref={orderRef}>
@@ -617,8 +617,8 @@ const OrdersReturnPage: React.FC = () => {
                 >
                   <div className="relative" ref={salesDropdownRef}>
                     <label htmlFor="search-sale" className="sr-only">Search original sale</label>
-                    <div className="flex gap-2">
-                      <div className={`${fieldBase} flex-1`}>
+                    <div className="flex min-w-0 gap-2">
+  <div className={`${fieldBase} min-w-0 flex-1`}>
                         <Ico d={ICON.search} size={16} />
                         <input
                           id="search-sale"
@@ -692,7 +692,7 @@ const OrdersReturnPage: React.FC = () => {
                   </div>
 
                   {vSale && (
-                    <div className="grid grid-cols-2 gap-px rounded-sm border border-[#f6e1d0] bg-[#f6e1d0] lg:grid-cols-4">
+                    <div className="grid min-w-0 grid-cols-2 gap-px overflow-hidden rounded-sm border border-[#f6e1d0] bg-[#f6e1d0] lg:grid-cols-4">
                       <Fact label="Order">
                         <b className="block truncate text-[13px] font-semibold tabular-nums">{vSale.orderId}</b>
                       </Fact>

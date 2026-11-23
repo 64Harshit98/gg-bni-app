@@ -48,7 +48,7 @@ const MainLayout = () => {
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
-  useEffect(() => {
+   useEffect(() => {
     const onAction = (e: Event) => {
       const action = (e as CustomEvent<LayoutAction>).detail;
       if (action === 'add-user') setIsAddUserModalOpen(true);
@@ -57,6 +57,18 @@ const MainLayout = () => {
     window.addEventListener(LAYOUT_ACTION_EVENT, onAction);
     return () => window.removeEventListener(LAYOUT_ACTION_EVENT, onAction);
   }, []);
+
+  // Arriving via /user-add (typed in the browser, bookmark, old link) -> redirected to Home
+  // with { openAddUser: true }. Open the same AddUserModal, then clear the state so a
+  // refresh or back-navigation doesn't reopen it.
+  useEffect(() => {
+    const st = location.state as { openAddUser?: boolean } | null;
+    if (st?.openAddUser) {
+      setIsAddUserModalOpen(true);
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location.state, location.pathname, navigate]);
+
   const { currentUser, hasPermission } = useAuth();
   const banner = useSubscriptionBanner();
   // POS pages that show the renewal banner: Home · Accounts · Journal

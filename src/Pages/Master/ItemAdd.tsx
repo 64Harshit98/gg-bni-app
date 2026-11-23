@@ -26,6 +26,7 @@ import 'react-image-crop/dist/ReactCrop.css';
 import { VariantPicker } from '../../Components/VariantPicker';
 import SearchableSelect from '../../Components/SearchableSelect';
 import { useAddOnTemplates } from '../../lib/addOnTemplates';
+import { findBarcodeConflict } from '../../lib/barcodeConflicts';
 import BackButton from '../../Components/BackButton';
 import useTutorial from '../../Catalogue/hooks/useTutorial';
 import { completeTutorial } from '../../Catalogue/hooks/useCompleteTutorial';
@@ -388,6 +389,10 @@ const ADD_ITEM_CSS = `
 `;
 const DRAFT_STORAGE_KEY = 'sellar_item_add_draft';
 const SAVE_AND_NEW_SEEN_KEY = 'sellar_save_and_new_explained';
+
+// Survives navigating to Item Groups and back (component unmounts, this doesn't).
+// File objects can't go in sessionStorage, so the draft never held the photo.
+const imageStash: { file: File | null; extra: File[] } = { file: null, extra: [] };
 const TOTAL_STEPS = 8;
 const TUTORIAL_KEY = 'addItemTutorialDone';
 
@@ -657,6 +662,16 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         console.error("Failed to parse draft storage", e);
       }
     }
+    // Restore photos that were picked before leaving the page (e.g. "+ Add new group")
+    if (imageStash.file) {
+      setImageFile(imageStash.file);
+      setImagePreview(URL.createObjectURL(imageStash.file));
+    }
+    if (imageStash.extra.length) {
+      setAdditionalImageFiles(imageStash.extra);
+      setAdditionalImagePreviews(imageStash.extra.map(f => URL.createObjectURL(f)));
+    }
+
     // FIX: apply AFTER the draft restore so the searched name always wins
     // over a stale/old saved draft — this is the actual missing prefill step.
     if (prefillNameFromSearch) {
@@ -777,6 +792,8 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     setCustomFields(prev => (keep ? prev.map(f => ({ ...f, value: '' })) : []));
     if (!keep) { setAddOnGroupIds([]); setAddOnPick({}); setAddOnLimit({}); setAddOnOpenId(null); }
     sessionStorage.removeItem(DRAFT_STORAGE_KEY);
+    imageStash.file = null;
+    imageStash.extra = [];
     if (imageInputRef.current) imageInputRef.current.value = '';
     fetchNextBarcode();
     keepForNextRef.current = false;
@@ -825,6 +842,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     try {
       const options = { maxSizeMB: 0.5, maxWidthOrHeight: 1024, useWebWorker: true };
       const compressed = await Promise.all(files.map(f => imageCompression(f, options)));
+      if (!isModal) imageStash.extra = [...imageStash.extra, ...compressed];
       setAdditionalImageFiles(prev => [...prev, ...compressed]);
       setAdditionalImagePreviews(prev => [...prev, ...compressed.map(f => URL.createObjectURL(f))]);
     } catch {
@@ -835,6 +853,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   };
 
   const removeAdditionalImage = (idx: number) => {
+    imageStash.extra = imageStash.extra.filter((_, i) => i !== idx);
     setAdditionalImageFiles(prev => prev.filter((_, i) => i !== idx));
     setAdditionalImagePreviews(prev => prev.filter((_, i) => i !== idx));
   };
@@ -876,6 +895,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     try {
       const options = { maxSizeMB: 0.5, maxWidthOrHeight: 1024, useWebWorker: true };
       const compressedFile = await imageCompression(file, options);
+      if (!isModal) imageStash.file = compressedFile;
       setImageFile(compressedFile);
       setImagePreview(URL.createObjectURL(compressedFile));
     } catch {
@@ -1127,6 +1147,20 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       return;
     }
 
+    // Item barcode and pricing-option barcodes must not clash with any existing item's barcodes
+    const barcodeConflict = findBarcodeConflict(
+      allItems,
+      undefined,
+      [
+        { barcode: finalBarcode },
+        ...activeTiers.map(t => ({ label: t.label, barcode: t.barcode || '' })),
+      ]
+    );
+    if (barcodeConflict) {
+      setModal({ message: barcodeConflict, type: State.ERROR });
+      return;
+    }
+
     setIsSaving(true);
 
     try {
@@ -1295,8 +1329,10 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         if (val === null || val === undefined) return "";
         if (typeof val === 'object' && 'hyperlink' in val) return (val.hyperlink || val.text || "").toString().trim();
         if (typeof val === 'object' && 'richText' in val) return val.richText.map((rt: any) => rt.text).join('').trim();
-        return val.toString().trim();
+                return val.toString().trim();
       };
+      // The Item Report export ends with a "TOTAL (443 items)" row. It is not an item, so never import it.
+      const isTotalsRow = (name: string) => /^total\s*\(\s*[\d,]+\s*items?\s*\)$/i.test(name.trim());
       // Every non-empty header after column 16 (Description) is a custom field
       const customColumns: { col: number; label: string; type: CustomFieldType }[] = [];
       if (enableCustomFields) {
@@ -1323,9 +1359,9 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       // Details of every failed row (Excel row number, item name, barcode, reason)
       const failedRows: { row: number; name: string; barcode: string; reason: string }[] = [];
 
-      for (let r = dataStartRow; r <= worksheet.rowCount; r++) {
+           for (let r = dataStartRow; r <= worksheet.rowCount; r++) {
         const name = safeGetVal(worksheet.getRow(r), 1);
-        if (name && !name.toLowerCase().includes('full product name')) totalItems++;
+        if (name && !name.toLowerCase().includes('full product name') && !isTotalsRow(name)) totalItems++;
       }
       setUploadProgress({ current: 0, total: totalItems });
 
@@ -1360,8 +1396,8 @@ const ItemAdd: React.FC<ItemAddProps> = ({
 
       for (let rowNum = dataStartRow; rowNum <= worksheet.rowCount; rowNum++) {
         const row = worksheet.getRow(rowNum);
-        const rawName = safeGetVal(row, 1);
-        if (!rawName || rawName.toLowerCase().includes('full product name')) continue;
+                const rawName = safeGetVal(row, 1);
+        if (!rawName || rawName.toLowerCase().includes('full product name') || isTotalsRow(rawName)) continue;
 
         await new Promise(resolve => setTimeout(resolve, 0));
         setUploadProgress({ current: processedCount + 1, total: totalItems });
@@ -2214,7 +2250,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                       </div>,
                       { req: !!itemSettings?.requireImage })}
                     {imageFile && (
-                      <button className="ai-linkbtn" onClick={() => { setImageFile(null); setImagePreview(null); if (imageInputRef.current) imageInputRef.current.value = ''; }}>
+                      <button className="ai-linkbtn" onClick={() => { imageStash.file = null; setImageFile(null); setImagePreview(null); if (imageInputRef.current) imageInputRef.current.value = ''; }}>
                         Remove selected image
                       </button>
                     )}
@@ -2267,8 +2303,8 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                 onSkip={skipTutorial}
                 mobileArrowAlign="left"
               >
-               <div ref={barcodeRef} style={{ minWidth: 0 }}>
-  {fl('Barcode',
+                <div ref={barcodeRef} style={{ minWidth: 0 }}>
+                  {fl('Barcode',
                     <div className="ai-field" style={{ paddingRight: 4 }}>
                       <input type="text" value={dBarcode} onChange={(e) => setItemBarcode(e.target.value)} placeholder="Scan or type" />
                       <button type="button" onClick={() => setIsScannerOpen(true)} className="ai-btn ai-btn--ghost ai-btn--icon ai-btn--sm" aria-label="Scan barcode">
@@ -2289,8 +2325,8 @@ const ItemAdd: React.FC<ItemAddProps> = ({
               >
                 <div ref={unitRef} style={{ minWidth: 0 }}>
                   {fl('Unit',
-  <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'minmax(0,1fr)', minWidth: 0 }}>
-    <SearchableSelect
+                    <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'minmax(0,1fr)', minWidth: 0 }}>
+                      <SearchableSelect
                         theme={theme}
                         options={UNIT_OPTIONS}
                         value={dUnit}

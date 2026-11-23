@@ -270,6 +270,7 @@ const OrdersPage: React.FC = () => {
         handleSendWhatsappSnapto,
         handleSendReminder,
         handleSendReminderSnapto,
+        handleSharePdf,
     } = useOrderCommunication({
         currentUser,
         companyInfo,
@@ -445,6 +446,7 @@ const OrdersPage: React.FC = () => {
         openEditor,
         setSelectedOrderForAction,
         pdfLoadingOrderId,
+        handleSharePdf,
         handleSendReminder,
         handleSendReminderSnapto,
         companyId: currentUser?.companyId,
@@ -586,6 +588,7 @@ const OrdersPage: React.FC = () => {
                                         openEditor={openEditor}
                                         setSelectedOrderForAction={setSelectedOrderForAction}
                                         pdfLoadingOrderId={pdfLoadingOrderId}
+                                        handleSharePdf={handleSharePdf}
                                         handleSendReminder={handleSendReminder}
                                         handleSendReminderSnapto={handleSendReminderSnapto}
                                         companyId={currentUser?.companyId}

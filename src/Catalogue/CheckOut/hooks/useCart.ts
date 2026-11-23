@@ -25,7 +25,6 @@ export const useCart = (
 
     useEffect(() => {
         const savedCart = safeGet('temp_cart');
-        console.log("Saved:", savedCart)
         if (savedCart) {
             try {
                 const parsedCart = JSON.parse(savedCart);

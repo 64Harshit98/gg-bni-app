@@ -1,4 +1,5 @@
 import { lazy } from 'react';
+import { Navigate } from 'react-router-dom';
 import { ROUTES } from '../constants/routes.constants';
 import { Permissions, PLANS } from '../enums';
 import { Cata_Permissions } from '../Catalogue/enum/cata_permissions.enum';
@@ -16,7 +17,10 @@ const PrintQR = lazy(() => import('../Pages/Master/PrintQR'));
 const ItemAdd = lazy(() => import('../Pages/Master/ItemAdd'));
 const ItemGroup = lazy(() => import('../Pages/Master/ItemGroup'));
 const ManageItems = lazy(() => import('../Pages/Master/ManageItems'));
-const UserAdd = lazy(() => import('../Pages/Master/UserAdd'));
+// Old UserAdd page removed from routing. /user-add now redirects and opens the layout's AddUserModal.
+const UserAddRedirect = () => (
+    <Navigate to={ROUTES.HOME} replace state={{ openAddUser: true }} />
+);
 const Reports = lazy(() => import('../Pages/Reports'));
 const ItemReport = lazy(() => import('../Pages/Reports/ItemReport'));
 const SalesReport = lazy(() => import('../Pages/Reports/SalesReport'));
@@ -183,7 +187,7 @@ export const AppRegistry: AppModule[] = [
             { path: ROUTES.ITEM_ADD, component: PosItemAddWrapper, permission: Permissions.ManageItems },
             { path: ROUTES.ITEM_GROUP, component: PosItemGroupWrapper, permission: Permissions.ManageItemGroup },
             { path: ROUTES.MANAGE_ITEMS, component: ManageItems, permission: Permissions.ManageItemGroup },
-            { path: ROUTES.USER_ADD, component: UserAdd, permission: Permissions.CreateUsers },
+            { path: ROUTES.USER_ADD, component: UserAddRedirect, permission: Permissions.CreateUsers },
             { path: ROUTES.REPORTS.substring(1), component: Reports, permission: Permissions.ViewReports },
             { path: ROUTES.ITEM_REPORT, component: ItemReport, permission: Permissions.ViewItemReport },
             { path: ROUTES.SALES_REPORT, component: SalesReport, permission: Permissions.ViewSalesReport },

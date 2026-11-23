@@ -93,7 +93,7 @@ const Journal: React.FC = () => {
     }
   };
 
-    // PDC cheque edit: which bill + which entry of paymentHistory is being corrected
+  // PDC cheque edit: which bill + which entry of paymentHistory is being corrected
   const [pdcEditTarget, setPdcEditTarget] = useState<{ invoice: Invoice; paymentIndex: number } | null>(null);
 
   // Errors are intentionally NOT caught here: PdcEditModal shows them inline
@@ -328,6 +328,7 @@ const Journal: React.FC = () => {
     handleSendWhatsappSnapto,
     handleSendReminder,
     handleSendReminderSnapto,
+    handleSharePdf,
     handleShowQr,
     handlePrintQr,
   } = useInvoiceCommunication({ currentUser, salesSettings, isPosBasicPlan, setModal });
@@ -412,7 +413,8 @@ const Journal: React.FC = () => {
       onSettle={openPaymentModal}
       onPrint={setInvoiceToPrint}
       onPrintQr={handlePrintQr}
-            onTransport={setTransportPopupInvoice}
+      onTransport={setTransportPopupInvoice}
+      onShare={handleSharePdf}
       onEditPdc={(inv, paymentIndex) => setPdcEditTarget({ invoice: inv, paymentIndex })}
       onRemind={whatsappProvider === 'none' ? undefined : whatsappProvider === 'botmaster' ? handleSendReminder : handleSendReminderSnapto}
       onReturn={(inv) => (inv.type === 'Credit' ? handleSalesReturn(inv) : handlePurchaseReturn(inv))}
@@ -501,7 +503,7 @@ const Journal: React.FC = () => {
         }}
         invoice={paymentInvoice}
         onSubmit={handleSettlePayment}
-                availableCredit={customerCredit}
+        availableCredit={customerCredit}
         isDebitNote={paymentInvoice?.type === 'Debit'}
       />
 

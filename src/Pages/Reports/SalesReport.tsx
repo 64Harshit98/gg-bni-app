@@ -57,6 +57,8 @@ import { normalizePlan } from '../../context/Plan';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 import sellarLogo from '../../assets/sellar-logo.png';
 import { doc, getDoc } from 'firebase/firestore';
+import { useNavigate } from 'react-router-dom';
+import { ROUTES } from '../../constants/routes.constants';
 import { db } from '../../lib/Firebase';
 import { useInvoiceCommunication } from '../Journal/hooks';
 import { InvoiceActionSheet, PrintSubMenuModal, QrCodeModal } from '../Journal/components';
@@ -142,6 +144,7 @@ const getItemAmount = (item: any): number => {
 
 const SalesReport: React.FC = () => {
   const { currentUser } = useAuth();
+  const navigate = useNavigate();
   const [companyName, setCompanyName] = useState<string>('');
 
   useEffect(() => {
@@ -1489,6 +1492,13 @@ const SalesReport: React.FC = () => {
       icon: Tag,
       iconClass: 'bg-orange-50 text-orange-600',
       valueClass: 'text-slate-900',
+      // Open the Items Sold report with the same date range
+      onClick: () =>
+        navigate(ROUTES.ITEM_SOLD_REPORT, {
+          state: appliedFilters
+            ? { start: appliedFilters.start, end: appliedFilters.end, datePreset }
+            : undefined,
+        }),
     },
     {
       label: 'Avg sale value',
@@ -1656,16 +1666,25 @@ const SalesReport: React.FC = () => {
 
       {/* SUMMARY — 2 cols on mobile, 4 cols on md+ */}
       <div className={`mb-4 grid grid-cols-2 gap-2.5 transition-opacity md:grid-cols-4 md:gap-4 ${fetchingClass}`}>
-        {statCards.map(({ label, shortLabel, value, hint, icon: Icon, iconClass, valueClass }) => (
-          <div key={label} className="rounded-sm border border-line bg-white shadow-card p-3 md:p-4">
+        {statCards.map(({ label, shortLabel, value, hint, icon: Icon, iconClass, valueClass, onClick }) => (
+          <div
+            key={label}
+            onClick={onClick}
+            role={onClick ? 'button' : undefined}
+            tabIndex={onClick ? 0 : undefined}
+            onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') onClick(); } : undefined}
+            className={`rounded-sm border border-line bg-white shadow-card p-3 md:p-4 ${onClick ? 'cursor-pointer transition hover:border-slate-400 active:bg-sunken' : ''
+              }`}
+          >
             <div className="flex items-center gap-2">
               <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-sm md:h-7 md:w-7 ${iconClass}`}>
                 <Icon size={14} />
               </span>
-              <span className="truncate text-xs font-medium text-slate-700 md:text-sm">
+              <span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-700 md:text-sm">
                 <span className="md:hidden">{shortLabel}</span>
                 <span className="hidden md:inline">{label}</span>
               </span>
+              {onClick && <ChevronRight size={14} className="shrink-0 text-slate-400" />}
             </div>
             <p className={`mt-2 text-xl font-bold md:text-2xl ${valueClass}`}>{value}</p>
             <p title={hint} className="mt-0.5 truncate text-[11px] text-slate-500 md:text-xs">{hint}</p>

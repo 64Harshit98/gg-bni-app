@@ -16,6 +16,7 @@ interface CompanyConfigForm {
   tier: Tier;
   active: boolean;
   snaptoApiKey: string;
+  snaptoPhoneId: string;
   whatsappNumber: string;
   templateName: string;
   reminderTemplateName: string;
@@ -28,7 +29,7 @@ interface CompanyConfigForm {
 }
 
 const emptyForm: CompanyConfigForm = {
-  tier: 'none', active: false, snaptoApiKey: '', whatsappNumber: '', templateName: '',
+  tier: 'none', active: false, snaptoApiKey: '', snaptoPhoneId: '', whatsappNumber: '', templateName: '',
   reminderTemplateName: '', stockAlertTemplateName: '', language: 'en', planId: '', quotaTotal: '', expiresAt: '', quotaUsed: 0,
 };
 
@@ -68,7 +69,7 @@ const SuperAdminWhatsapp: React.FC = () => {
   const [activeCompanies, setActiveCompanies] = useState(0);
 
   const [sharedForm, setSharedForm] = useState({
-    snaptoApiKey: '', whatsappNumber: '', templateName: '',
+    snaptoApiKey: '', snaptoPhoneId: '', whatsappNumber: '', templateName: '',
     reminderTemplateName: '', stockAlertTemplateName: '', renewalTemplateName: '', language: 'en',
   });
   const [sharedOpen, setSharedOpen] = useState(false);
@@ -92,7 +93,7 @@ const SuperAdminWhatsapp: React.FC = () => {
         if (sharedSnap.exists()) {
           const s = sharedSnap.data();
           setSharedForm({
-            snaptoApiKey: s.snaptoApiKey || '', whatsappNumber: s.whatsappNumber || '', templateName: s.templateName || '',
+            snaptoApiKey: s.snaptoApiKey || '', snaptoPhoneId: s.snaptoPhoneId || '', whatsappNumber: s.whatsappNumber || '', templateName: s.templateName || '',
             reminderTemplateName: s.reminderTemplateName || '', stockAlertTemplateName: s.stockAlertTemplateName || '',
             renewalTemplateName: s.renewalTemplateName || '', language: s.language || 'en',
           });
@@ -143,7 +144,9 @@ const SuperAdminWhatsapp: React.FC = () => {
         }));
 
         setActiveCompanies(companies.filter(c => !c.isTestAccount && companyStatus(c) !== 'expired').length);
-        setRows(companies.filter(c => !c.isTestAccount || statuses.has(c.id)).map(c => {
+        // Keep every company (test accounts included) so search can find them;
+        // the unsearched list hides test accounts that have nothing set up.
+        setRows(companies.map(c => {
           const status = statuses.get(c.id) || { tier: 'none' as Tier, active: false, planId: '', quotaUsed: 0, quotaTotal: null, expiresAt: null };
           const msgs = msgStats.get(c.id) || EMPTY_MSGS;
           const health: Health = status.tier === 'none' ? 'not_set_up'
@@ -177,6 +180,7 @@ const SuperAdminWhatsapp: React.FC = () => {
     const q = search.trim().toLowerCase();
     const rank: Record<Health, number> = { failing: 0, inactive: 1, connected: 2, not_set_up: 3 };
     return rows.filter(r => {
+      if (!q && r.company.isTestAccount && r.status.tier === 'none' && r.requested === null) return false;
       if (healthFilter === 'requested' && r.requested === null) return false;
       if (healthFilter !== 'all' && healthFilter !== 'requested' && r.health !== healthFilter) return false;
       if (q && !r.company.name.toLowerCase().includes(q) && !r.company.id.toLowerCase().includes(q)) return false;
@@ -232,6 +236,7 @@ const SuperAdminWhatsapp: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <Field label="Snapto API key"><SecretInput value={sharedForm.snaptoApiKey} onChange={v => setSharedForm(p => ({ ...p, snaptoApiKey: v }))} /></Field>
             <Field label="WhatsApp number"><input className={inputCls} value={sharedForm.whatsappNumber} onChange={e => setSharedForm(p => ({ ...p, whatsappNumber: e.target.value }))} /></Field>
+            <Field label="Snapto Phone ID" hint="From Snapto → Connected Accounts. Needed if the account has more than one number."><input className={inputCls} value={sharedForm.snaptoPhoneId} onChange={e => setSharedForm(p => ({ ...p, snaptoPhoneId: e.target.value }))} /></Field>
             <Field label="Language code"><input className={inputCls} value={sharedForm.language} onChange={e => setSharedForm(p => ({ ...p, language: e.target.value }))} /></Field>
             <Field label="Invoice / order template"><input className={inputCls} value={sharedForm.templateName} onChange={e => setSharedForm(p => ({ ...p, templateName: e.target.value }))} /></Field>
             <Field label="Payment reminder template"><input className={inputCls} value={sharedForm.reminderTemplateName} onChange={e => setSharedForm(p => ({ ...p, reminderTemplateName: e.target.value }))} /></Field>
@@ -288,7 +293,7 @@ const SuperAdminWhatsapp: React.FC = () => {
                 <div key={r.company.id} onClick={() => setSelectedId(r.company.id)}
                   className={`grid grid-cols-[1fr_auto] md:grid-cols-[1.4fr_1fr_1fr_1.2fr_0.9fr_auto] gap-x-3 gap-y-1 px-4 py-3 border-b border-gray-100 items-center cursor-pointer ${selectedId === r.company.id ? 'bg-blue-50/60' : 'hover:bg-gray-50'}`}>
                   <div className="min-w-0">
-                    <p className="font-semibold text-gray-900 truncate">{r.company.name}</p>
+                    <p className="font-semibold text-gray-900 truncate">{r.company.name}{r.company.isTestAccount && <Chip cls="ml-2 bg-gray-200 text-gray-700">TEST</Chip>}</p>
                     <p className="text-xs font-mono text-gray-500">{r.company.id}{r.requested !== null && <span className="ml-2 font-sans font-semibold text-amber-700">requested plan</span>}</p>
                   </div>
                   <div><Chip cls={HEALTH_META[r.health].cls}>{HEALTH_META[r.health].label}</Chip></div>
@@ -362,7 +367,7 @@ const CompanyPanel: React.FC<{ row: Row; onSaved: (id: string, form: CompanyConf
       }
       const c = snap.data();
       setForm({
-        tier: (c.tier || 'none') as Tier, active: !!c.active, snaptoApiKey: c.snaptoApiKey || '', whatsappNumber: c.whatsappNumber || '',
+        tier: (c.tier || 'none') as Tier, active: !!c.active, snaptoApiKey: c.snaptoApiKey || '', snaptoPhoneId: c.snaptoPhoneId || '', whatsappNumber: c.whatsappNumber || '',
         templateName: c.templateName || '', reminderTemplateName: c.reminderTemplateName || '', stockAlertTemplateName: c.stockAlertTemplateName || '',
         language: c.language || 'en', planId: c.planId || '',
         quotaTotal: c.quotaTotal === null || c.quotaTotal === undefined ? '' : String(c.quotaTotal),
@@ -386,7 +391,7 @@ const CompanyPanel: React.FC<{ row: Row; onSaved: (id: string, form: CompanyConf
     try {
       await httpsCallable(getFunctions(), 'setCompanyWhatsappConfig')({
         companyId: id, tier: form.tier, active: form.active,
-        snaptoApiKey: form.snaptoApiKey, whatsappNumber: form.whatsappNumber, templateName: form.templateName,
+        snaptoApiKey: form.snaptoApiKey, snaptoPhoneId: form.snaptoPhoneId, whatsappNumber: form.whatsappNumber, templateName: form.templateName,
         reminderTemplateName: form.reminderTemplateName, stockAlertTemplateName: form.stockAlertTemplateName, language: form.language,
         planId: form.planId, quotaTotal: form.quotaTotal === '' ? null : Number(form.quotaTotal), expiresAt: form.expiresAt || null,
       });
@@ -438,6 +443,9 @@ const CompanyPanel: React.FC<{ row: Row; onSaved: (id: string, form: CompanyConf
           {form.tier === 'snapto' && <>
             <Field label="API key" hint="Stored server-side; only super admins can read it."><SecretInput value={form.snaptoApiKey} onChange={v => update({ snaptoApiKey: v })} /></Field>
             <Field label="Sender number"><input className={inputCls} value={form.whatsappNumber} placeholder="+91 …" onChange={e => update({ whatsappNumber: e.target.value })} /></Field>
+            <Field label="Snapto Phone ID" hint="From Snapto → Connected Accounts. Needed if the account has more than one number.">
+              <input className={inputCls} value={form.snaptoPhoneId} placeholder="e.g. 1432291703292665" onChange={e => update({ snaptoPhoneId: e.target.value })} />
+            </Field>
             <button onClick={() => setShowAdvanced(v => !v)} className="text-sm font-semibold text-blue-600 flex items-center gap-1">
               Templates <ChevronDown className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
             </button>

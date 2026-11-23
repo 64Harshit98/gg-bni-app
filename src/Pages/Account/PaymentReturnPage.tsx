@@ -3,6 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CANVAS_DOTS } from '../../Components/StatusShell';
 import sellarLogo from '../../assets/sellar-logo-heading.png';
 import { ROUTES } from '../../constants/routes.constants';
+import { useAuth } from '../../context/auth-context';
+import { PLANS } from '../../enums';
 
 // Landing page for the browser redirect ICICI sends after a customer
 // completes (or abandons) checkout on its hosted page. Activation itself
@@ -14,6 +16,11 @@ const PaymentReturnPage: React.FC = () => {
     const status = searchParams.get('status');
     const isSuccess = status === 'success';
     const isPending = status === 'pending';
+
+    // Same plan → dashboard mapping PermissionWrapper uses.
+    const { currentUser } = useAuth();
+    const isCatalogueOnly = currentUser?.plan === PLANS.CATALOGUE_PRO || currentUser?.plan === PLANS.CALC_CATALOG;
+    const dashboardRoute = isCatalogueOnly ? ROUTES.CHOME : ROUTES.HOME;
 
     return (
         <div className="fixed inset-0 z-[100] h-screen w-screen overflow-hidden bg-canvas">
@@ -56,10 +63,10 @@ const PaymentReturnPage: React.FC = () => {
                     )}
 
                     <button
-                        onClick={() => navigate(ROUTES.SUBSCRIPTION_PAGE)}
+                        onClick={() => navigate(isSuccess ? dashboardRoute : ROUTES.SUBSCRIPTION_PAGE, { replace: true })}
                         className="mt-6 w-full rounded-sm bg-blue-600 py-2.5 font-semibold text-white transition-colors hover:bg-blue-700"
                     >
-                        Back to Subscription
+                        {isSuccess ? 'Go to Dashboard' : 'Back to Subscription'}
                     </button>
                 </div>
             </div>

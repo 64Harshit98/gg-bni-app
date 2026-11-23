@@ -724,6 +724,7 @@ exports.sendCompanyWhatsappMessage = functions.https.onCall(async (data, context
         const config = configSnap.data();
         credentials = {
             apiKey: config.snaptoApiKey,
+            phoneId: config.snaptoPhoneId || '',
             language: config.language || 'en',
             templateName: config[templateField],
         };
@@ -748,6 +749,7 @@ exports.sendCompanyWhatsappMessage = functions.https.onCall(async (data, context
 
         credentials = {
             apiKey: shared.snaptoApiKey,
+            phoneId: shared.snaptoPhoneId || '',
             language: shared.language || 'en',
             templateName: shared[templateField],
         };
@@ -774,16 +776,27 @@ exports.sendCompanyWhatsappMessage = functions.https.onCall(async (data, context
                 headers: {
                     'Content-Type': 'application/json',
                     'x-api-key': credentials.apiKey,
+                    // Snapto requires the sender's Phone ID when the account
+                    // has more than one WhatsApp number linked.
+                    ...(credentials.phoneId ? { 'x-phone-id': credentials.phoneId } : {}),
                 },
             }
         );
         sendResult = { waMessageId: (response.data && response.data.waMessageId) || null };
     } catch (err) {
         const errData = err.response && err.response.data;
-        const errorDetail = (errData && (errData.detail || (errData.error && errData.error.message))) || err.message || 'Unknown error';
+        const rawDetail = (errData && (errData.detail || (errData.error && errData.error.message))) || err.message || 'Unknown error';
+        // Say which sender ID we passed, so a Meta "Object with ID … does not
+        // exist" can be traced to our config (sent) vs Snapto's default (not sent).
+        const phoneNote = credentials.phoneId
+            ? `Sent with Phone ID ${credentials.phoneId} from the ${activeTier === 'sellar' ? 'Sellar shared' : 'company'} config.`
+            : 'No Phone ID was sent; Snapto used its default number for this API key.';
+        const errorDetail = `${rawDetail} [${phoneNote}]`;
+        console.error('Snapto send failed', { companyId, activeTier, phoneIdSent: credentials.phoneId || null, status: err.response && err.response.status, errData });
 
         await logDocRef.set({
             to, messageType, status: 'failed', tier: activeTier,
+            phoneIdSent: credentials.phoneId || null,
             waMessageId: null, errorDetail,
             refCollection: refCollection || null, refId: refId || null,
             sentByUid: context.auth.uid,
@@ -826,7 +839,7 @@ exports.setCompanyWhatsappConfig = functions.https.onCall(async (data, context) 
     }
     const {
         companyId, tier, active,
-        snaptoApiKey, whatsappNumber, templateName, reminderTemplateName, stockAlertTemplateName, language,
+        snaptoApiKey, snaptoPhoneId, whatsappNumber, templateName, reminderTemplateName, stockAlertTemplateName, language,
         planId, quotaTotal, expiresAt,
     } = data;
 
@@ -849,6 +862,7 @@ exports.setCompanyWhatsappConfig = functions.https.onCall(async (data, context) 
     if (tier === 'snapto') {
         Object.assign(configPayload, {
             snaptoApiKey: snaptoApiKey || '',
+            snaptoPhoneId: String(snaptoPhoneId || '').trim(),
             whatsappNumber: whatsappNumber || '',
             templateName: templateName || '',
             reminderTemplateName: reminderTemplateName || '',
@@ -892,10 +906,11 @@ exports.setSellarSharedWhatsappConfig = functions.https.onCall(async (data, cont
     if (!context.auth || !SUPER_ADMIN_UIDS.includes(context.auth.uid)) {
         throw new functions.https.HttpsError('permission-denied', 'Only Super Admins can perform this action.');
     }
-    const { snaptoApiKey, whatsappNumber, templateName, reminderTemplateName, stockAlertTemplateName, renewalTemplateName, language } = data;
+    const { snaptoApiKey, snaptoPhoneId, whatsappNumber, templateName, reminderTemplateName, stockAlertTemplateName, renewalTemplateName, language } = data;
 
     await db.doc('sellarWhatsappSharedConfig/global').set({
         snaptoApiKey: snaptoApiKey || '',
+        snaptoPhoneId: String(snaptoPhoneId || '').trim(),
         whatsappNumber: whatsappNumber || '',
         templateName: templateName || '',
         reminderTemplateName: reminderTemplateName || '',
@@ -975,6 +990,7 @@ exports.sendRenewalReminder = functions.https.onCall(async (data, context) => {
                 headers: {
                     'Content-Type': 'application/json',
                     'x-api-key': shared.snaptoApiKey,
+                    ...(shared.snaptoPhoneId ? { 'x-phone-id': shared.snaptoPhoneId } : {}),
                 },
             }
         );
@@ -2279,3 +2295,8 @@ exports.verifyRazorpayPayment = functions.https.onCall(async (data, context) => 
         throw new functions.https.HttpsError("internal", "Failed to activate subscription.");
     }
 });
+
+// ICICI Payment Advice + browser Payment Response handler. ICICI_RETURN_URL
+// points at this function, so it must be exported from the entry point or it
+// never gets deployed (ICICI then lands the customer on a Cloud Functions 404).
+exports.paymentWebhook = require("./paymentWebhook").paymentWebhook;

@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '../../context/auth-context';
 import { PLANS } from '../../enums';
 import BackButton from '../../Components/BackButton';
+import { LegalModal } from '../../Components/LegalModal';
 import { db } from '../../lib/Firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
@@ -370,6 +371,8 @@ const SubscriptionPage: React.FC = () => {
     const [paying, setPaying] = useState(false);
     const [payError, setPayError] = useState('');
     const [confirmPlanSwitch, setConfirmPlanSwitch] = useState(false);
+    const [acceptedTerms, setAcceptedTerms] = useState(false);
+    const [legalTab, setLegalTab] = useState<'terms' | 'privacy' | null>(null);
 
     const ALL_TIERS = useMemo(() => [...POS_TIERS, ...CATALOGUE_TIERS, ...BOTH_TIERS], []);
     const currentPlanName = ALL_TIERS.find(t => t.id === currentPack)?.name || currentPack;
@@ -399,6 +402,7 @@ const SubscriptionPage: React.FC = () => {
         setAppliedCoupon(null);
         setPayError('');
         setConfirmPlanSwitch(false);
+        setAcceptedTerms(false);
     };
 
     const handleApplyCoupon = async () => {
@@ -427,7 +431,7 @@ const SubscriptionPage: React.FC = () => {
     };
 
     const handlePayNow = async () => {
-        if (!checkoutTier) return;
+        if (!checkoutTier || !acceptedTerms) return;
         setPaying(true);
         setPayError('');
         try {
@@ -813,6 +817,29 @@ const SubscriptionPage: React.FC = () => {
                             </div>
                         )}
 
+                        {/* The links sit outside the <label> so opening them doesn't toggle the checkbox. */}
+                        <div className="flex items-start gap-2 mb-4 text-xs leading-[18px] text-[#45556c]">
+                            <input
+                                id="sp-terms"
+                                type="checkbox"
+                                className={`mt-0.5 w-4 h-4 shrink-0 cursor-pointer ${T.accent}`}
+                                checked={acceptedTerms}
+                                onChange={(e) => setAcceptedTerms(e.target.checked)}
+                                aria-label="I agree to the Terms & Conditions and Privacy Policy"
+                            />
+                            <div>
+                                <label htmlFor="sp-terms" className="cursor-pointer">I agree to the</label>{' '}
+                                <button type="button" className={`bg-transparent border-0 p-0 underline cursor-pointer ${T.primaryText}`} onClick={() => setLegalTab('terms')}>
+                                    Terms &amp; Conditions
+                                </button>{' '}
+                                and{' '}
+                                <button type="button" className={`bg-transparent border-0 p-0 underline cursor-pointer ${T.primaryText}`} onClick={() => setLegalTab('privacy')}>
+                                    Privacy Policy
+                                </button>
+                                .
+                            </div>
+                        </div>
+
                         {payError && <p className="m-0 mb-3 text-sm text-[#d5000c]">{payError}</p>}
 
                         <div className="flex items-center justify-end gap-2">
@@ -820,7 +847,7 @@ const SubscriptionPage: React.FC = () => {
                             <button
                                 className={`${btnPrimary} flex-1 sm:flex-none sm:min-w-[160px]`}
                                 onClick={handlePayNow}
-                                disabled={paying || (isSwitchingPlan && !confirmPlanSwitch)}
+                                disabled={paying || !acceptedTerms || (isSwitchingPlan && !confirmPlanSwitch)}
                             >
                                 {paying ? 'Processing…' : `Pay ₹${checkoutTotal}`}
                             </button>
@@ -863,6 +890,7 @@ const SubscriptionPage: React.FC = () => {
                     </div>
                 </div>
             )}
+            <LegalModal isOpen={legalTab !== null} defaultTab={legalTab ?? 'terms'} onClose={() => setLegalTab(null)} />
         </div>
 
     );

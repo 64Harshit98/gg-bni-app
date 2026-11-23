@@ -7,6 +7,9 @@
 // Recipient number should include country code, digits only (e.g. 919876543210).
 
 const apiKey = process.env.SNAPTO_API_KEY;
+// Optional: Snapto "Phone ID" (Connected Accounts page) — required when the
+// account has more than one WhatsApp number linked.
+const phoneId = process.env.SNAPTO_PHONE_ID;
 const [, , to, ...rest] = process.argv;
 
 if (!apiKey) {
@@ -57,6 +60,7 @@ try {
     headers: {
       "Content-Type": "application/json",
       "x-api-key": apiKey,
+      ...(phoneId ? { "x-phone-id": phoneId } : {}),
     },
     body: JSON.stringify(body),
   });

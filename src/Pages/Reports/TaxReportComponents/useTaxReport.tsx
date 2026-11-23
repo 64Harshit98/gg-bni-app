@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../../../context/auth-context';
 import { formatDateForInput } from '../SalesReportComponents/salesReport.utils';
+import { getTaxPresetRange } from './taxReport.utils';
+import { stateCodeFromName } from './taxReportExport.utils';
 import { db } from '../../../lib/Firebase';
 import {
   collection,
@@ -19,7 +21,28 @@ export interface MerchantProfile {
   compositionRate: number;
   legalName: string;
   tradeName: string;
+  address: string;
 }
+
+const DEFAULT_PROFILE: MerchantProfile = {
+  gstin: '',
+  homeStateCode: '09', // Default to UP
+  compositionRate: 1,
+  legalName: '',
+  tradeName: '',
+  address: '',
+};
+
+const formatAddress = (b: any): string => {
+  if (!b) return '';
+  if (typeof b.fullAddress === 'string' && b.fullAddress.trim()) return b.fullAddress.trim();
+  if (typeof b.address === 'string' && b.address.trim()) return b.address.trim();
+  const parts = [b.streetAddress, b.city, b.state].filter((p) => typeof p === 'string' && p.trim());
+  let out = parts.join(', ');
+  const pin = b.postalCode || b.zipCode || b.pincode;
+  if (pin) out += ` - ${pin}`;
+  return out;
+};
 
 export default function useTaxReport() {
   const navigate = useNavigate();
@@ -29,116 +52,121 @@ export default function useTaxReport() {
   const [purchaseData, setPurchaseData] = useState<any[]>([]);
 
   const [gstScheme, setGstScheme] = useState<'Regular' | 'Composition' | 'None'>('Regular');
+  const [merchantProfile, setMerchantProfile] = useState<MerchantProfile>(DEFAULT_PROFILE);
 
-  const [merchantProfile, setMerchantProfile] = useState<MerchantProfile>({
-    gstin: '',
-    homeStateCode: '09', // Default to UP
-    compositionRate: 1,
-    legalName: '',
-    tradeName: '',
-  });
-
+  // isLoading = first load (full-page loader); isFetching = any load (dims the old data).
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isFetching, setIsFetching] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [viewMode, setViewMode] = useState<'Summary' | 'Sales' | 'Purchases'>('Summary');
   const [datePreset, setDatePreset] = useState<string>('thisMonth');
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
   const [appliedFilters, setAppliedFilters] = useState<{ start: number; end: number } | null>(null);
 
   useEffect(() => {
-    const today = new Date();
-    const start = new Date(today.getFullYear(), today.getMonth(), 1);
-    const end = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59);
-
-    setCustomStartDate(formatDateForInput(start));
-    setCustomEndDate(formatDateForInput(end));
-    setAppliedFilters({ start: start.getTime(), end: end.getTime() });
+    const range = getTaxPresetRange('thisMonth')!;
+    setCustomStartDate(formatDateForInput(range.start));
+    setCustomEndDate(formatDateForInput(range.end));
+    setAppliedFilters({ start: range.start.getTime(), end: range.end.getTime() });
   }, []);
 
   useEffect(() => {
     if (authLoading) return;
     if (!currentUser?.companyId || !appliedFilters) {
-      if (!authLoading && !currentUser?.companyId) setIsLoading(false);
+      if (!currentUser?.companyId) setIsLoading(false);
       return;
     }
 
+    let cancelled = false;
     const fetchData = async () => {
-      setIsLoading(true);
+      setIsFetching(true);
+      setError(null);
       try {
         const companyId = currentUser.companyId;
 
-        // 1. Fetch Merchant Settings & Profile Data
+        // 1. Company details + GST scheme.
+        // GSTIN, business name and address live in companies/{id}/business_info/{id}
+        // (written by onboarding, Bill settings and the GST prompt in Sales settings).
+        // The root companies/{id} doc is only a fallback for older accounts.
         let scheme: 'Regular' | 'Composition' | 'None' = 'Regular';
-        const merchantData: MerchantProfile = { gstin: '', homeStateCode: '09', compositionRate: 1, legalName: '', tradeName: '' };
+        const profile: MerchantProfile = { ...DEFAULT_PROFILE };
 
         try {
-          const profileDoc = await getDoc(doc(db, 'companies', companyId));
-          const settingsDoc = await getDoc(doc(db, 'companies', companyId, 'settings', 'sales-settings'));
+          const [businessSnap, companySnap, settingsSnap] = await Promise.all([
+            getDoc(doc(db, 'companies', companyId, 'business_info', companyId)),
+            getDoc(doc(db, 'companies', companyId)),
+            getDoc(doc(db, 'companies', companyId, 'settings', 'sales-settings')),
+          ]);
+          const b: any = businessSnap.exists() ? businessSnap.data() : {};
+          const c: any = companySnap.exists() ? companySnap.data() : {};
 
-          if (profileDoc.exists()) {
-            const pData = profileDoc.data();
-            merchantData.gstin = pData.gstin || '';
-            // Extract strict 2-digit state code from GSTIN if available, else default to UP
-            merchantData.homeStateCode = pData.gstin ? pData.gstin.substring(0, 2) : '09';
-            merchantData.legalName = pData.legalName || pData.ownerName || '';
-            merchantData.tradeName = pData.tradeName || pData.companyName || pData.storeName || '';
-          }
+          const gstin = String(b.gstin || c.gstin || '').trim().toUpperCase();
+          const name = String(b.businessName || b.name || c.businessName || c.companyName || c.storeName || '').trim();
+          profile.gstin = gstin;
+          profile.tradeName = String(b.tradeName || c.tradeName || name).trim();
+          profile.legalName = String(b.legalName || c.legalName || b.ownerName || c.ownerName || name).trim();
+          profile.address = formatAddress(b) || formatAddress(c);
+          // Home state: GSTIN prefix is authoritative; else the state on the business address.
+          profile.homeStateCode = /^\d{2}/.test(gstin)
+            ? gstin.substring(0, 2)
+            : stateCodeFromName(b.state || c.state) || DEFAULT_PROFILE.homeStateCode;
 
-          if (settingsDoc.exists()) {
-            const data = settingsDoc.data();
-            if (data.gstScheme === 'composition') {
+          if (settingsSnap.exists()) {
+            const s: any = settingsSnap.data();
+            if (s.gstScheme === 'composition') {
               scheme = 'Composition';
-              merchantData.compositionRate = data.compositionRate || 1;
-            } else if (data.gstScheme === 'none') scheme = 'None';
+              profile.compositionRate = Number(s.compositionRate) || 1;
+            } else if (s.gstScheme === 'none') scheme = 'None';
           }
         } catch (e) {
-          console.warn('Could not fetch settings, defaulting to Regular');
+          console.warn('Could not fetch business info / settings, defaulting to Regular', e);
         }
 
+        if (cancelled) return;
         setGstScheme(scheme);
-        setMerchantProfile(merchantData);
+        setMerchantProfile(profile);
 
         if (scheme === 'None') {
-          setIsLoading(false);
+          setSalesData([]);
+          setPurchaseData([]);
           return;
         }
 
-        // 2. Optimized Date Query (Filters on backend instead of downloading everything)
+        // 2. Sales + purchases for the period (all purchases: Composition needs every
+        // registered-supplier invoice for GSTR-4A; RCM filtering happens per report).
         const startDate = new Date(appliedFilters.start);
         const endDate = new Date(appliedFilters.end);
+        const rangeQuery = (col: string) =>
+          query(
+            collection(db, 'companies', companyId, col),
+            where('createdAt', '>=', startDate),
+            where('createdAt', '<=', endDate),
+            orderBy('createdAt', 'desc'),
+          );
 
-        const salesQ = query(
-          collection(db, 'companies', companyId, 'sales'),
-          where('createdAt', '>=', startDate),
-          where('createdAt', '<=', endDate),
-          orderBy('createdAt', 'desc'),
-        );
-        const salesSnap = await getDocs(salesQ);
+        const [salesSnap, purchaseSnap] = await Promise.all([
+          getDocs(rangeQuery('sales')),
+          getDocs(rangeQuery('purchases')),
+        ]);
+        if (cancelled) return;
         setSalesData(salesSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
-
-        // 3. Purchases — fetch ALL purchases for both schemes. Composition dealers need
-        // every invoice from a registered supplier for GSTR-4A (RCM and non-RCM alike),
-        // not just RCM ones — RCM-only filtering happens client-side per-report instead.
-        const purchaseQ = query(
-          collection(db, 'companies', companyId, 'purchases'),
-          where('createdAt', '>=', startDate),
-          where('createdAt', '<=', endDate),
-          orderBy('createdAt', 'desc'),
-        );
-
-        const purchaseSnap = await getDocs(purchaseQ);
         setPurchaseData(purchaseSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
       } catch (err) {
         console.error('Error fetching tax data:', err);
-        setError('Failed to load tax data.');
+        if (!cancelled) setError('Failed to load tax data.');
       } finally {
-        setIsLoading(false);
+        if (!cancelled) {
+          setIsFetching(false);
+          setIsLoading(false);
+        }
       }
     };
 
     fetchData();
+    return () => {
+      cancelled = true;
+    };
   }, [currentUser, authLoading, appliedFilters]);
 
   return {
@@ -148,9 +176,8 @@ export default function useTaxReport() {
     gstScheme,
     merchantProfile,
     isLoading,
+    isFetching,
     error,
-    viewMode,
-    setViewMode,
     datePreset,
     setDatePreset,
     customStartDate,

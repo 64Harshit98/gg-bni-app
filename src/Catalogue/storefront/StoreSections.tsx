@@ -1,9 +1,10 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Award, ChevronLeft, ChevronRight, Clock, ExternalLink, LayoutGrid, MapPin, MessageCircle, Package, Phone, ShieldCheck, Truck, Users, Mail } from 'lucide-react';
 import type { Item, ItemGroup } from '../../constants/models';
 import type { BusinessInfo } from './useStorefront';
-import type { CategoryGroupsData, FactIcon, StoreButton, StoreSection } from './storePage.types';
+import type { CategoryGroupsData, FactIcon, HeroData, HeroSlide, StoreButton, StoreSection } from './storePage.types';
+import { HERO_DEFAULT_INTERVAL, heroSlides } from './storePage.types';
 import { CategoryTile, Photo, btnClass } from './StoreUI';
 import { formatPhone, getItemImages, itemInGroup, normalizeUrl, slugify, whatsappUrl } from './storefront.utils';
 
@@ -131,6 +132,112 @@ const PinnedRail: React.FC<{ title: string; ctx: SectionContext }> = ({ title, c
     );
 };
 
+// ── Hero slideshow: photos slide in turn behind a fixed heading and buttons ──
+const prefersReducedMotion = () => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+const useSlideshow = (count: number, seconds: number) => {
+    const [index, setIndex] = useState(0);
+    const [paused, setPaused] = useState(false);
+    const touchX = useRef<number | null>(null);
+    const at = count ? index % count : 0;
+    const go = useCallback((i: number) => setIndex(((i % count) + count) % count), [count]);
+    useEffect(() => {
+        if (count < 2 || paused || prefersReducedMotion()) return;
+        const t = window.setTimeout(() => setIndex((i) => (i + 1) % count), Math.max(2, seconds) * 1000);
+        return () => window.clearTimeout(t);
+    }, [at, count, paused, seconds]);
+    // Pause while the shopper points at, focuses or touches the hero; swipe to change photo
+    const handlers = count < 2 ? {} : {
+        onMouseEnter: () => setPaused(true),
+        onMouseLeave: () => setPaused(false),
+        onFocus: () => setPaused(true),
+        onBlur: () => setPaused(false),
+        onTouchStart: (e: React.TouchEvent) => { touchX.current = e.touches[0].clientX; setPaused(true); },
+        onTouchEnd: (e: React.TouchEvent) => {
+            const start = touchX.current;
+            touchX.current = null;
+            setPaused(false);
+            if (start == null) return;
+            const dx = e.changedTouches[0].clientX - start;
+            if (Math.abs(dx) > 40) go(at + (dx < 0 ? 1 : -1));
+        },
+    };
+    return { index: at, go, handlers };
+};
+
+const SlideTrack: React.FC<{ slides: HeroSlide[]; index: number; alt: string }> = ({ slides, index, alt }) => (
+    <div className="absolute inset-0 flex transition-transform duration-700 ease-out motion-reduce:transition-none" style={{ transform: `translateX(-${index * 100}%)` }}>
+        {slides.length ? slides.map((s, i) => (
+            <div key={s.id} aria-hidden={i !== index} className="h-full w-full shrink-0">
+                <Photo src={s.url} alt={i === 0 ? alt : `${alt} photo ${i + 1}`} className="h-full w-full rounded-none" />
+            </div>
+        )) : <Photo alt={alt} className="h-full w-full shrink-0 rounded-none" />}
+    </div>
+);
+
+const SlideControls: React.FC<{ count: number; index: number; go: (i: number) => void; className?: string }> = ({ count, index, go, className }) => (
+    count < 2 ? null : (
+        <div role="group" aria-label="Photo slideshow" className={cx('absolute z-10 flex items-center gap-1 rounded-sm bg-[rgba(20,12,6,0.45)] p-1 text-white backdrop-blur-sm', className)}>
+            <button type="button" aria-label="Previous photo" onClick={() => go(index - 1)} className="grid size-8 place-items-center rounded-sm hover:bg-white/15"><ChevronLeft className="size-4" /></button>
+            <div className="flex items-center gap-1.5 px-1">
+                {Array.from({ length: count }, (_, i) => (
+                    <button key={i} type="button" aria-label={`Show photo ${i + 1} of ${count}`} aria-current={i === index}
+                        onClick={() => go(i)}
+                        className={cx('h-2 rounded-sm transition-all', i === index ? 'w-5 bg-white' : 'w-2 bg-white/50 hover:bg-white/80')} />
+                ))}
+            </div>
+            <button type="button" aria-label="Next photo" onClick={() => go(index + 1)} className="grid size-8 place-items-center rounded-sm hover:bg-white/15"><ChevronRight className="size-4" /></button>
+        </div>
+    )
+);
+
+const HeroSection: React.FC<{ data: HeroData; ctx: SectionContext }> = ({ data: d, ctx }) => {
+    const slides = heroSlides(d);
+    const { index, go, handlers } = useSlideshow(slides.length, d.interval ?? HERO_DEFAULT_INTERVAL);
+    if (!d.heading && !slides.length) return null;
+    const buttons = d.buttons.filter((x) => x.label.trim());
+    const carousel = slides.length > 1 ? { 'aria-roledescription': 'carousel' } : {};
+    if (d.layout === 'beside') {
+        return (
+            <section className="grid items-center gap-5 pt-4 sf-md:grid-cols-[5fr_6fr] sf-md:gap-10 sf-md:pt-10">
+                <div {...carousel} {...handlers} className="relative aspect-[4/3] overflow-hidden rounded-sm sf-md:order-2">
+                    <SlideTrack slides={slides} index={index} alt={d.heading} />
+                    <SlideControls count={slides.length} index={index} go={go} className="bottom-3 right-3" />
+                </div>
+                <div>
+                    <h1 className="text-balance text-[26px] font-semibold leading-[34px] tracking-tight text-slate-900 sf-md:text-[40px] sf-md:leading-[48px]">{d.heading}</h1>
+                    {d.text && <p className="mt-2.5 max-w-[46ch] text-[15px] leading-6 text-slate-600 sf-md:mt-4 sf-md:text-base sf-md:leading-[26px]">{d.text}</p>}
+                    {buttons.length > 0 && (
+                        <div className="mt-5 grid gap-2 sf-sm:flex sf-md:mt-6 sf-md:gap-3">
+                            {buttons.map((btn, i) => <StoreBtn key={i} button={btn} ctx={ctx} variant={i === 0 ? 'primary' : 'secondary'} size="lg" />)}
+                        </div>
+                    )}
+                </div>
+            </section>
+        );
+    }
+    return (
+        <section {...carousel} {...handlers} className="relative mt-4 aspect-square overflow-hidden rounded-sm sf-sm:aspect-[2/1] sf-md:mt-5 sf-md:aspect-[3/1]">
+            <SlideTrack slides={slides} index={index} alt={d.heading} />
+            <div className="absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-[rgba(20,12,6,0.62)] via-[rgba(20,12,6,0.3)] to-transparent p-5 text-white sf-md:p-10">
+                <h1 className="text-balance text-[26px] font-semibold leading-[34px] tracking-tight sf-md:text-[40px] sf-md:leading-[48px]">{d.heading}</h1>
+                {d.text && <p className="mt-2 max-w-[46ch] text-sm leading-[22px] opacity-95 sf-md:mt-3 sf-md:text-base sf-md:leading-[26px]">{d.text}</p>}
+                {buttons.length > 0 && (
+                    <div className="mt-4 flex flex-wrap gap-2 sf-md:mt-6 sf-md:gap-3">
+                        {buttons.map((btn, i) => (
+                            <span key={i} className={i > 0 ? 'hidden sf-sm:contents' : 'contents'}>
+                                <StoreBtn button={btn} ctx={ctx} variant={i === 0 ? 'primary' : 'secondary'} size="lg" className={i === 0 ? 'flex-1 sf-sm:flex-none' : ''} />
+                            </span>
+                        ))}
+                    </div>
+                )}
+            </div>
+            {/* Top-right on phones keeps clear of the full-width button; bottom-right on computers */}
+            <SlideControls count={slides.length} index={index} go={go} className="right-3 top-3 sf-md:bottom-6 sf-md:right-6 sf-md:top-auto" />
+        </section>
+    );
+};
+
 const paragraphs = (text?: string) => (text || '').split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
 
 const Prose: React.FC<{ text?: string }> = ({ text }) => (
@@ -150,45 +257,8 @@ export const StoreSectionView: React.FC<{ section: StoreSection; ctx: SectionCon
     const b = ctx.business;
 
     switch (section.type) {
-        case 'hero': {
-            const d = section.data;
-            if (!d.heading && !d.imageUrl) return null;
-            const buttons = d.buttons.filter((x) => x.label.trim());
-            if (d.layout === 'beside') {
-                return (
-                    <section className="grid items-center gap-5 pt-4 sf-md:grid-cols-[5fr_6fr] sf-md:gap-10 sf-md:pt-10">
-                        <Photo src={d.imageUrl} alt={d.heading} className="aspect-[4/3] sf-md:order-2" />
-                        <div>
-                            <h1 className="text-balance text-[26px] font-semibold leading-[34px] tracking-tight text-slate-900 sf-md:text-[40px] sf-md:leading-[48px]">{d.heading}</h1>
-                            {d.text && <p className="mt-2.5 max-w-[46ch] text-[15px] leading-6 text-slate-600 sf-md:mt-4 sf-md:text-base sf-md:leading-[26px]">{d.text}</p>}
-                            {buttons.length > 0 && (
-                                <div className="mt-5 grid gap-2 sf-sm:flex sf-md:mt-6 sf-md:gap-3">
-                                    {buttons.map((btn, i) => <StoreBtn key={i} button={btn} ctx={ctx} variant={i === 0 ? 'primary' : 'secondary'} size="lg" />)}
-                                </div>
-                            )}
-                        </div>
-                    </section>
-                );
-            }
-            return (
-                <section className="relative mt-4 overflow-hidden rounded-sm sf-md:mt-5">
-                    <Photo src={d.imageUrl} alt={d.heading} className="aspect-square rounded-none sf-sm:aspect-[2/1] sf-md:aspect-[3/1]" />
-                    <div className="absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-[rgba(20,12,6,0.62)] via-[rgba(20,12,6,0.3)] to-transparent p-5 text-white sf-md:p-10">
-                        <h1 className="text-balance text-[26px] font-semibold leading-[34px] tracking-tight sf-md:text-[40px] sf-md:leading-[48px]">{d.heading}</h1>
-                        {d.text && <p className="mt-2 max-w-[46ch] text-sm leading-[22px] opacity-95 sf-md:mt-3 sf-md:text-base sf-md:leading-[26px]">{d.text}</p>}
-                        {buttons.length > 0 && (
-                            <div className="mt-4 flex flex-wrap gap-2 sf-md:mt-6 sf-md:gap-3">
-                                {buttons.map((btn, i) => (
-                                    <span key={i} className={i > 0 ? 'hidden sf-sm:contents' : 'contents'}>
-                                        <StoreBtn button={btn} ctx={ctx} variant={i === 0 ? 'primary' : 'secondary'} size="lg" className={i === 0 ? 'flex-1 sf-sm:flex-none' : ''} />
-                                    </span>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                </section>
-            );
-        }
+        case 'hero':
+            return <HeroSection data={section.data} ctx={ctx} />;
         case 'banners': {
             const items = section.data.items.filter((x) => x.title.trim() || x.imageUrl);
             if (!items.length) return null;

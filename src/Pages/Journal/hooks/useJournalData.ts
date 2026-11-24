@@ -12,6 +12,7 @@ import {
 import { db } from '../../../lib/Firebase';
 import { formatDate } from '../../../lib/format';
 import type { Invoice } from '../journal.types';
+import { loadJournalCache, saveJournalCache } from '../journalCache';
 
 export interface JournalDateRange {
   start: Date;
@@ -41,6 +42,32 @@ export const useJournalData = (companyId?: string, dateRange?: JournalDateRange 
     }
 
     setLoading(true);
+
+    // Local cache (journalCache.ts): show the last saved list right away,
+    // then let the listeners below replace it. Never overrides live data.
+    const cacheStart = rangeStartMs ?? null;
+    const cacheEnd = rangeEndMs ?? null;
+    let cancelled = false;
+    let liveArrived = false;
+    let liveSales: Invoice[] | null = null;
+    let livePurchases: Invoice[] | null = null;
+    let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+    loadJournalCache(companyId, cacheStart, cacheEnd).then((cached) => {
+      if (cancelled || liveArrived || !cached) return;
+      setInvoices(cached.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()));
+      setLoading(false);
+    });
+
+    const saveNow = () => {
+      saveTimer = null;
+      if (!liveSales || !livePurchases) return; // only a complete live list is saved
+      void saveJournalCache(companyId, cacheStart, cacheEnd, [...liveSales, ...livePurchases]);
+    };
+    const scheduleSave = () => {
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(saveNow, 500);
+    };
 
     const salesQuery = rangeStartMs !== undefined && rangeEndMs !== undefined
       ? query(
@@ -178,6 +205,9 @@ export const useJournalData = (companyId?: string, dateRange?: JournalDateRange 
 
     const unsubSales = onSnapshot(salesQuery, (snapshot) => {
       const salesData = processSnapshot(snapshot, 'Credit');
+      liveArrived = true;
+      liveSales = salesData;
+      scheduleSave();
       setInvoices(prev => {
         const withoutCredit = prev.filter(inv => inv.type !== 'Credit');
         const combined = [...withoutCredit, ...salesData];
@@ -192,6 +222,9 @@ export const useJournalData = (companyId?: string, dateRange?: JournalDateRange 
 
     const unsubPurchases = onSnapshot(purchasesQuery, (snapshot) => {
       const purchasesData = processSnapshot(snapshot, 'Debit');
+      liveArrived = true;
+      livePurchases = purchasesData;
+      scheduleSave();
       setInvoices(prev => {
         const withoutDebit = prev.filter(inv => inv.type !== 'Debit');
         const combined = [...withoutDebit, ...purchasesData];
@@ -205,8 +238,13 @@ export const useJournalData = (companyId?: string, dateRange?: JournalDateRange 
     });
 
     return () => {
+      cancelled = true;
       unsubSales();
       unsubPurchases();
+      if (saveTimer) {
+        clearTimeout(saveTimer);
+        saveNow(); // don't drop the last change when leaving the page
+      }
     };
   }, [companyId, rangeStartMs, rangeEndMs]);
 

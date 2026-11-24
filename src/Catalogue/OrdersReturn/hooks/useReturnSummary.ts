@@ -10,11 +10,12 @@ export const useReturnSummary = (
   exchangeItems: ExchangeItem[],
   selectedSale: Order | null,
   modeOfReturn: string,
-  availableItems: OrderItem[]
+  availableItems: OrderItem[],
+  paidSoFar: number
 ) => {
   const result = useMemo(
-    () => computeOrderReturn(selectedSale as any, itemsToReturn, exchangeItems, modeOfReturn, availableItems as any[]),
-    [itemsToReturn, exchangeItems, selectedSale, modeOfReturn, availableItems]
+    () => computeOrderReturn(selectedSale as any, itemsToReturn, exchangeItems, modeOfReturn, availableItems as any[], paidSoFar),
+    [itemsToReturn, exchangeItems, selectedSale, modeOfReturn, availableItems, paidSoFar]
   );
 
   return {
@@ -25,6 +26,8 @@ export const useReturnSummary = (
     totalExchangeValue: result.totalExchangeValue,
     roundOff: result.roundOff,
     finalBalance: result.finalBalance,
+    refundable: result.refundable,
+    dueReduction: result.dueReduction,
     discountDeducted: result.discountDeducted,
   };
 };

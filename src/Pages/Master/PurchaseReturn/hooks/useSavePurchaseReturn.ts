@@ -17,6 +17,7 @@ import { ROUTES } from '../../../../constants/routes.constants';
 import { State } from '../../../../enums';
 import type { PaymentCompletionData } from '../../../../Components/PaymentDrawer';
 import { calculatePurchaseReturnTotals, buildNewPurchaseItemRecord } from '../purchaseReturn.calculations';
+import { isBillUnpaid, splitReturnBalance } from '../../../../shared/calculations/returnBalance';
 import type { PurchaseData, TransactionItem, ReturnCartItem } from '../purchaseReturn.types';
 import type { Item } from '../../../../constants/models';
 
@@ -63,24 +64,34 @@ export const useSavePurchaseReturn = ({
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
     const [activeTaxMode, setActiveTaxMode] = useState<'inclusive' | 'exclusive' | 'exempt'>('exclusive');
 
-    const isPurchaseUnpaid = useMemo(() => {
-        if (!selectedPurchase) return true;
-        const totalPaid = Object.entries(selectedPurchase.paymentMethods || {})
-            .filter(([mode]) => mode !== 'due')
-            .reduce((sum, [, val]) => sum + Number(val || 0), 0);
-        return totalPaid <= 0;
+    // What you've actually paid the supplier on this bill
+    const paidOnPurchase = useMemo(() => Object.entries(selectedPurchase?.paymentMethods || {})
+        .filter(([mode]) => mode.toLowerCase() !== 'due')
+        .reduce((sum, [, val]) => sum + Number(val || 0), 0), [selectedPurchase]);
+    const purchaseTotal = useMemo(() => {
+        if (!selectedPurchase) return 0;
+        const saved = Number(selectedPurchase.totalAmount);
+        if (Number.isFinite(saved) && saved > 0) return saved;
+        const lines = (selectedPurchase.items || []).reduce((s, i: any) => s + (Number(i.finalPrice) || 0), 0);
+        return Math.max(0, lines - (Number(selectedPurchase.manualDiscount) || 0));
     }, [selectedPurchase]);
 
+    const isPurchaseUnpaid = !selectedPurchase || isBillUnpaid(paidOnPurchase, purchaseTotal);
+
+    // Unpaid: Debit note / Refund are off — Exchange (with or without new items) only
     useEffect(() => {
-        if (isPurchaseUnpaid && modeOfReturn === 'Debit Note') {
+        if (isPurchaseUnpaid && (modeOfReturn === 'Debit Note' || modeOfReturn === 'Cash Refund')) {
             setModeOfReturn('Exchange');
         }
     }, [isPurchaseUnpaid, modeOfReturn]);
 
-    const { totalReturnValue, totalNewItemsValue, finalBalance, discountDeducted, totalTax, totalMrp } = useMemo(
+    const { totalReturnValue, totalNewItemsValue, finalBalance: rawBalance, discountDeducted, totalTax, totalMrp } = useMemo(
         () => calculatePurchaseReturnTotals(itemsToReturn, newItemsReceived, selectedPurchase, availableItems, activeTaxMode),
         [itemsToReturn, newItemsReceived, selectedPurchase, purchaseSettings, availableItems, activeTaxMode]
     );
+    const finalBalance = Math.round(rawBalance);
+    // Supplier pays back only what you paid beyond the bill's new total; the rest lowers your due
+    const { refundable, dueReduction } = splitReturnBalance(finalBalance, paidOnPurchase, purchaseTotal - finalBalance);
 
     // Helper to find Doc Ref by Barcode
     const getItemDocRef = async (barcode: string | undefined, fallbackId: string) => {
@@ -111,7 +122,11 @@ export const useSavePurchaseReturn = ({
         const finalSupplierNumber = (completionData?.partyNumber || supplierNumber || selectedPurchase.partyNumber || '').trim();
 
         // --- UPDATED CHECK: Validates both Name and Number for Debit Notes ---
-        const isCreatingDebitNote = modeOfReturn === 'Debit Note' || (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Debit Note' && finalBalance > 0);
+        // Only the paid-back part (refundable) becomes a debit note / refund from the supplier
+        const isCreatingDebitNote = refundable > 0 &&
+            (modeOfReturn === 'Debit Note' || (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Debit Note'));
+        const isReceivingRefund = refundable > 0 &&
+            (modeOfReturn === 'Cash Refund' || (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Cash Refund'));
 
         if (isCreatingDebitNote && (!finalSupplierName || !finalSupplierNumber)) {
             setModal({ type: State.ERROR, message: 'Cannot create Debit Note: Both Party Name and Party Number are required.' });
@@ -165,6 +180,9 @@ export const useSavePurchaseReturn = ({
                         updatedPaymentMethods[mode] = (updatedPaymentMethods[mode] || 0) + Number(amount);
                     }
                 });
+            } else if (isReceivingRefund) {
+                // Cash the supplier hands back reduces what you've paid on this bill
+                updatedPaymentMethods['cash'] = (updatedPaymentMethods['cash'] || 0) - refundable;
             }
 
             const totalPaidSoFar = Object.entries(updatedPaymentMethods)
@@ -183,6 +201,9 @@ export const useSavePurchaseReturn = ({
                 returnedItems: itemsToReturn.map(({ id, ...item }) => item),
                 newItemsReceived: newItemsReceived.map(({ id, ...item }) => item),
                 finalBalance,
+                // Of the balance: what the supplier paid back / owes as debit note, and what only lowered your due
+                refunded: isCreatingDebitNote || isReceivingRefund ? refundable : 0,
+                dueReduced: dueReduction,
                 discountDeducted,
                 modeOfReturn: actualReturnMode,
                 returnType: actualReturnMode,
@@ -225,11 +246,8 @@ export const useSavePurchaseReturn = ({
                     lastUpdatedAt: serverTimestamp()
                 };
 
-                const shouldAddDebit = finalBalance > 0 &&
-                    (modeOfReturn === 'Debit Note' || (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Debit Note'));
-
-                if (shouldAddDebit) {
-                    const netDebitToAdd = finalBalance - (completionData?.discount || 0);
+                if (isCreatingDebitNote) {
+                    const netDebitToAdd = refundable - (completionData?.discount || 0);
                     if (netDebitToAdd > 0) {
                         supplierUpdateData.debitBalance = firebaseIncrement(netDebitToAdd);
                     }
@@ -262,10 +280,17 @@ export const useSavePurchaseReturn = ({
         if (itemsToReturn.length === 0 && newItemsReceived.length === 0) {
             return setModal({ type: State.ERROR, message: 'No items have been returned or received.' });
         }
-        if (modeOfReturn === 'Exchange' && newItemsReceived.length === 0) {
+        // Unpaid bill: Exchange with no new items is allowed — the items go back and your due goes down
+        if (modeOfReturn === 'Exchange' && newItemsReceived.length === 0 && !isPurchaseUnpaid) {
             return setModal({
                 type: State.ERROR,
                 message: 'Please add at least one new item to complete the exchange.'
+            });
+        }
+        if (isPurchaseUnpaid && (modeOfReturn === 'Debit Note' || modeOfReturn === 'Cash Refund')) {
+            return setModal({
+                type: State.ERROR,
+                message: 'Nothing was paid on this bill, so a debit note or refund can’t be taken. Use Exchange — with no new items it just lowers what you owe.'
             });
         }
 
@@ -299,6 +324,7 @@ export const useSavePurchaseReturn = ({
 
     const getBalanceLabel = (exchangeBalanceAction: 'Debit Note' | 'Cash Refund') => {
         if (finalBalance < 0) return 'Payment Due';
+        if (finalBalance > 0 && refundable <= 0) return 'Your due goes down by';
         if (modeOfReturn === 'Cash Refund') return 'Refund Received';
         if (modeOfReturn === 'Exchange' && finalBalance > 0 && exchangeBalanceAction === 'Cash Refund') return 'Refund Received';
         return 'Debit Note';
@@ -309,7 +335,7 @@ export const useSavePurchaseReturn = ({
         returnDate, setReturnDate,
         isDrawerOpen, setIsDrawerOpen,
         activeTaxMode, setActiveTaxMode,
-        isPurchaseUnpaid,
+        isPurchaseUnpaid, refundable, dueReduction,
         totalReturnValue, totalNewItemsValue, finalBalance, discountDeducted, totalTax, totalMrp,
         saveReturnTransaction,
         handleProcessReturn,

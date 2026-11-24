@@ -13,6 +13,8 @@ interface BackendScanItem {
     purchasePrice: number;
     discountPercentage: number;
     totalAmount: number;
+    mrp?: number;
+    taxRate?: number;
 }
 
 // Converts backend's structured items into ParsedItem[], generating the `id`
@@ -26,7 +28,45 @@ const backendItemsToParsedItems = (items: BackendScanItem[]): ParsedItem[] =>
         purchasePrice: it.purchasePrice,
         discountPercentage: it.discountPercentage,
         totalAmount: it.totalAmount,
+        mrp: it.mrp || 0,
+        taxRate: it.taxRate || 0,
     }));
+
+// Vision reads text best when characters are ~20-40px tall. Phone photos are often
+// 4000px+ (slow upload, and over the callable's ~10MB limit as base64), while
+// WhatsApp-forwarded bills / screenshots can be under 1000px (tiny text).
+const TARGET_LONG_SIDE = 2800;
+const MIN_LONG_SIDE = 1800;
+
+/**
+ * Prepares a photo for OCR: applies the EXIF rotation (phones store portrait
+ * photos sideways), scales it into the range above, and re-encodes it as JPEG.
+ * Falls back to the original file if the browser can't decode it.
+ */
+const prepareImageForOcr = async (file: File): Promise<string> => {
+    try {
+        const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' } as ImageBitmapOptions);
+        const longSide = Math.max(bitmap.width, bitmap.height);
+        const scale = longSide > TARGET_LONG_SIDE
+            ? TARGET_LONG_SIDE / longSide
+            : longSide < MIN_LONG_SIDE ? Math.min(2, MIN_LONG_SIDE / longSide) : 1;
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(bitmap.width * scale);
+        canvas.height = Math.round(bitmap.height * scale);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('no canvas');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        // White behind transparent PNG screenshots (otherwise they turn black as JPEG)
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        bitmap.close?.();
+        return canvas.toDataURL('image/jpeg', 0.92);
+    } catch {
+        return fileToBase64(file);
+    }
+};
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 
@@ -39,7 +79,10 @@ type ScanResponse = { success: boolean; text: string; items?: BackendScanItem[];
 
 const renderPageToJpeg = async (pdf: pdfjsLib.PDFDocumentProxy, pageNo: number): Promise<string> => {
     const page = await pdf.getPage(pageNo);
-    const viewport = page.getViewport({ scale: 2.0 });
+    // Render so the long side lands near TARGET_LONG_SIDE whatever the page size (A4, thermal roll…)
+    const base = page.getViewport({ scale: 1 });
+    const scale = Math.min(4, Math.max(1.5, TARGET_LONG_SIDE / Math.max(base.width, base.height)));
+    const viewport = page.getViewport({ scale });
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Canvas context failed to initialize.');
@@ -121,7 +164,7 @@ export const useSmartScanner = () => {
                 extractedData = buildExtractedData(texts.join('\n'), items);
 
             } else if (file.type.startsWith('image/')) {
-                const res = await scanSmartInvoice({ imageBase64: await fileToBase64(file) });
+                const res = await scanSmartInvoice({ imageBase64: await prepareImageForOcr(file) });
                 const d = res.data as ScanResponse;
                 extractedData = buildExtractedData(d.text, d.items ?? []);
 

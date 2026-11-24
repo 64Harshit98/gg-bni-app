@@ -2,10 +2,11 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { db } from "../lib/Firebase";
 import {
   collection, updateDoc, doc, onSnapshot, setDoc,
-  query, orderBy, serverTimestamp, where, Timestamp, limit
+  query, orderBy, serverTimestamp, limit, Timestamp
 } from "firebase/firestore";
 import { useAuth } from "./auth-context"; // Adjust path if necessary
 import { safeGetJSON, safeSetJSON } from "../lib/safeStorage";
+import { subscribeOrders } from "../Catalogue/Orders/ordersSync";
 
 interface Notification {
   id: string;
@@ -37,6 +38,7 @@ const NotificationContext = createContext<NotificationContextType>({
 });
 
 const NOTIFICATION_SEEN_ORDERS_KEY = "seenOrderNotifications";
+const RECENT_ORDERS_DAYS = 7;
 
 // Read during render (useRef initializer), so it must never throw — a
 // throw here used to take down the whole app tree, public pages included.
@@ -55,7 +57,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const seenOrdersRef = useRef<Set<string>>(
     new Set(loadSeenOrderIds())
   );
-  const isInitialLoadRef = useRef(true);
 
   // ------------------------------------------------------------------
   // 1. Load notifications for the Bell UI in real-time
@@ -84,10 +85,18 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   }, [currentUser?.companyId]);
 
   // ------------------------------------------------------------------
-  // 2. GLOBAL ORDER LISTENER (Fixes the "Must be on Orders Page" bug)
+  // 2. GLOBAL ORDER TRACKING (Fixes the "Must be on Orders Page" bug)
   // ------------------------------------------------------------------
+  // Rides on the shared orders replica (ordersSync.ts) instead of its own
+  // onSnapshot: one delta listener serves this, the confirmed-count badge
+  // and the Orders page. addedIds only ever holds orders that arrived live,
+  // never ones loaded from the cache, so reloads don't replay the sound.
   useEffect(() => {
-    if (!currentUser?.companyId) return;
+    const companyId = currentUser?.companyId;
+    if (!companyId) {
+      setRecentOrders([]);
+      return;
+    }
 
     // Initialize audio safely
     if (!audioRef.current) {
@@ -95,85 +104,47 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       audioRef.current = new Audio('/notification.mp3');
     }
 
-    // Only listen to orders from the last 7 days to prevent heavy reads on load
-    const dateLimit = new Date();
-    dateLimit.setDate(dateLimit.getDate() - 7);
-
-    const q = query(
-      collection(db, "companies", currentUser.companyId, "Orders"),
-      where("createdAt", ">=", Timestamp.fromDate(dateLimit)),
-      orderBy("createdAt", "desc"),
-      limit(100)
-    );
-
-    const unsub = onSnapshot(q, (snapshot) => {
+    return subscribeOrders(companyId, ({ orders }, addedIds) => {
+      const since = Date.now() - RECENT_ORDERS_DAYS * 24 * 60 * 60 * 1000;
       setRecentOrders(
-        snapshot.docs.map((d) => {
-          const data = d.data();
-          return {
-            id: d.id,
-            status: data.status || 'Upcoming',
-            createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : null,
-          };
-        })
+        orders
+          .filter((o) => o.createdAt.getTime() >= since)
+          .map((o) => ({ id: o.id, status: o.status || 'Upcoming', createdAt: o.createdAt }))
       );
 
-      // On first load, just record what we already have so we don't spam notifications
-      if (isInitialLoadRef.current) {
-        snapshot.docs.forEach(doc => seenOrdersRef.current.add(doc.id));
-        safeSetJSON(NOTIFICATION_SEEN_ORDERS_KEY, Array.from(seenOrdersRef.current));
-        isInitialLoadRef.current = false;
-        return;
-      }
-
+      if (!addedIds.length) return;
+      const byId = new Map(orders.map((o) => [o.id, o]));
       let updated = false;
 
-      snapshot.docChanges().forEach((change) => {
-        if (change.type === "added") {
-          const orderData = change.doc.data();
-          const orderId = change.doc.id;
+      addedIds.forEach((orderId) => {
+        const order = byId.get(orderId);
+        if (!order || seenOrdersRef.current.has(orderId) || order.status === 'Cancelled') return;
 
-          const isNewOrder = !seenOrdersRef.current.has(orderId);
-          const isActiveOrder = orderData.status !== 'Cancelled';
-
-          if (isNewOrder && isActiveOrder) {
-            // Play Sound
-            if (audioRef.current) {
-              audioRef.current.currentTime = 0;
-              audioRef.current.play().catch(console.error);
-            }
-
-            const partyName = orderData.userName || orderData.billingDetails?.name || 'Customer';
-            const amount = Number(orderData.totalAmount || 0);
-
-            // Extract the EXACT time the order was created from Firestore
-            const exactOrderDate = orderData.createdAt?.toDate
-              ? orderData.createdAt.toDate().toISOString()
-              : new Date().toISOString();
-
-            // Fire the event payload with the exact time
-            window.dispatchEvent(
-              new CustomEvent('pdc_notification', {
-                detail: {
-                  type: 'NEW_ORDER',
-                  invoiceNumber: orderData.orderId,
-                  partyName: partyName,
-                  amount: amount,
-                  // ✅ CHANGED: use the order's actual status instead of hardcoding it,
-                  // so we can show a different message for Upcoming vs Confirmed orders
-                  status: orderData.status || 'Upcoming',
-                  createdAt: exactOrderDate,
-
-                  // ✅ ADD THIS: Pass the unique Firestore document ID
-                  orderDocId: orderId,
-                },
-              })
-            );
-
-            seenOrdersRef.current.add(orderId);
-            updated = true;
-          }
+        // Play Sound
+        if (audioRef.current) {
+          audioRef.current.currentTime = 0;
+          audioRef.current.play().catch(console.error);
         }
+
+        window.dispatchEvent(
+          new CustomEvent('pdc_notification', {
+            detail: {
+              type: 'NEW_ORDER',
+              invoiceNumber: order.orderId,
+              // userName already falls back to the billing name, then 'Anonymous'
+              partyName: order.userName && order.userName !== 'Anonymous' ? order.userName : 'Customer',
+              amount: Number(order.totalAmount || 0),
+              // The order's actual status, so Upcoming and Confirmed get different messages
+              status: order.status || 'Upcoming',
+              createdAt: order.createdAt.getTime() ? order.createdAt.toISOString() : new Date().toISOString(),
+              // Unique Firestore document ID (dedups the notification)
+              orderDocId: orderId,
+            },
+          })
+        );
+
+        seenOrdersRef.current.add(orderId);
+        updated = true;
       });
 
       // Update local storage so we remember these between page refreshes
@@ -181,8 +152,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         safeSetJSON(NOTIFICATION_SEEN_ORDERS_KEY, Array.from(seenOrdersRef.current));
       }
     });
-
-    return () => unsub();
   }, [currentUser?.companyId]);
 
   useEffect(() => {

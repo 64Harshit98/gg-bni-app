@@ -19,6 +19,7 @@ import {
   computeOrderReturn,
   computePostReturnPaymentStatus,
   mapOrderItemToTransactionItem,
+  orderPaidSoFar,
 } from '../ordersReturn.calculations';
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -54,6 +55,8 @@ interface UseReturnTransactionParams {
   partyNumber: string;
   availableItems: OrderItem[];
   finalBalance: number;
+  /** Part of a positive balance that can actually be paid back (see computeOrderReturn). */
+  refundable: number;
   isDueSale: boolean;
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setModal: (modal: { message: string; type: State } | null) => void;
@@ -75,6 +78,7 @@ export const useReturnTransaction = ({
   partyNumber,
   availableItems,
   finalBalance,
+  refundable,
   isDueSale,
   setIsLoading,
   setModal,
@@ -114,12 +118,14 @@ export const useReturnTransaction = ({
       // Same function as the on-screen summary: re-taxes the remaining and new
       // lines, takes back the bill discount in proportion, and works out the
       // balance as the change in the order total.
+      const paidSoFar = orderPaidSoFar(selectedSale as any);
       const result = computeOrderReturn(
         selectedSale as any,
         itemsToReturn,
         modeOfReturn === 'Exchange' ? exchangeItems : [],
         modeOfReturn,
-        availableItems as any[]
+        availableItems as any[],
+        paidSoFar
       );
       const newItemsList = result.newItems.map((item) => {
         const clean: Record<string, any> = { ...item };
@@ -211,14 +217,18 @@ export const useReturnTransaction = ({
       // (useOrderPayment.ts). Writing the issuance there too double-counts the
       // same event once the customer later settles the remaining due using that
       // credit (issuance + settlement both landing in the same badge total).
+      // Only money actually paid can go back (result.refundable): on an unpaid order
+      // it's 0 and the whole balance just lowers the due; on a part-paid one the
+      // balance clears the due first.
       let creditAmountToAdd = 0;
       let refundAmountToAdd = 0;
+      const payout = result.refundable;
 
-      if (finalBalance > 0) {
+      if (payout > 0) {
         if (modeOfReturn === 'Credit Note' || (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Credit Note')) {
-          creditAmountToAdd = finalBalance;
+          creditAmountToAdd = payout;
         } else if (modeOfReturn === 'Cash Refund' || (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Cash Refund')) {
-          refundAmountToAdd = finalBalance;
+          refundAmountToAdd = payout;
         }
       }
 
@@ -253,6 +263,9 @@ export const useReturnTransaction = ({
         exchangeTax: result.exchangeTax,
         roundOff: result.roundOff,
         discountDeducted: discountDeduction,
+        // Of the balance: what went back as credit / refund, and what only lowered the due
+        refunded: creditAmountToAdd + refundAmountToAdd,
+        dueReduced: result.dueReduction,
         modeOfReturn,
         paymentDetails: cleanPaymentDetails,
         partyName: finalPartyName,
@@ -264,17 +277,14 @@ export const useReturnTransaction = ({
       );
 
       // --- 9. CUSTOMER LEDGER ---
-      const shouldAddCredit =
-        finalBalance > 0 &&
-        (modeOfReturn === 'Credit Note' ||
-          (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Credit Note'));
+      const shouldAddCredit = creditAmountToAdd > 0;
       if (finalPartyNumber.length >= 3 && shouldAddCredit) {
         batch.set(
           doc(db, 'companies', companyId, 'customers', finalPartyNumber),
           {
             name: finalPartyName,
             number: finalPartyNumber,
-            creditBalance: firebaseIncrement(finalBalance),
+            creditBalance: firebaseIncrement(creditAmountToAdd),
             lastUpdatedAt: serverTimestamp()
           },
           { merge: true }
@@ -305,7 +315,7 @@ export const useReturnTransaction = ({
         }
       }
 
-      const actualPaid = selectedSale.paidAmount ?? 0;
+      const actualPaid = paidSoFar;
       const { isUnpaidOrder, effectivePaid, effectiveDue, newStatus } = computePostReturnPaymentStatus(
         actualPaid,
         completionData?.paymentDetails,
@@ -386,7 +396,7 @@ export const useReturnTransaction = ({
         setReturnSuccess({
           order: updatedOrder as Order,
           creditUpdated,
-          creditAdded: creditUpdated ? finalBalance : 0,
+          creditAdded: creditUpdated ? creditAmountToAdd : 0,
           newCreditBalance,
         });
       } else {
@@ -421,17 +431,12 @@ export const useReturnTransaction = ({
       modeOfReturn === 'Cash Refund' ||
       (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Cash Refund');
 
-    // A standalone Credit Note/Cash Refund (no exchange) is still blocked on a
-    // due order — that's a real return with nothing new bought, so cash/credit
-    // shouldn't move while the order is still unpaid. But an EXCHANGE's balance
-    // must always be offered as Credit Note or Cash Refund regardless of the
-    // order's paid status — it's the difference on the new, replacing items,
-    // not a payout against the old unpaid ones. (Matches the same scoping
-    // applied to the Sales-return module's handleProcessReturn.)
-    if (modeOfReturn !== 'Exchange' && (isCreditNote || isCashRefund) && isDueSale && finalBalance > 0) {
+    // Nothing was paid on this order, so no money can go back — neither on a return
+    // nor as the balance of an exchange. The return just lowers what's owed.
+    if (isDueSale && modeOfReturn !== 'Exchange' && (isCreditNote || isCashRefund)) {
       return setModal({
         type: State.ERROR,
-        message: 'Credit Note / Cash Refund cannot be issued for an unpaid order. Please choose Exchange.'
+        message: 'Nothing was paid on this order, so a credit note or cash refund can’t be given. Use Exchange — with no new items it just lowers the due.'
       });
     }
     //  CREDIT NOTE
@@ -458,7 +463,8 @@ export const useReturnTransaction = ({
         });
       }
 
-      if (exchangeItems.length === 0) {
+      // Unpaid order: items can come back with nothing new taken — the due just goes down
+      if (exchangeItems.length === 0 && !isDueSale) {
         return setModal({
           type: State.ERROR,
           message: 'Please add an item for exchange.'
@@ -500,6 +506,8 @@ export const useReturnTransaction = ({
 
   const getBalanceLabel = () => {
     if (finalBalance < 0) return 'Payment Due';
+    // Nothing paid back (unpaid order, or the balance is within what's still owed)
+    if (finalBalance > 0 && refundable <= 0) return 'Due goes down by';
     if (modeOfReturn === 'Cash Refund') return 'Refund Amount';
     if (modeOfReturn === 'Exchange' && finalBalance > 0 && exchangeBalanceAction === 'Cash Refund') return 'Refund Amount';
     return 'Credit Due';

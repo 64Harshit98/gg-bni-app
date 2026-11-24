@@ -19,6 +19,8 @@ import { ROLES } from '../enums';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from './Firebase';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { clearOrdersCache } from '../Catalogue/Orders/ordersSync';
+import { clearJournalCache } from '../Pages/Journal/journalCache';
 
 // Sign-up draft (both steps, including the password) kept between Signup and BusInfo.
 export const ONBOARDING_STORAGE_KEY = 'sellar_onboarding_data';
@@ -297,6 +299,8 @@ export const confirmPasswordResetUser = async (oobCode: string, newPassword: str
 
 export const logoutUser = async () => {
   clearOnboardingDraft();
+  // Local copies of orders / transactions hold customer names and numbers.
+  await Promise.all([clearOrdersCache(), clearJournalCache()]).catch(() => { });
   await signOut(auth);
 };
 export const resetPassword = async (email: string) => { await sendPasswordResetEmail(auth, email); };

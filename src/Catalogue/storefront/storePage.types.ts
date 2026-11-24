@@ -10,14 +10,28 @@ export type ButtonLink =
 
 export interface StoreButton { label: string; link: ButtonLink }
 
+export interface HeroSlide { id: string; url: string; path?: string }
 export interface HeroData {
     layout: 'over' | 'beside';
+    /** Single photo from before slideshows; read through `heroSlides`, cleared once the owner edits photos. */
     imageUrl?: string;
     imagePath?: string;
+    /** Slideshow photos, in order. One photo shows as a still image. */
+    slides?: HeroSlide[];
+    /** Seconds each photo stays before the next one slides in. */
+    interval?: number;
     heading: string;
     text?: string;
     buttons: StoreButton[];
 }
+
+export const HERO_MAX_SLIDES = 6;
+export const HERO_INTERVALS = [3, 5, 8] as const;
+export const HERO_DEFAULT_INTERVAL = 5;
+
+/** The hero's photos: the slideshow list, or the old single photo. */
+export const heroSlides = (d: HeroData): HeroSlide[] =>
+    d.slides?.length ? d.slides.filter((s) => s.url) : d.imageUrl ? [{ id: 'main', url: d.imageUrl, path: d.imagePath }] : [];
 export interface Banner { id: string; title: string; text?: string; imageUrl?: string; imagePath?: string; button: StoreButton }
 export interface BannersData { items: Banner[] }
 export interface CategoryGroup { id: string; name: string; categoryIds: string[] }
@@ -56,7 +70,7 @@ export interface StorePageDoc {
 }
 
 export const SECTION_INFO: Record<SectionType, { name: string; text: string }> = {
-    hero: { name: 'Hero banner', text: 'A wide photo with a heading and up to two buttons. Best as the first section.' },
+    hero: { name: 'Hero banner', text: 'Wide photos that slide one after another, with a heading and buttons. Best as the first section.' },
     banners: { name: 'Offer banners', text: 'Up to 3 small banners side by side, each with a photo, title and button.' },
     categoryGroups: { name: 'Categories', text: 'Every category as a photo tile, in groups you name.' },
     products: { name: 'Pinned products', text: 'A scrolling row of the products you pinned.' },

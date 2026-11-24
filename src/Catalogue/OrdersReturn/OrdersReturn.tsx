@@ -177,12 +177,14 @@ const TypeCards: React.FC<{
   value: string;
   onChange: (v: string) => void;
   refundValue: string;
-  disableCredit: boolean;
-}> = ({ value, onChange, refundValue, disableCredit }) => {
+  /** Nothing paid on the order: no money can go back, so Refund / Credit note are off. */
+  unpaid: boolean;
+}> = ({ value, onChange, refundValue, unpaid }) => {
+  // Same three cards always; on an unpaid order Refund and Credit note are just disabled
   const opts = [
-    { v: refundValue, t: 'Refund', s: 'Money back', disabled: false },
+    { v: refundValue, t: 'Refund', s: 'Money back', disabled: unpaid },
     { v: 'Exchange', t: 'Exchange', s: 'Swap items', disabled: false },
-    { v: 'Credit Note', t: 'Credit note', s: 'Store credit', disabled: disableCredit },
+    { v: 'Credit Note', t: 'Credit note', s: 'Store credit', disabled: unpaid },
   ];
   return (
     <div className="grid grid-cols-3 gap-2" role="group" aria-label="Transaction type">
@@ -362,8 +364,10 @@ const OrdersReturnPage: React.FC = () => {
     totalExchangeValue,
     roundOff,
     finalBalance,
+    refundable,
+    dueReduction,
     discountDeducted
-  } = useReturnSummary(itemsToReturn, exchangeItems, selectedSale, modeOfReturn, availableItems);
+  } = useReturnSummary(itemsToReturn, exchangeItems, selectedSale, modeOfReturn, availableItems, paidAmountOnSale);
 
   const {
     isDrawerOpen, setIsDrawerOpen,
@@ -387,6 +391,7 @@ const OrdersReturnPage: React.FC = () => {
     partyNumber,
     availableItems,
     finalBalance,
+    refundable,
     isDueSale,
     setIsLoading,
     setModal,
@@ -474,17 +479,23 @@ const OrdersReturnPage: React.FC = () => {
   const vBalance = isTutorialActive ? SAMPLE_SUMMARY.balance : finalBalance;
   const vPaid = isTutorialActive ? SAMPLE_SUMMARY.paid : paidAmountOnSale;
   const vBalanceLabel = isTutorialActive ? 'Credit due' : getBalanceLabel();
+  // Money that can actually go back; the rest of a positive balance only lowers the due
+  const vRefundable = isTutorialActive ? SAMPLE_SUMMARY.balance : refundable;
+  const vDueReduction = isTutorialActive ? 0 : dueReduction;
+  /** The amount on the balance panel / action button. */
+  const vShown = vBalance > 0 && vRefundable > 0 ? vRefundable : vBalance;
 
   // ---- UI-only derived values ----
   const isExchange = vMode === 'Exchange';
-  const exchangeBlocked = !isTutorialActive && isExchange && exchangeItems.length === 0;
+  // Unpaid order: Exchange with no new items is allowed (it just lowers the due)
+  const exchangeBlocked = !isTutorialActive && isExchange && exchangeItems.length === 0 && !isDueSale;
   const balanceTone = vBalance >= 0 ? 'text-[#9a3412]' : 'text-[#d5000c]';
   const balancePanel = vBalance >= 0 ? 'bg-[#ffedd5]' : 'bg-[#ffeef0]';
-  const actionLabel = `Process ${isExchange ? 'exchange' : vMode.toLowerCase()} · ₹${fmt(Math.abs(vBalance), 2)}`;
+  const actionLabel = `Process ${isExchange ? 'exchange' : vMode.toLowerCase()} · ₹${fmt(Math.abs(vShown), 2)}`;
 
-  // Due on order: same formula as the Orders page (totalAmount - paidAmount)
+  // Due on order: total minus what was actually paid
   const dueOnOrder = vSale
-    ? Number(Math.max(0, Number(vSale.totalAmount || 0) - Number(vSale.paidAmount || 0)).toFixed(2))
+    ? Number(Math.max(0, Number(vSale.totalAmount || 0) - Number(vPaid || 0)).toFixed(2))
     : 0;
   // Earlier returns: Order.returnHistory (one entry per past return)
   const earlierReturnsCount = vSale?.returnHistory?.length ?? 0;
@@ -502,8 +513,10 @@ const OrdersReturnPage: React.FC = () => {
 
   /** Balance row: "Credit due ₹x" with the existing action <select> when exchange leaves a positive balance */
   const renderBalance = (big?: boolean) => (
-    <div className={`flex items-center justify-between gap-3 rounded-sm px-3.5 py-3 ${balancePanel}`}>
-      {isExchange && vBalance > 0 ? (
+    <div className={`rounded-sm px-3.5 py-3 ${balancePanel}`}>
+    <div className="flex items-center justify-between gap-3">
+      {/* Credit / refund choice only when money was actually paid and some goes back */}
+      {isExchange && vBalance > 0 && vRefundable > 0 ? (
         <select
           value={isTutorialActive ? 'Credit Note' : exchangeBalanceAction}
           onChange={(e) => !isTutorialActive && setExchangeBalanceAction(e.target.value as any)}
@@ -516,8 +529,19 @@ const OrdersReturnPage: React.FC = () => {
         <span className={`text-sm font-medium ${balanceTone}`}>{vBalanceLabel}</span>
       )}
       <b className={`${big ? 'text-[26px] leading-8' : 'text-[22px] leading-7'} font-semibold tracking-tight tabular-nums ${balanceTone}`}>
-        ₹{fmt(Math.abs(vBalance), 2)}
+        ₹{fmt(Math.abs(vShown), 2)}
       </b>
+    </div>
+      {vRefundable > 0 && vDueReduction > 0 && (
+        <p className="mt-1 text-xs text-[#45556c]">
+          ₹{fmt(vDueReduction, 2)} first clears what’s still owed — only the amount paid over the new total goes back.
+        </p>
+      )}
+      {vBalance > 0 && vRefundable <= 0 && !isTutorialActive && (
+        <p className="mt-1 text-xs text-[#45556c]">
+          {isDueSale ? 'Nothing was paid on this order, so no money goes back.' : 'This is within what’s still owed, so no money goes back.'}
+        </p>
+      )}
     </div>
   );
 
@@ -855,8 +879,8 @@ const OrdersReturnPage: React.FC = () => {
                       <TypeCards
                         value={vMode}
                         onChange={(v) => !isTutorialActive && setModeOfReturn(v)}
-                        refundValue="Refund"
-                        disableCredit={isTutorialActive ? false : isDueSale}
+                        refundValue="Cash Refund"
+                        unpaid={isTutorialActive ? false : isDueSale}
                       />
                     </Section>
                   </TutorialStep>
@@ -1032,7 +1056,7 @@ const OrdersReturnPage: React.FC = () => {
             <div className="flex flex-none items-center gap-3 border-t border-[#f6e1d0] bg-white px-4 py-3 xl:hidden">
               <div className="min-w-0">
                 <span className={`block text-xs ${balanceTone}`}>{vBalanceLabel}</span>
-                <b className={`block text-xl leading-[26px] tabular-nums ${balanceTone}`}>₹{fmt(Math.abs(vBalance), 2)}</b>
+                <b className={`block text-xl leading-[26px] tabular-nums ${balanceTone}`}>₹{fmt(Math.abs(vShown), 2)}</b>
               </div>
               <button
                 onClick={isTutorialActive ? undefined : handleProcessReturn}
@@ -1068,7 +1092,7 @@ const OrdersReturnPage: React.FC = () => {
                         value={vMode}
                         onChange={(v) => !isTutorialActive && setModeOfReturn(v)}
                         refundValue="Cash Refund"
-                        disableCredit={isTutorialActive ? false : isDueSale}
+                        unpaid={isTutorialActive ? false : isDueSale}
                       />
                     </div>
                   </TutorialStep>

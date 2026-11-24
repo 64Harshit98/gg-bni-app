@@ -18,16 +18,28 @@ import {
     FiHash,
     FiTag,
     FiFileText,
+    FiMaximize,
 } from 'react-icons/fi';
 import { ResetSettingsButton } from '../../Components/ResetSettingsButton';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type BarcodeFormat = 'qr_only' | 'barcode_only' | 'both';
+export type LabelSize = '35x35' | '14x28';
+
+export const LABEL_SIZES: Record<LabelSize, { label: string; wMm: number; hMm: number; use: string }> = {
+    '35x35': { label: '35 × 35 mm', wMm: 35, hMm: 35, use: 'Standard square sticker. Shows address and phone.' },
+        '14x28': { label: '28 × 14 mm', wMm: 28, hMm: 14, use: 'Small landscape label. Address and phone are hidden.' },
+};
+
+// Unknown/invalid saved value par hamesha 35x35 par fallback
+export const getLabelSize = (id?: string) =>
+    LABEL_SIZES[(id as LabelSize) in LABEL_SIZES ? (id as LabelSize) : '35x35'];
 
 export interface BarcodeSettings {
     settingType: 'barcode';
     labelFormat?: BarcodeFormat;
+    labelSize?: LabelSize;
     showMrpOnLabel?: boolean;
     showProductNameOnLabel?: boolean;
     showShopNameOnLabel?: boolean;
@@ -43,8 +55,8 @@ export const getDefaultBarcodeSettings = (companyId: string): BarcodeSettings =>
     companyId,
     settingType: 'barcode',
     labelFormat: 'both',
+    labelSize: '35x35',
     showMrpOnLabel: true,
-    showProductNameOnLabel: true,
     showShopNameOnLabel: true,
     showBarcodeNumber: true,
     showAddressOnLabel: true,
@@ -100,7 +112,7 @@ const QRSvg: React.FC<{ size?: number }> = ({ size = 56 }) => {
 
 // ─── Realistic 35×35mm Label Preview (matches PrintQR print output) ───────────
 
-const LABEL_PX = 132; // 35 mm @ 96dpi
+const MM_PX = 132 / 35; // 1 mm @ 96dpi ≈ 3.77px
 
 interface LabelCardProps {
     format: BarcodeFormat;
@@ -115,6 +127,59 @@ const LabelCard: React.FC<LabelCardProps> = ({
     companyName,
     scale = 1,
 }) => {
+    const size = getLabelSize(settings.labelSize);
+    const isCompact = settings.labelSize === '14x28';
+    const s = scale * (isCompact ? 1.6 : 1); // small label ko preview mein bada dikhane ke liye
+    const LABEL_W = Math.round(size.wMm * MM_PX);
+    const LABEL_H = Math.round(size.hMm * MM_PX);
+
+        if (isCompact) {
+        const hasQr = format === 'qr_only' || format === 'both';
+        const hasBarcode = format === 'barcode_only' || format === 'both';
+        return (
+            <div style={{ width: LABEL_W * s, height: LABEL_H * s, flexShrink: 0 }}>
+                <div
+                    style={{
+                        width: LABEL_W,
+                        height: LABEL_H,
+                        transform: `scale(${s})`,
+                        transformOrigin: 'top left',
+                        border: '1px dashed #9aa3b5',
+                        borderRadius: 2,
+                        display: 'flex',
+                        flexDirection: 'row', // landscape: QR left, text + barcode right
+                        alignItems: 'center',
+                        gap: 3,
+                        padding: 2,
+                        fontFamily: 'sans-serif',
+                        background: '#fff',
+                        boxSizing: 'border-box',
+                        overflow: 'hidden',
+                    }}
+                >
+                    {hasQr && <QRSvg size={40} />}
+                    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                        {settings.showShopNameOnLabel && (
+                            <p style={{ fontSize: 4.5, fontWeight: 'bold', margin: 0, textAlign: 'center', lineHeight: 1.2, width: '100%', whiteSpace: 'nowrap', overflow: 'hidden', color: '#0f172a' }}>
+                                {companyName || 'Your Shop Name'}
+                            </p>
+                        )}
+                        {settings.showProductNameOnLabel && (
+                            <p style={{ fontSize: 4.5, fontWeight: 'bold', margin: 0, lineHeight: 1.2, width: '100%', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', color: '#0f172a' }}>Fresh Apple (1 kg)</p>
+                        )}
+                        {settings.showMrpOnLabel && (
+                            <p style={{ fontSize: 5.5, fontWeight: 'bold', margin: 0, lineHeight: 1.2, color: '#0f172a' }}>MRP: ₹100</p>
+                        )}
+                        {hasBarcode && <BarcodeSvg width={hasQr ? 54 : 96} height={hasQr ? 17 : 24} />}
+                        {settings.showBarcodeNumber && (
+                            <p style={{ fontSize: 3.5, margin: 0, lineHeight: 1.2, color: '#475569', fontFamily: 'monospace' }}>8901234567890</p>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     const isBoth = format === 'both';
     const qrSize = 44;
     const barcodeNaturalW = qrSize;        // becomes visual height after rotation
@@ -124,13 +189,13 @@ const LabelCard: React.FC<LabelCardProps> = ({
 
     return (
         // Outer box = scaled footprint (for layout)
-        <div style={{ width: LABEL_PX * scale, height: LABEL_PX * scale, flexShrink: 0 }}>
-            {/* Inner box = always real 132px, only transform scales it */}
+        <div style={{ width: LABEL_W * s, height: LABEL_H * s, flexShrink: 0 }}>
+            {/* Inner box = always real size, only transform scales it */}
             <div
                 style={{
-                    width: LABEL_PX,
-                    height: LABEL_PX,
-                    transform: `scale(${scale})`,
+                    width: LABEL_W,
+                    height: LABEL_H,
+                    transform: `scale(${s})`,
                     transformOrigin: 'top left',
                     border: '1px dashed #9aa3b5',
                     borderRadius: 3,
@@ -334,13 +399,13 @@ const BarcodeSetting: React.FC = () => {
             } catch (err) {
                 console.error('Failed to fetch barcode settings:', err);
                 setModal({ message: 'Failed to load settings.', type: State.ERROR });
-                        } finally {
+            } finally {
                 setIsLoading(false);
             }
         };
 
         fetchOrCreate();
-        }, [currentUser?.companyId]);
+    }, [currentUser?.companyId]);
 
     // ── Company name (same source as PrintQR: getBusinessInfo) ─────────────────
     useEffect(() => {
@@ -407,14 +472,23 @@ const BarcodeSetting: React.FC = () => {
     // ── Derived (display only) ─────────────────────────────────────────────────
     const currentFormat: BarcodeFormat = settings.labelFormat ?? 'both';
     const currentFormatTitle = FORMAT_OPTIONS.find((o) => o.id === currentFormat)?.title;
-    const TOTAL_UNITS = CONTENT_OPTIONS.length; // 6 toggles
-    const linesUsed = CONTENT_OPTIONS.filter((o) => settings[o.field] ?? true).length;
+    const currentSize = getLabelSize(settings.labelSize);
+    // 14 × 28 mein address/phone print nahi hote, to unke toggles bhi hide
+    const isCompactSize = settings.labelSize === '14x28';
+    const visibleContentOptions = CONTENT_OPTIONS.filter(
+        (o) => !(isCompactSize && (o.field === 'showAddressOnLabel' || o.field === 'showPhoneOnLabel'))
+    );
+    const TOTAL_UNITS = visibleContentOptions.length; // 6 (35x35) ya 4 (14x28)
+    const linesUsed = visibleContentOptions.filter((o) => settings[o.field] ?? true).length;
 
     // Unsaved-change tracking (compares against last loaded/saved values)
     const changeLabels: string[] = [];
     if (savedSettings) {
         if ((settings.labelFormat ?? 'both') !== (savedSettings.labelFormat ?? 'both')) {
             changeLabels.push('Code type');
+        }
+        if ((settings.labelSize ?? '35x35') !== (savedSettings.labelSize ?? '35x35')) {
+            changeLabels.push('Label size');
         }
         CONTENT_OPTIONS.forEach((o) => {
             if ((settings[o.field] ?? true) !== (savedSettings[o.field] ?? true)) {
@@ -460,8 +534,8 @@ const BarcodeSetting: React.FC = () => {
 
                                 {/* Stage */}
                                 <div className="relative shrink-0 grid place-items-center rounded-sm bg-[#f5f7ff] p-3 lg:p-0 lg:h-[190px]">
-                                    <span className="hidden lg:block absolute top-1.5 left-1/2 -translate-x-1/2 text-[11px] text-[#5b6b86]">35 mm</span>
-                                    <span className="hidden lg:block absolute left-1.5 top-1/2 -translate-y-1/2 text-[11px] text-[#5b6b86] [writing-mode:vertical-rl]">35 mm</span>
+                                    <span className="hidden lg:block absolute top-1.5 left-1/2 -translate-x-1/2 text-[11px] text-[#5b6b86]">{currentSize.wMm} mm</span>
+                                    <span className="hidden lg:block absolute left-1.5 top-1/2 -translate-y-1/2 text-[11px] text-[#5b6b86] [writing-mode:vertical-rl]">{currentSize.hMm} mm</span>
                                     <div className="lg:hidden">
                                         <LabelCard format={currentFormat} settings={settings} companyName={companyName} scale={0.85} />
                                     </div>
@@ -473,7 +547,7 @@ const BarcodeSetting: React.FC = () => {
                                 <div className="min-w-0 flex-1 lg:flex-none flex flex-col gap-2 lg:gap-3.5">
                                     <div className="lg:hidden">
                                         <p className="m-0 text-sm font-semibold text-[#0f172b]">Preview</p>
-                                        <p className="m-0 text-xs text-[#45556c] leading-[18px]">35 × 35 mm · {currentFormatTitle}</p>
+                                        <p className="m-0 text-xs text-[#45556c] leading-[18px]">{currentSize.label} · {currentFormatTitle}</p>
                                     </div>
 
                                     {/* Space used */}
@@ -505,11 +579,11 @@ const BarcodeSetting: React.FC = () => {
                                         </div>
                                         <div className="min-w-0 flex flex-col gap-2">
                                             <p className="m-0 text-xs text-[#45556c] leading-[17px]">
-                                                Actual size on screen. 35 × 35 mm sticker — fits most 1-up and 2-up label rolls.
+                                                Actual size on screen. {currentSize.label} sticker.
                                             </p>
                                             <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[13px] m-0">
                                                 <dt className="text-[#5b6b86]">Size</dt>
-                                                <dd className="m-0 font-medium text-[#0f172b]">35 × 35 mm (fixed)</dd>
+                                                <dd className="m-0 font-medium text-[#0f172b]">{currentSize.label}</dd>
                                                 <dt className="text-[#5b6b86]">Code</dt>
                                                 <dd className="m-0 font-medium text-[#0f172b]">{currentFormatTitle}</dd>
                                             </dl>
@@ -521,6 +595,42 @@ const BarcodeSetting: React.FC = () => {
 
                         {/* ── Left column ── */}
                         <div className="flex flex-col gap-3 lg:gap-4 min-w-0">
+
+                            {/* Card 0: Label size */}
+                            <section className="bg-white border border-[#dfe6fb] rounded-sm shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)] overflow-hidden">
+                                <SectionHeader
+                                    icon={<FiMaximize size={18} />}
+                                    tone="blue"
+                                    title="Label size"
+                                    sub="Choose the sticker size on your printer roll"
+                                />
+                                <div className="p-3.5 lg:p-[18px] grid grid-cols-1 sm:grid-cols-2 gap-2 xl:gap-3">
+                                    {(Object.keys(LABEL_SIZES) as LabelSize[]).map((id) => {
+                                        const opt = LABEL_SIZES[id];
+                                        const isSelected = (settings.labelSize ?? '35x35') === id;
+                                        return (
+                                            <button
+                                                type="button"
+                                                key={id}
+                                                aria-pressed={isSelected}
+                                                onClick={() => handleChange('labelSize', id)}
+                                                className={`relative text-left cursor-pointer rounded-sm border p-3 flex flex-col gap-1 transition-colors duration-150
+                                                    ${isSelected
+                                                        ? 'border-[#155dfc] ring-1 ring-[#155dfc] bg-[#e6eeff]'
+                                                        : 'border-[#7a8aa3] bg-white hover:bg-[#f5f7ff]'}`}
+                                            >
+                                                {isSelected && (
+                                                    <span className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full bg-[#155dfc] text-white grid place-items-center">
+                                                        <FiCheck size={12} strokeWidth={3} />
+                                                    </span>
+                                                )}
+                                                <b className="text-[15px] font-semibold text-[#0f172b]">{opt.label}</b>
+                                                <span className="text-xs text-[#45556c] leading-[17px] pr-6">{opt.use}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </section>
 
                             {/* Card 1: Code type */}
                             <section className="bg-white border border-[#dfe6fb] rounded-sm shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)] overflow-hidden">
@@ -589,7 +699,7 @@ const BarcodeSetting: React.FC = () => {
                                         })}
                                     </div>
                                     <p className="m-0 mt-3 text-xs text-[#5b6b86]">
-                                        All labels print at <b className="font-semibold text-[#45556c]">35 × 35 mm</b>.
+                                        Labels print at <b className="font-semibold text-[#45556c]">{currentSize.label}</b>.
                                     </p>
                                 </div>
                             </section>
@@ -603,13 +713,13 @@ const BarcodeSetting: React.FC = () => {
                                     sub="Turn lines on or off — the preview updates as you go"
                                 />
                                 <div>
-                                    {CONTENT_OPTIONS.map((opt, idx) => {
+                                    {visibleContentOptions.map((opt, idx) => {
                                         const checked = settings[opt.field] ?? true;
                                         const inputId = `toggle-${opt.field}`;
                                         return (
                                             <div
                                                 key={opt.field}
-                                                className={`flex items-center justify-between gap-4 px-[18px] py-3.5 ${idx !== CONTENT_OPTIONS.length - 1 ? 'border-b border-[#dfe6fb]' : ''}`}
+                                                className={`flex items-center justify-between gap-4 px-[18px] py-3.5 ${idx !== visibleContentOptions.length - 1 ? 'border-b border-[#dfe6fb]' : ''}`}
                                             >
                                                 <label htmlFor={inputId} className="min-w-0 flex-1 cursor-pointer">
                                                     <span className="flex items-center gap-2 text-sm font-medium text-[#0f172b]">

@@ -86,7 +86,17 @@ const IconChevron = () => (
 const IconBarcodeEmpty = () => (
   <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 5v14M8 5v14M11 5v10M14 5v14M17 5v10M20 5v14" /></svg>
 );
-
+// JsBarcode options. 35x35 is unchanged (margin 8).
+// 28x14 "both": no top/bottom margin so the bars use the full box height.
+// 28x14 "barcode only": margin 0 (spacing is added in CSS, so the quiet zone is exact).
+// NOTE: use `margin: 0`, not `marginTop: 0`. JsBarcode treats a 0 marginTop as "not set".
+const getBarcodeOptions = (compact: boolean, format: BarcodeFormat, height: number) => {
+  if (!compact) return { height, width: 2, margin: 8 };
+  if (format === 'both') {
+    return { height, width: 2, marginTop: 2, marginBottom: 2, marginLeft: 8, marginRight: 8 };
+  }
+  return { height, width: 2, margin: 0 };
+};
 // --- Preview Component ---
 // "both" layout: QR on LEFT, rotated barcode on RIGHT, equal visual height
 const LabelPreview: React.FC<{
@@ -121,12 +131,10 @@ const LabelPreview: React.FC<{
     if (labelFormat === 'barcode_only' || labelFormat === 'both') {
       const canvas = document.createElement('canvas');
       try {
-        JsBarcode(canvas, item.barcode, {
+                JsBarcode(canvas, item.barcode, {
           format: 'CODE128',
           displayValue: false,
-          height: 40,
-          width: 2,
-          margin: 8,
+          ...getBarcodeOptions(labelSize === '14x28', labelFormat, labelSize === '14x28' ? 60 : 40),
         });
         setBarcodeDataUrl(canvas.toDataURL('image/png'));
       } catch (e) {
@@ -136,12 +144,40 @@ const LabelPreview: React.FC<{
     } else {
       setBarcodeDataUrl('');
     }
-  }, [item.barcode, labelFormat]);
+   }, [item.barcode, labelFormat, labelSize]);
 
   const isBoth = barcodeDataUrl && qrDataUrl;
 
   // 28 × 14 mm (landscape): same 1.5x preview scale as the 35 × 35 box, so 160 × 80px
   if (labelSize === '14x28') {
+    // Barcode only: text on top, wide barcode below with side spacing (23 × 5 mm)
+    if (labelFormat === 'barcode_only') {
+      return (
+        <div
+          className="w-[160px] h-[80px] border border-[#cfd6e4] rounded-sm p-[3px] flex flex-col items-center justify-between gap-px bg-white text-black shadow-[0_6px_20px_rgba(21,48,140,0.12)]"
+          style={{ fontFamily: 'Arial, sans-serif' }}
+        >
+          <div className="w-full flex-1 min-h-0 overflow-hidden flex flex-col items-center justify-center gap-px">
+            {showShopName && (
+              <div className="w-full text-[6px] leading-tight font-bold text-center whitespace-nowrap overflow-hidden">{companyName}</div>
+            )}
+            {showProductName && <div className="w-full text-[6px] leading-tight font-semibold text-center truncate">{item.name}</div>}
+            {showMrp && (
+              <div className="text-[8px] leading-tight font-bold text-center">
+                {item.mrp && item.mrp > 0 ? `MRP: ₹${item.mrp}` : `Price: ₹${item.salesPrice}`}
+              </div>
+            )}
+            {showSalePrice && item.mrp && item.mrp > 0 && (
+              <div className="text-[6px] leading-tight font-semibold text-center">Sale: ₹{item.salesPrice}</div>
+            )}
+          </div>
+          {barcodeDataUrl && (
+            <img src={barcodeDataUrl} alt="Barcode Preview" className="w-[131px] h-[28px] shrink-0" style={{ objectFit: 'fill', imageRendering: 'pixelated' }} />
+          )}
+          {showBarcodeNumber && <div className="text-[5px] leading-none tracking-[0.05em] text-center">{item.barcode}</div>}
+        </div>
+      );
+    }
     return (
       <div
         className="w-[160px] h-[80px] border border-[#cfd6e4] rounded-sm p-1 flex flex-row items-center gap-1 bg-white text-black shadow-[0_6px_20px_rgba(21,48,140,0.12)]"
@@ -163,8 +199,8 @@ const LabelPreview: React.FC<{
           {showSalePrice && item.mrp && item.mrp > 0 && (
             <div className="text-[6px] leading-tight font-semibold text-center">Sale: ₹{item.salesPrice}</div>
           )}
-          {barcodeDataUrl && (
-            <img src={barcodeDataUrl} alt="Barcode Preview" className="w-full h-[18px] object-contain" style={{ imageRendering: 'pixelated' }} />
+                    {barcodeDataUrl && (
+            <img src={barcodeDataUrl} alt="Barcode Preview" className="w-full h-[26px] shrink-0" style={{ objectFit: 'fill', imageRendering: 'pixelated' }} />
           )}
           {showBarcodeNumber && <div className="text-[5px] leading-tight tracking-[0.05em] text-center">{item.barcode}</div>}
         </div>
@@ -497,7 +533,7 @@ const QRCodeGeneratorPage: React.FC = () => {
 
         if (labelFormat === 'barcode_only' || labelFormat === 'both') {
           try {
-            JsBarcode(canvas, item.barcode, { format: 'CODE128', displayValue: false, height: 60, width: 2, margin: 8 });
+                       JsBarcode(canvas, item.barcode, { format: 'CODE128', displayValue: false, ...getBarcodeOptions(isCompact, labelFormat, 60) });
             barcodeDataUrl = canvas.toDataURL('image/png');
           } catch (e) {
             console.warn(`Could not generate barcode for ${item.name}`, e);
@@ -527,6 +563,22 @@ const QRCodeGeneratorPage: React.FC = () => {
         for (let i = 0; i < item.quantityToPrint; i++) {
           // 28 × 14 mm: QR left, text + barcode right (no address/phone)
           if (isCompact) {
+            // Barcode only: text on top, wide barcode below with side spacing
+            if (labelFormat === 'barcode_only') {
+              allLabelsHtml += `
+                <div class="label-container compact compact-single">
+                  <div class="compact-text">
+                    ${showShopName ? `<p class="company-name">${cName}</p>` : ''}
+                    ${showProductName ? `<p class="item-name">${item.name}</p>` : ''}
+                    ${showMrp ? `<p class="item-mrp">${item.mrp && item.mrp > 0 ? `MRP: ₹${item.mrp}` : `Price: ₹${item.salesPrice}`}</p>` : ''}
+                    ${showSale && item.mrp && item.mrp > 0 ? `<p class="item-sale">Sale: ₹${item.salesPrice}</p>` : ''}
+                  </div>
+                  ${barcodeDataUrl ? `<img class="barcode-image" src="${barcodeDataUrl}" alt="Barcode" />` : ''}
+                  ${showBarcodeNum ? `<p class="item-barcode">${item.barcode}</p>` : ''}
+                </div>
+              `;
+              continue;
+            }
             allLabelsHtml += `
               <div class="label-container compact">
                 ${qrDataUrl ? `<img class="qr-image" src="${qrDataUrl}" alt="QR" />` : ''}
@@ -711,8 +763,19 @@ const QRCodeGeneratorPage: React.FC = () => {
             .compact .item-name { font-size: 4pt; max-width: 100%; }
             .compact .item-mrp { font-size: 5pt; }
             .compact .item-sale { font-size: 3.5pt; }
-            .compact .barcode-image { width: 100%; height: 4.5mm; margin: 0.3mm 0; }
+                       .compact .barcode-image { width: 100%; height: 4.5mm; margin: 0.3mm 0; object-fit: fill; }
             .compact .item-barcode { font-size: 3pt; }
+
+            /* Barcode only: text on top, 23 x 5 mm barcode below (~2.5mm free on both sides) */
+            .label-container.compact.compact-single {
+              flex-direction: column;
+              align-items: center;
+              justify-content: space-between;
+              gap: 0.3mm;
+            }
+            .compact-single .compact-text { flex: 1 1 auto; width: 100%; }
+            .compact-single p { line-height: 1.1; }
+            .compact-single .barcode-image { width: 23mm; height: 5mm; margin: 0; flex-shrink: 0; object-fit: fill; }
             ` : ''}
           </style>
         </head>

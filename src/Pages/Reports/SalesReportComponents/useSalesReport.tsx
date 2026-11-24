@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../../context/auth-context';
 import { formatDateForInput, type SaleRecord } from './salesReport.utils';
-import { loadSalesForRange } from './salesReportCache';
+import { salesLoaderFor } from './salesReportCache';
 import { useCachedRange } from '../useCachedRange';
+import { useBillSeriesMode } from '../../../lib/billSeries';
 
 export default function useSalesReport() {
   const { currentUser, loading: authLoading } = useAuth();
 
+  const { billSeriesMode, setBillSeriesMode } = useBillSeriesMode();
   const [datePreset, setDatePreset] = useState<string>('last30');
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
@@ -43,9 +45,16 @@ export default function useSalesReport() {
     lastUpdated,
     error,
     refresh,
-  } = useCachedRange(loadSalesForRange, currentUser?.companyId, appliedFilters, authLoading);
+  } = useCachedRange(
+    salesLoaderFor(billSeriesMode),
+    currentUser?.companyId,
+    appliedFilters,
+    authLoading,
+  );
 
   return {
+    billSeriesMode,
+    setBillSeriesMode,
     setDatePreset,
     setCustomStartDate,
     setCustomEndDate,

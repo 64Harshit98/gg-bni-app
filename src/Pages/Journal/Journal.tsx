@@ -72,7 +72,9 @@ const Journal: React.FC = () => {
         db,
         'companies',
         currentUser.companyId,
-        transportPopupInvoice.type === 'Credit' ? 'sales' : 'purchases',
+        transportPopupInvoice.type === 'Credit'
+          ? (transportPopupInvoice.isExemptBill ? 'exemptSales' : 'sales')
+          : 'purchases',
         transportPopupInvoice.id
       );
       await updateDoc(invoiceRef, {
@@ -177,6 +179,8 @@ const Journal: React.FC = () => {
     setActiveTab,
     activeType,
     setActiveType,
+    billSeriesMode,
+    setBillSeriesMode,
     searchQuery,
     setSearchQuery,
     showSearch,
@@ -257,7 +261,7 @@ const Journal: React.FC = () => {
               db,
               'companies',
               currentUser?.companyId || '',
-              invoice.type === 'Credit' ? 'sales' : 'purchases',
+              invoice.type === 'Credit' ? (invoice.isExemptBill ? 'exemptSales' : 'sales') : 'purchases',
               invoice.id
             );
 
@@ -642,6 +646,8 @@ const Journal: React.FC = () => {
             setCustomEndDate={setCustomEndDate}
             activeType={activeType}
             setActiveType={setActiveType}
+            billSeriesMode={billSeriesMode}
+            setBillSeriesMode={setBillSeriesMode}
             hasPermission={hasPermission}
             summary={summary}
           />

@@ -51,6 +51,8 @@ import { Modal } from '../../constants/Modal';
 import { useAuth } from '../../context/auth-context';
 import { useCatalogueData } from '../../context/CatalogueDataContext';
 import BackButton from '../../Components/BackButton';
+import { KSeriesButton } from '../../Components/KBillButton';
+import { salesCollectionOf } from '../../lib/billSeries';
 import SearchableSelect from '../../Components/SearchableSelect';
 import { useSalesSettings } from '../../context/SettingsContext';
 import { normalizePlan } from '../../context/Plan';
@@ -210,6 +212,8 @@ const SalesReport: React.FC = () => {
   }, [catalogueItemGroups, catalogueById]);
 
   const {
+    billSeriesMode,
+    setBillSeriesMode,
     setDatePreset,
     setCustomStartDate,
     setCustomEndDate,
@@ -1340,13 +1344,15 @@ const SalesReport: React.FC = () => {
     setSelectedId(null); // close the detail panel
     try {
       // Full sale document so the PDF gets tax, discount, GST etc.
-      const snap = await getDoc(doc(db, 'companies', currentUser.companyId, 'sales', sale.id));
+      const targetSalesCollection = salesCollectionOf(sale);
+      const snap = await getDoc(doc(db, 'companies', currentUser.companyId, targetSalesCollection, sale.id));
       const data: any = snap.exists() ? snap.data() : {};
       const dueAmount = Math.max(Number(sale.paymentMethods?.due ?? sale.dueAmount) || 0, 0);
       setInvoiceToPrint({
         ...data,
         id: sale.id,
         type: 'Credit', // Journal uses 'Credit' for sale bills
+        isExemptBill: Boolean(sale.isExemptBill),
         invoiceNumber: data.invoiceNumber ?? sale.invoiceNumber,
         partyName: data.partyName || sale.partyName,
         partyNumber: data.partyNumber || sale.partyNumber,
@@ -1622,8 +1628,16 @@ const SalesReport: React.FC = () => {
       )}
 
       {/* DATE FILTERS */}
-      <div className="relative mb-4 flex items-center gap-3">
-        <div className="flex flex-1 gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="relative mb-4 flex items-center gap-2 md:gap-3">
+        <KSeriesButton
+          mode={billSeriesMode}
+          onChange={(m) => {
+            setSelectedId(null);
+            setBillSeriesMode(m);
+          }}
+        />
+
+        <div className="flex flex-1 min-w-0 gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {DATE_PRESETS.map((p) => (
             <button
               key={p.value}

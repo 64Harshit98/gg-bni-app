@@ -146,8 +146,9 @@ export const useSalesCommunication = ({
             enableTriplicate: billSettings.enableTriplicate || false,
             enableItemImages: billSettings.enableItemImages || false, // NEW
             enableWatermark: billSettings.enableWatermark ?? true,
-            gstScheme: salesSettings?.gstScheme || '',
-            taxType: salesSettings?.taxType || '',
+            gstScheme: invoice.gstScheme || salesSettings?.gstScheme || '',
+            taxType: invoice.taxType || salesSettings?.taxType || '',
+            isExemptBill: Boolean(invoice.isExemptBill),
             enableDiscount2: salesSettings?.enableDiscount2 || false,
             upiId: billSettings.upiId || '',   //  ADDED: without this, QR never generates
             companyName: businessInfo?.name || 'Your Company',
@@ -330,7 +331,7 @@ export const useSalesCommunication = ({
                 messageType: 'invoice',
                 fileUrl,
                 templateVariables: [invoice.partyName, dataForPdf.companyName || '', 'invoice', invoice.invoiceNumber, formattedAmount],
-                refCollection: 'sales',
+                refCollection: invoice.isExemptBill ? 'exemptSales' : 'sales',
                 refId: invoice.id,
             });
 

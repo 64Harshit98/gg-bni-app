@@ -8,7 +8,7 @@ import {
     serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../../../../lib/Firebase';
-import { clearSalesReportCache } from '../../../Reports/SalesReportComponents/salesReportCache';
+import { clearSalesReportCache, clearExemptSalesReportCache } from '../../../Reports/SalesReportComponents/salesReportCache';
 import { ROUTES } from '../../../../constants/routes.constants';
 import { State } from '../../../../enums';
 import type { PaymentCompletionData } from '../../../../Components/PaymentDrawer';
@@ -117,7 +117,8 @@ export const useSaveSalesReturn = ({
 
         try {
             const batch = writeBatch(db);
-            const saleRef = doc(db, 'companies', companyId, 'sales', selectedSale.id);
+            const targetSalesCollection = (selectedSale as any)?.isExemptBill ? 'exemptSales' : 'sales';
+            const saleRef = doc(db, 'companies', companyId, targetSalesCollection, selectedSale.id);
 
             // Loyalty: read the saved bill (selectedSale can come from route state
             // without its loyalty block or totalAmount).
@@ -356,7 +357,8 @@ export const useSaveSalesReturn = ({
             }
 
             await batch.commit();
-            clearSalesReportCache(companyId);
+            if (targetSalesCollection === 'exemptSales') clearExemptSalesReportCache(companyId);
+            else clearSalesReportCache(companyId);
 
             // Re-read the updated bill + customer so the WhatsApp invoice/credit message use fresh numbers
             let updatedInvoice: any = null;

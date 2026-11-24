@@ -12,6 +12,7 @@ import {
 import { db } from '../../../lib/Firebase';
 import { formatDate } from '../../../lib/format';
 import type { Invoice } from '../journal.types';
+import { EXEMPT_SALES_COLLECTION, salesCollectionsFor, type BillSeriesMode } from '../../../lib/billSeries';
 
 export interface JournalDateRange {
   start: Date;
@@ -25,13 +26,20 @@ export interface JournalDateRange {
 // matter what date filter the user picks (they'd just silently be
 // missing). With no range ("all"), fall back to the previous recent-300
 // behavior — an unbounded scan of the whole history isn't needed there.
-export const useJournalData = (companyId?: string, dateRange?: JournalDateRange | null) => {
+export const useJournalData = (
+  companyId?: string,
+  dateRange?: JournalDateRange | null,
+  billSeriesMode: BillSeriesMode = 'original'
+) => {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const rangeStartMs = dateRange?.start.getTime();
   const rangeEndMs = dateRange?.end.getTime();
+  // 'all' listens to both collections; joined into a string so the effect
+  // only re-subscribes when the set of collections actually changes.
+  const salesCollectionsKey = salesCollectionsFor(billSeriesMode).join('|');
 
   useEffect(() => {
     if (!companyId) {
@@ -41,16 +49,18 @@ export const useJournalData = (companyId?: string, dateRange?: JournalDateRange 
     }
 
     setLoading(true);
+    // Drop sale bills from the previous series right away (purchases stay).
+    setInvoices(prev => prev.filter(inv => inv.type !== 'Credit'));
 
-    const salesQuery = rangeStartMs !== undefined && rangeEndMs !== undefined
+    const salesQueryFor = (collectionName: string) => rangeStartMs !== undefined && rangeEndMs !== undefined
       ? query(
-        collection(db, 'companies', companyId, 'sales'),
+        collection(db, 'companies', companyId, collectionName),
         where('createdAt', '>=', Timestamp.fromMillis(rangeStartMs)),
         where('createdAt', '<=', Timestamp.fromMillis(rangeEndMs)),
         orderBy('createdAt', 'desc')
       )
       : query(
-        collection(db, 'companies', companyId, 'sales'),
+        collection(db, 'companies', companyId, collectionName),
         orderBy('createdAt', 'desc'),
         limit(300)
       );
@@ -68,7 +78,7 @@ export const useJournalData = (companyId?: string, dateRange?: JournalDateRange 
         limit(300)
       );
 
-    const processSnapshot = (snapshot: QuerySnapshot, type: 'Credit' | 'Debit'): Invoice[] => {
+    const processSnapshot = (snapshot: QuerySnapshot, type: 'Credit' | 'Debit', fromExemptCollection = false): Invoice[] => {
       return snapshot.docs.map((doc) => {
         const data = doc.data();
         const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date();
@@ -172,22 +182,28 @@ export const useJournalData = (companyId?: string, dateRange?: JournalDateRange 
           // Needed by edit / return / delete to know what this bill did to loyalty points
           // undefined (not null) for bills saved before loyalty existed — editing those must not earn
           loyalty: data.loyalty,
+          // Which collection the bill lives in — edit / pay / delete / return use it.
+          isExemptBill: type === 'Credit' ? (fromExemptCollection || Boolean(data.isExemptBill)) : false,
         };
       });
     };
 
-    const unsubSales = onSnapshot(salesQuery, (snapshot) => {
-      const salesData = processSnapshot(snapshot, 'Credit');
-      setInvoices(prev => {
-        const withoutCredit = prev.filter(inv => inv.type !== 'Credit');
-        const combined = [...withoutCredit, ...salesData];
-        return combined.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    // One listener per sales collection; each one only replaces its own bills.
+    const salesUnsubs = salesCollectionsKey.split('|').map((collectionName) => {
+      const isExemptCollection = collectionName === EXEMPT_SALES_COLLECTION;
+      return onSnapshot(salesQueryFor(collectionName), (snapshot) => {
+        const salesData = processSnapshot(snapshot, 'Credit', isExemptCollection);
+        setInvoices(prev => {
+          const others = prev.filter(inv => inv.type !== 'Credit' || Boolean(inv.isExemptBill) !== isExemptCollection);
+          const combined = [...others, ...salesData];
+          return combined.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+        });
+        setLoading(false);
+      }, (err) => {
+        console.error("Sales listener error:", err);
+        setError("Failed to load sales.");
+        setLoading(false);
       });
-      setLoading(false);
-    }, (err) => {
-      console.error("Sales listener error:", err);
-      setError("Failed to load sales.");
-      setLoading(false);
     });
 
     const unsubPurchases = onSnapshot(purchasesQuery, (snapshot) => {
@@ -205,10 +221,10 @@ export const useJournalData = (companyId?: string, dateRange?: JournalDateRange 
     });
 
     return () => {
-      unsubSales();
+      salesUnsubs.forEach(unsub => unsub());
       unsubPurchases();
     };
-  }, [companyId, rangeStartMs, rangeEndMs]);
+  }, [companyId, rangeStartMs, rangeEndMs, salesCollectionsKey]);
 
   return { invoices, loading, error };
 };

@@ -20,6 +20,7 @@ export interface SalesData {
   isReturned?: boolean;
   paymentMethods?: { [key: string]: number };
   taxType?: string;
+  isExemptBill?: boolean;
 }
 
 export interface TransactionItem {

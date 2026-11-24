@@ -98,5 +98,6 @@ export interface SalesInvoice {
     userId?: string;
     companyId?: string;
     voucherName?: string;
+    isExemptBill?: boolean;
     [key: string]: any;
 }

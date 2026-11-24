@@ -123,6 +123,7 @@ const PERMISSION_DESCRIPTIONS: Partial<Record<Permissions, string>> = {
     [Permissions.OverrideCustomerDiscount]: 'Change the price on a line that has a customer or supplier fixed price.',
     [Permissions.ManageLoyaltyPoints]: 'Loyalty settings, and add or remove a customer\'s points by hand.',
     [Permissions.OverrideLoyaltyPoints]: 'Change the points a bill earns (only if Loyalty settings allow it).',
+    [Permissions.ViewKBills]: 'K button and K bill figures on Home, Transactions and reports.',
 };
 
 // UI-only: plain display names
@@ -163,6 +164,7 @@ const PERMISSION_LABELS: Partial<Record<Permissions, string>> = {
     [Permissions.ViewPartyLedger]: 'Party ledger',
     [Permissions.ViewTaxReport]: 'Tax report',
     [Permissions.ViewStockTransferReport]: 'Stock transfer report',
+    [Permissions.ViewKBills]: 'See K bills',
     // Settings
     [Permissions.ManageSalesSetting]: 'Sales settings',
     [Permissions.ManagePurchaseSetting]: 'Purchase settings',
@@ -179,6 +181,7 @@ const PERMISSION_TAGS: Partial<Record<Permissions, string>> = {
     [Permissions.ViewPurchaseReport]: 'Shows cost prices',
     [Permissions.ViewItemReport]: 'Shows cost prices',
     [Permissions.ViewPNLReport]: 'Shows profit',
+    [Permissions.ViewKBills]: 'Shows K bills',
 };
 
 // UI-only: rows drawn indented under "Open Reports & Settings tabs" (no logic attached)
@@ -352,6 +355,7 @@ const permissionGroups = {
             Permissions.ViewPartyLedger,
             Permissions.ViewTaxReport,
             Permissions.ViewStockTransferReport,
+            Permissions.ViewKBills,
         ],
     },
     settingsAccess: {

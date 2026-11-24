@@ -22,19 +22,24 @@ interface CounterData {
 /**
  * Generates the next invoice number for a specific company.
  * @param companyId The ID of the company to get the counter for.
+ * @param isExempt Whether to read the exempt billing series counter & prefix.
  */
-export const peekNextInvoiceNumber = async (companyId: string): Promise<string> => {
+export const peekNextInvoiceNumber = async (companyId: string, isExempt: boolean = false): Promise<string> => {
     if (!companyId) throw new Error("A valid companyId must be provided.");
 
     const settingsRef = doc(db, 'companies', companyId, 'settings', 'sales-settings');
-    const counterRef = doc(db, 'companies', companyId, 'counters', 'invoiceCounter');
+    const counterRef = doc(db, 'companies', companyId, 'counters', isExempt ? 'exemptInvoiceCounter' : 'invoiceCounter');
 
     const [settingsSnap, counterSnap] = await Promise.all([
         getDoc(settingsRef),
         getDoc(counterRef)
     ]);
 
-    const prefix = settingsSnap.exists() ? (settingsSnap.data().voucherPrefix || 'INV') : 'INV';
+    const prefix = settingsSnap.exists()
+        ? (isExempt
+            ? (settingsSnap.data().exemptVoucherPrefix || 'EXM')
+            : (settingsSnap.data().voucherPrefix || 'INV'))
+        : (isExempt ? 'EXM' : 'INV');
     const currentFY = getFinancialYear();
 
     let nextNumber = 1;
@@ -48,8 +53,8 @@ export const peekNextInvoiceNumber = async (companyId: string): Promise<string> 
 };
 
 // 2. WRITE: Use this inside your handleSavePayment logic
-export const incrementInvoiceCounter = async (companyId: string) => {
-    const counterRef = doc(db, 'companies', companyId, 'counters', 'invoiceCounter');
+export const incrementInvoiceCounter = async (companyId: string, isExempt: boolean = false) => {
+    const counterRef = doc(db, 'companies', companyId, 'counters', isExempt ? 'exemptInvoiceCounter' : 'invoiceCounter');
     const currentFY = getFinancialYear();
 
     await runTransaction(db, async (transaction) => {

@@ -10,6 +10,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
 import { useAuth } from '../../../context/auth-context';
+import { salesCollectionsFor, useBillSeriesMode } from '../../../lib/billSeries';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -107,6 +108,7 @@ const LATE_THRESHOLD_MINUTES = 10;
 
 export default function useUserReport() {
   const { currentUser, loading: authLoading } = useAuth();
+  const { billSeriesMode, setBillSeriesMode } = useBillSeriesMode();
 
   // ── Staff list ──
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
@@ -169,12 +171,13 @@ export default function useUserReport() {
 
     const fetchSales = async () => {
       try {
-        const q = query(
-          collection(db, 'companies', currentUser.companyId, 'sales'),
-          orderBy('createdAt', 'desc'),
-        );
-        const snap = await getDocs(q);
-        const fetched: RawSale[] = snap.docs.map((d) => {
+        // Regular / K / both, per the K button
+        const snaps = await Promise.all(salesCollectionsFor(billSeriesMode).map((name) =>
+          getDocs(query(
+            collection(db, 'companies', currentUser.companyId, name),
+            orderBy('createdAt', 'desc'),
+          ))));
+        const fetched: RawSale[] = snaps.flatMap((s) => s.docs).map((d) => {
           const data = d.data();
           return {
             id: d.id,
@@ -199,7 +202,7 @@ export default function useUserReport() {
     };
 
     fetchSales();
-  }, [authLoading, currentUser]);
+  }, [authLoading, currentUser, billSeriesMode]);
 
   // ── 3. Fetch attendance for selected user + applied date range ────────────
   useEffect(() => {
@@ -454,6 +457,9 @@ export default function useUserReport() {
 
   // ── Expose ────────────────────────────────────────────────────────────────
   return {
+    // Bill series (K button)
+    billSeriesMode,
+    setBillSeriesMode,
     // Auth
     currentUser,
     authLoading,

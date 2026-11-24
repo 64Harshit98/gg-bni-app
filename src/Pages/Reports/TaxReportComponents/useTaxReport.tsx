@@ -150,7 +150,11 @@ export default function useTaxReport() {
           getDocs(rangeQuery('purchases')),
         ]);
         if (cancelled) return;
-        setSalesData(salesSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setSalesData(
+          salesSnap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .filter((sale: any) => !sale.isExemptBill)
+        );
         setPurchaseData(purchaseSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
       } catch (err) {
         console.error('Error fetching tax data:', err);

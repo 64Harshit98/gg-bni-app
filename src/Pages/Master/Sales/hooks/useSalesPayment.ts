@@ -8,7 +8,7 @@ import {
     type Transaction,
 } from 'firebase/firestore';
 import { db } from '../../../../lib/Firebase';
-import { clearSalesReportCache } from '../../../Reports/SalesReportComponents/salesReportCache';
+import { clearSalesReportCache, clearExemptSalesReportCache } from '../../../Reports/SalesReportComponents/salesReportCache';
 import type { Item } from '../../../../constants/models';
 import { addOnStockOf } from '../../../../constants/models';
 import type { User } from '../../../../Role/permission';
@@ -49,8 +49,10 @@ const toRegistryKey = (invoiceNumber: string) => encodeURIComponent(invoiceNumbe
 // Called after a save fails with INVOICE_NUMBER_TAKEN for an auto-generated
 // number — walks the counter forward past whichever numbers are already
 // registered, so the next save attempt doesn't hit the same collision again.
-const advanceInvoiceCounterPastDuplicates = async (companyId: string): Promise<string> => {
-    const counterRef = doc(db, 'companies', companyId, 'counters', 'invoiceCounter');
+const advanceInvoiceCounterPastDuplicates = async (companyId: string, isExempt: boolean = false): Promise<string> => {
+    const counterDocName = isExempt ? 'exemptInvoiceCounter' : 'invoiceCounter';
+    const registryCollection = isExempt ? 'exemptSalesInvoiceRegistry' : 'salesInvoiceRegistry';
+    const counterRef = doc(db, 'companies', companyId, 'counters', counterDocName);
     const settingsRef = doc(db, 'companies', companyId, 'settings', 'sales-settings');
 
     return runTransaction(db, async (transaction) => {
@@ -59,12 +61,14 @@ const advanceInvoiceCounterPastDuplicates = async (companyId: string): Promise<s
             transaction.get(settingsRef),
         ]);
 
-        const prefix = settingsDoc.exists() ? (settingsDoc.data().voucherPrefix || 'INV') : 'INV';
+        const prefix = isExempt
+            ? (settingsDoc.exists() ? (settingsDoc.data().exemptVoucherPrefix || 'EXM') : 'EXM')
+            : (settingsDoc.exists() ? (settingsDoc.data().voucherPrefix || 'INV') : 'INV');
         let candidate = counterDoc.exists() ? (counterDoc.data().currentNumber || 1) : 1;
 
         const MAX_ATTEMPTS = 500;
         for (let i = 0; i < MAX_ATTEMPTS; i++) {
-            const registryRef = doc(db, 'companies', companyId, 'salesInvoiceRegistry', toRegistryKey(`${prefix}-${candidate}`));
+            const registryRef = doc(db, 'companies', companyId, registryCollection, toRegistryKey(`${prefix}-${candidate}`));
             const registrySnap = await transaction.get(registryRef);
             if (!registrySnap.exists()) break;
             candidate++;
@@ -80,6 +84,7 @@ interface UseSalesPaymentParams {
     companyId: string | undefined;
     salesSettings: any;
     activeTaxMode: 'inclusive' | 'exclusive' | 'exempt';
+    isExemptBill?: boolean;
     items: SalesItem[];
     setItems: React.Dispatch<React.SetStateAction<SalesItem[]>>;
     availableItems: Item[];
@@ -120,6 +125,7 @@ export const useSalesPayment = ({
     companyId,
     salesSettings,
     activeTaxMode,
+    isExemptBill = false,
     items,
     setItems,
     availableItems,
@@ -442,6 +448,11 @@ return {
         const loyaltyNames = nextLoyalty ? { [nextLoyalty.phone]: completionData.partyName || '' } : {};
         let loyaltyBalanceAfter: number | null = null;
 
+        const effectiveIsExempt = isEditMode ? Boolean(invoiceToEdit?.isExemptBill) : Boolean(isExemptBill);
+        const targetSalesCollection = effectiveIsExempt ? 'exemptSales' : 'sales';
+        const targetRegistryCollection = effectiveIsExempt ? 'exemptSalesInvoiceRegistry' : 'salesInvoiceRegistry';
+        const targetCounterDocName = effectiveIsExempt ? 'exemptInvoiceCounter' : 'invoiceCounter';
+
         const saveOperation = async (transaction: any, isNew: boolean, existingId?: string) => {
             const customDate = getParsedInvoiceDate();
             const saleData: SalesInvoice = {
@@ -475,11 +486,12 @@ return {
                 transportDetails: completionData.transportDetails || null,
                 // Which customer's fixed pricing was applied on this bill (null when none)
                 customerPricingId: items.find(i => i.customerPricingFor)?.customerPricingFor ?? null,
+                isExemptBill: effectiveIsExempt,
             };
             if (loyaltyField !== undefined) saleData.loyalty = loyaltyField;
 
             if (isNew) {
-                const counterRef = doc(db, 'companies', resolvedCompanyId, 'counters', 'invoiceCounter');
+                const counterRef = doc(db, 'companies', resolvedCompanyId, 'counters', targetCounterDocName);
                 const settingsRef = doc(db, 'companies', resolvedCompanyId, 'settings', 'sales-settings');
 
                 const [counterDoc, settingsDoc] = await Promise.all([
@@ -487,7 +499,9 @@ return {
                     transaction.get(settingsRef)
                 ]);
 
-                const prefix = settingsDoc.exists() ? (settingsDoc.data().voucherPrefix || 'INV') : 'INV';
+                const prefix = effectiveIsExempt
+                    ? (settingsDoc.exists() ? (settingsDoc.data().exemptVoucherPrefix || 'EXM') : 'EXM')
+                    : (settingsDoc.exists() ? (settingsDoc.data().voucherPrefix || 'INV') : 'INV');
                 const nextNumber = counterDoc.exists() ? (counterDoc.data().currentNumber || 1) : 1;
                 const finalInvNo = (isInvoiceNumberManuallyEdited.current ? invoiceNumber : `${prefix}-${nextNumber}`).trim();
 
@@ -501,7 +515,7 @@ return {
                 // serializes transactions that read+write the same document, and
                 // whichever one commits second sees the registry entry the first one
                 // just created and aborts here — instead of silently duplicating it.
-                const registryRef = doc(db, 'companies', resolvedCompanyId, 'salesInvoiceRegistry', toRegistryKey(finalInvNo));
+                const registryRef = doc(db, 'companies', resolvedCompanyId, targetRegistryCollection, toRegistryKey(finalInvNo));
                 const registrySnap = await transaction.get(registryRef);
                 if (registrySnap.exists()) {
                     throw new Error(`INVOICE_NUMBER_TAKEN:${finalInvNo}`);
@@ -513,7 +527,7 @@ return {
                 saleData.companyId = resolvedCompanyId;
                 saleData.voucherName = salesSettings?.voucherName ?? 'Sales';
 
-                const newSaleRef = doc(collection(db, "companies", resolvedCompanyId, "sales"));
+                const newSaleRef = doc(collection(db, "companies", resolvedCompanyId, targetSalesCollection));
                 transaction.set(newSaleRef, sanitizeForFirestore(saleData));
                 transaction.set(registryRef, { saleId: newSaleRef.id, createdAt: serverTimestamp() });
 
@@ -523,7 +537,7 @@ return {
                 return { id: newSaleRef.id, number: finalInvNo };
 
             } else if (existingId) {
-                const invoiceRef = doc(db, "companies", resolvedCompanyId, "sales", existingId);
+                const invoiceRef = doc(db, "companies", resolvedCompanyId, targetSalesCollection, existingId);
                 const finalInvNo = invoiceNumber.trim();
 
                 if (!finalInvNo) {
@@ -534,7 +548,7 @@ return {
                 // edit — re-saving with the same number it already owns must not
                 // trip the "already taken" check against itself.
                 if (finalInvNo !== invoiceToEdit?.invoiceNumber) {
-                    const registryRef = doc(db, 'companies', resolvedCompanyId, 'salesInvoiceRegistry', toRegistryKey(finalInvNo));
+                    const registryRef = doc(db, 'companies', resolvedCompanyId, targetRegistryCollection, toRegistryKey(finalInvNo));
                     const registrySnap = await transaction.get(registryRef);
                     if (registrySnap.exists()) {
                         throw new Error(`INVOICE_NUMBER_TAKEN:${finalInvNo}`);
@@ -561,7 +575,7 @@ return {
                     let loyaltyPlan: ReturnType<typeof planLoyaltyForSave> = [];
                     let loyaltyAccounts = new Map<string, LoyaltyAccountState>();
                     if (loyaltyEnabled) {
-                        const saleSnap = await transaction.get(doc(db, "companies", resolvedCompanyId, "sales", invoiceToEdit.id));
+                        const saleSnap = await transaction.get(doc(db, "companies", resolvedCompanyId, targetSalesCollection, invoiceToEdit.id));
                         const prevLoyalty = saleSnap.exists() ? readSaleLoyalty(saleSnap.data()) : null;
                         // A bill saved before loyalty existed never earned — editing it now must
                         // not hand out points for the whole old bill. Points used on it still count.
@@ -638,7 +652,8 @@ return {
                     return { ...item, stock: Math.max(0, (item.stock || 0) - delta) };
                 }));
                 addCreatedItemsLocally();
-                clearSalesReportCache(currentUser?.companyId);
+                if (effectiveIsExempt) clearExemptSalesReportCache(currentUser?.companyId);
+                else clearSalesReportCache(currentUser?.companyId);
                 showSuccessModal("Invoice Updated", ROUTES.JOURNAL);
 
             } else {
@@ -681,7 +696,12 @@ return {
 
                     if (settingsDocId) {
                         const settingsRef = doc(db, "companies", resolvedCompanyId, "settings", settingsDocId);
-                        transaction.update(settingsRef, { currentVoucherNumber: firebaseIncrement(1) });
+                        transaction.update(
+                            settingsRef,
+                            effectiveIsExempt
+                                ? { currentExemptVoucherNumber: firebaseIncrement(1) }
+                                : { currentVoucherNumber: firebaseIncrement(1) }
+                        );
                     }
                 });
 
@@ -711,6 +731,7 @@ return {
                         taxType: finalTaxType,       // ✅ ADDED
                         placeOfSupply: completionData.placeOfSupply || '',  // ✅ ADDED (IGST calc ke liye bhi zaroori)
                         shippingState: completionData.shippingState || '',
+                        isExemptBill: effectiveIsExempt,
                         loyalty: nextLoyalty
                             ? { ...nextLoyalty, balance: loyaltyBalanceAfter }
                             : null,
@@ -725,16 +746,19 @@ return {
                     }));
                     addCreatedItemsLocally();
 
-                    clearSalesReportCache(currentUser?.companyId);
+                    if (effectiveIsExempt) clearExemptSalesReportCache(currentUser?.companyId);
+                    else clearSalesReportCache(currentUser?.companyId);
                     setIsDrawerOpen(false);
                     setSavedBillData({ id: result.id, number: result.number, invoiceData: invoiceData });
                     sessionStorage.removeItem('sales_cart_draft');
-                    sessionStorage.removeItem('sales_tax_mode_draft');
+                    // Tax-mode / K-series drafts are kept: the page stays in the same
+                    // mode for the next bill, so its draft must keep matching it (the
+                    // restore ignores them anyway while the cart is empty).
                     sessionStorage.removeItem('sales_salesman_draft');
                     setItems([]);
                     setStagedCalcInput('');
                     setCalcInput('');
-                    const nextNum = await peekNextInvoiceNumber(currentUser.companyId);
+                    const nextNum = await peekNextInvoiceNumber(currentUser.companyId, effectiveIsExempt);
                     isInvoiceNumberManuallyEdited.current = false;
                     setInvoiceNumber(nextNum);
                 }
@@ -751,7 +775,7 @@ return {
 
                 // Move the counter past the duplicate(s) so the next save works.
                 try {
-                    const nextNum = await advanceInvoiceCounterPastDuplicates(resolvedCompanyId);
+                    const nextNum = await advanceInvoiceCounterPastDuplicates(resolvedCompanyId, effectiveIsExempt);
                     setInvoiceNumber(nextNum);
                 } catch (advanceErr) {
                     console.error("Failed to advance invoice counter:", advanceErr);

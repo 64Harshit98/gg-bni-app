@@ -66,6 +66,12 @@ service cloud.firestore {
         allow write: if isCompanyMember(companyId);
       }
 
+      // 1b. Exempt Sales: Separate collection for exempt billing series
+      match /exemptSales/{document=**} {
+        allow read: if true;
+        allow write: if isCompanyMember(companyId);
+      }
+
       // 3. Business Info: Public needs Company Address/Logo for the PDF header
       match /business_info/{document=**} {
         allow read: if true;

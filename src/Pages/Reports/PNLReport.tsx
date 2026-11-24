@@ -54,6 +54,8 @@ import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 import sellarLogo from '../../assets/sellar-logo.png';
 import { useAuth } from '../../context/auth-context';
 import BackButton from '../../Components/BackButton';
+import { KSeriesButton } from '../../Components/KBillButton';
+import { salesCollectionOf } from '../../lib/billSeries';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 
@@ -130,6 +132,8 @@ const PnlReportPage: React.FC = () => {
     lastUpdated,
     error,
     refresh,
+    billSeriesMode,
+    setBillSeriesMode,
   } = usePnlReport();
 
   const [companyName, setCompanyName] = useState<string>('');
@@ -1274,13 +1278,14 @@ const PnlReportPage: React.FC = () => {
     setSelectedId(null); // close the detail panel
     try {
       // Full sale document so the PDF gets tax, discount, GST etc.
-      const snap = await getDoc(doc(db, 'companies', currentUser.companyId, 'sales', billId));
+      const snap = await getDoc(doc(db, 'companies', currentUser.companyId, salesCollectionOf(sale), billId));
       const data: any = snap.exists() ? snap.data() : {};
       const dueAmount = Math.max(Number(sale.paymentMethods?.due ?? sale.dueAmount) || 0, 0);
       setInvoiceToPrint({
         ...data,
         id: billId,
         type: 'Credit', // Journal uses 'Credit' for sale bills
+        isExemptBill: Boolean(sale.isExemptBill),
         invoiceNumber: data.invoiceNumber ?? sale.invoiceNumber,
         partyName: data.partyName || sale.partyName,
         partyNumber: data.partyNumber || sale.partyNumber,
@@ -1655,8 +1660,15 @@ const PnlReportPage: React.FC = () => {
       )}
 
       {/* DATE FILTERS */}
-      <div className="relative mb-4 flex items-center gap-3">
-        <div className="flex flex-1 gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="relative mb-4 flex items-center gap-2 md:gap-3">
+        <KSeriesButton
+          mode={billSeriesMode}
+          onChange={(m) => {
+            setSelectedId(null);
+            setBillSeriesMode(m);
+          }}
+        />
+        <div className="flex flex-1 min-w-0 gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {DATE_PRESETS.map((p) => (
             <button
               key={p.value}

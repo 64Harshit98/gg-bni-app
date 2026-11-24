@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 import { SHOP_ID } from './useStockTransfer';
+import { salesCollectionsFor } from '../../lib/billSeries';
 
 export interface LedgerAgg { in: number; out: number; }
 
@@ -58,16 +59,17 @@ export function useStockLedger(
       // --- sales: only affect Shop stock, per Sales.tsx's firebaseIncrement on item.stock ---
       const includeSales = !locationFilter || locationFilter === SHOP_ID;
       if (includeSales) {
-        const salesRef = collection(db, 'companies', companyId, 'sales');
-        const salesQ = query(salesRef, where('createdAt', '>=', startTs), where('createdAt', '<=', endTs));
-        const salesSnap = await getDocs(salesQ);
-        salesSnap.forEach(d => {
+        // K bills deduct stock exactly like regular ones, so both series count
+        // here (quantities only — no bill is shown) or "out" never matches stock.
+        const salesSnaps = await Promise.all(salesCollectionsFor('all').map((name) =>
+          getDocs(query(collection(db, 'companies', companyId, name), where('createdAt', '>=', startTs), where('createdAt', '<=', endTs)))));
+        salesSnaps.forEach(salesSnap => salesSnap.forEach(d => {
           const sale = d.data() as any;
           (sale.items || []).forEach((item: any) => {
             const pid = item.id || item.productId;
             if (pid) bump(map, pid, 0, item.quantity || 0);
           });
-        });
+        }));
       }
 
       setLedgerMap(map);

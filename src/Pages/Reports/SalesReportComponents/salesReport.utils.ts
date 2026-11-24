@@ -34,6 +34,7 @@ export interface SaleRecord {
   dueAmount?: number;
   createdAt: number;
   items: SalesItem[];
+  isExemptBill?: boolean;
   [key: string]: any;
 }
 

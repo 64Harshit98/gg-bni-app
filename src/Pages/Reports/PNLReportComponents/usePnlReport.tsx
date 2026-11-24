@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../../context/auth-context';
 import { formatDateForInput } from '../SalesReportComponents/salesReport.utils';
-import { loadSalesForRange } from '../SalesReportComponents/salesReportCache';
+import { salesLoaderFor } from '../SalesReportComponents/salesReportCache';
+import { useBillSeriesMode } from '../../../lib/billSeries';
 import {
   loadCatalogueExpensesForRange,
   loadPosExpensesForRange,
@@ -38,7 +39,8 @@ export function usePnlReport() {
     setAppliedFilters({ start: start.getTime(), end: end.getTime() });
   }, []);
 
-  const salesState = useCachedRange(loadSalesForRange, companyId, appliedFilters, authLoading);
+  const { billSeriesMode, setBillSeriesMode } = useBillSeriesMode();
+  const salesState = useCachedRange(salesLoaderFor(billSeriesMode), companyId, appliedFilters, authLoading);
   const posExpenses = useCachedRange(loadPosExpensesForRange, companyId, appliedFilters, authLoading);
   const catExpenses = useCachedRange(loadCatalogueExpensesForRange, companyId, appliedFilters, authLoading);
 
@@ -61,6 +63,8 @@ export function usePnlReport() {
 
   return {
     authLoading,
+    billSeriesMode,
+    setBillSeriesMode,
     datePreset,
     setDatePreset,
     startDate,

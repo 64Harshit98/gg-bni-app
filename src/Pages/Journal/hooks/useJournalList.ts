@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { SAMPLE_INVOICES } from '../journal.types';
 import { useJournalData } from './useJournalData';
+import { useBillSeriesMode } from '../../../lib/billSeries';
 import { loadAliases, linkedNumbersForToken, type AliasMap } from '../../Reports/CustomerReportComponents/customerAliases';
 
 interface UseJournalListParams {
@@ -14,6 +15,7 @@ interface UseJournalListParams {
 export const useJournalList = ({ companyId, isTutorialActive }: UseJournalListParams) => {
   const [activeTab, setActiveTab] = useState<'All' | 'Paid' | 'Unpaid'>('All');
   const [activeType, setActiveType] = useState<'Debit' | 'Credit'>('Credit');
+  const { billSeriesMode, setBillSeriesMode } = useBillSeriesMode();
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [activeDateFilter, setActiveDateFilter] = useState<string>('today');
@@ -61,7 +63,7 @@ export const useJournalList = ({ companyId, isTutorialActive }: UseJournalListPa
     }
   }, [activeDateFilter, customStartDate, customEndDate, isTutorialActive]);
 
-    const { invoices, loading: dataLoading, error } = useJournalData(companyId, dateRange);
+    const { invoices, loading: dataLoading, error } = useJournalData(companyId, dateRange, billSeriesMode);
 
   // Merged numbers: ek number search karo to us customer ke saare numbers ke bills aate hain.
   const [aliases, setAliases] = useState<AliasMap>({});
@@ -204,6 +206,8 @@ export const useJournalList = ({ companyId, isTutorialActive }: UseJournalListPa
     setActiveTab,
     activeType,
     setActiveType,
+    billSeriesMode,
+    setBillSeriesMode,
     searchQuery,
     setSearchQuery,
     showSearch,

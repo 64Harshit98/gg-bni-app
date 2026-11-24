@@ -4,6 +4,8 @@ import { db } from '../../lib/Firebase';
 import { useAuth } from '../../context/auth-context';
 import { IconClose } from '../../constants/Icons';
 import { useNavigate } from 'react-router';
+import { KSeriesButton } from '../../Components/KBillButton';
+import { salesCollectionsFor, useBillSeriesMode } from '../../lib/billSeries';
 interface Props {
   isDataVisible?: boolean;
   paymentData?: { name: string; amount: number; quantity: number }[];
@@ -16,6 +18,7 @@ function GallaHisaabTool({ isDataVisible = true, paymentData = [], cashAmount = 
   const [endDate, setEndDate] = useState('');
   const navigate = useNavigate();
   const { currentUser } = useAuth();
+  const { billSeriesMode, setBillSeriesMode } = useBillSeriesMode();
   const [fetchedCash, setFetchedCash] = useState(0);
   const [cashBreakdown, setCashBreakdown] = useState<{ received: number; returned: number }[]>([]);
 
@@ -31,23 +34,24 @@ function GallaHisaabTool({ isDataVisible = true, paymentData = [], cashAmount = 
     if (!currentUser?.companyId) return;
 
     try {
-      const salesRef = collection(db, 'companies', currentUser.companyId, 'sales');
-      let q = query(salesRef, orderBy('createdAt', 'desc'));
-
-      if (startDate && endDate) {
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
-
-        q = query(
-          salesRef,
-          where('createdAt', '>=', start),
-          where('createdAt', '<=', end),
-          orderBy('createdAt', 'desc')
-        );
-      }
-
-      const snap = await getDocs(q);
+      const companyId = currentUser.companyId;
+      // Regular / K / both, per the K button — K bills' cash is in the same drawer.
+      const snaps = await Promise.all(salesCollectionsFor(billSeriesMode).map((name) => {
+        const salesRef = collection(db, 'companies', companyId, name);
+        if (startDate && endDate) {
+          const start = new Date(startDate);
+          const end = new Date(endDate);
+          end.setHours(23, 59, 59, 999);
+          return getDocs(query(
+            salesRef,
+            where('createdAt', '>=', start),
+            where('createdAt', '<=', end),
+            orderBy('createdAt', 'desc')
+          ));
+        }
+        return getDocs(query(salesRef, orderBy('createdAt', 'desc')));
+      }));
+      const snap = { docs: snaps.flatMap((s) => s.docs) };
 
       let totalCash = 0;
       const breakdown: { received: number; returned: number }[] = [];
@@ -136,7 +140,8 @@ function GallaHisaabTool({ isDataVisible = true, paymentData = [], cashAmount = 
 
   useEffect(() => {
     fetchCashFromDB();
-  }, [currentUser]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser, billSeriesMode]);
 
   useEffect(() => {
     if (usePrevClosing) {
@@ -173,6 +178,9 @@ function GallaHisaabTool({ isDataVisible = true, paymentData = [], cashAmount = 
           Galla Hisaab
         </h1>
 
+        <div className="absolute right-0">
+          <KSeriesButton mode={billSeriesMode} onChange={setBillSeriesMode} />
+        </div>
       </div>
 
       {/* FILTER CARD */}

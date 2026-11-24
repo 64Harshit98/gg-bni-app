@@ -8,6 +8,7 @@ import { clearOpeningBalanceCache, saveCustomerName } from '../CustomerReportCom
 import { CUSTOMER_REMARKS_COLLECTION } from '../../../constants/customerSource';
 import { loadAliases, resolvePhone, groupPhones, type AliasMap } from '../CustomerReportComponents/customerAliases';
 import { formatDateForInput } from '../SalesReportComponents/salesReport.utils';
+import { EXEMPT_SALES_COLLECTION, salesCollectionsFor, useBillSeriesMode } from '../../../lib/billSeries';
 
 export const normalizePartyNumber = (num?: string): string => {
     if (!num) return '';
@@ -81,6 +82,8 @@ export interface LedgerTransaction {
     note?: string;
     items?: InvoiceItem[];                    // NEW
     paymentMethods?: Record<string, number>;  // NEW
+    /** Sale saved in the K series (exemptSales collection). */
+    isExemptBill?: boolean;
 }
 
 export interface PartySummary {
@@ -152,6 +155,7 @@ export default function usePartyLedger() {
     const [selectedPartyName, setSelectedPartyName] = useState<string | null>(null);
 
     const [datePreset, setDatePreset] = useState<string>('thisMonth'); // Change default state
+    const { billSeriesMode, setBillSeriesMode } = useBillSeriesMode();
 
     useEffect(() => {
         const start = new Date();
@@ -183,8 +187,7 @@ export default function usePartyLedger() {
                 const end = new Date(appliedFilters.end);
                 const companyId = currentUser.companyId;
 
-                // Query setup for BOTH sales and purchases
-                const salesRef = collection(db, 'companies', companyId, 'sales');
+                // Query setup for sales (regular / K / both, per the K button) and purchases
                 const purchasesRef = collection(db, 'companies', companyId, 'purchases');
 
                 const baseQueryConditions = [
@@ -192,15 +195,18 @@ export default function usePartyLedger() {
                     where('createdAt', '<=', Timestamp.fromDate(end))
                 ];
 
-                const salesQ = query(salesRef, ...baseQueryConditions);
+                const salesCollections = salesCollectionsFor(billSeriesMode);
                 const purchasesQ = query(purchasesRef, ...baseQueryConditions);
 
-                // Fetch both simultaneously
-                const [salesSnapshot, purchasesSnapshot] = await Promise.all([
-                    getDocs(salesQ),
-                    getDocs(purchasesQ)
+                // Fetch all simultaneously
+                const [purchasesSnapshot, ...salesSnapshots] = await Promise.all([
+                    getDocs(purchasesQ),
+                    ...salesCollections.map((name) =>
+                        getDocs(query(collection(db, 'companies', companyId, name), ...baseQueryConditions))),
                 ]);
-                const mappedSales = salesSnapshot.docs.map((doc) => {
+                const saleDocs = salesSnapshots.flatMap((snap, i) =>
+                    snap.docs.map((d) => ({ d, isExempt: salesCollections[i] === EXEMPT_SALES_COLLECTION })));
+                const mappedSales = saleDocs.map(({ d: doc, isExempt }) => {
                     const data = doc.data();
                     const creationMillis = data.createdAt instanceof Timestamp ? data.createdAt.toMillis() : Date.now();
 
@@ -219,6 +225,7 @@ export default function usePartyLedger() {
                         type: 'sale' as const,
                         items: data.items || [],                    // NEW
                         paymentMethods: data.paymentMethods || {},   // NEW
+                        isExemptBill: isExempt || Boolean(data.isExemptBill),
                     } as LedgerTransaction;
                 });
 
@@ -268,7 +275,7 @@ export default function usePartyLedger() {
         };
 
         fetchLedgerData();
-    }, [currentUser, authLoading, appliedFilters]);
+    }, [currentUser, authLoading, appliedFilters, billSeriesMode]);
     // ✅ NEW: Fetch opening balances independently — no date filter, always load all
     useEffect(() => {
         if (authLoading || !currentUser?.companyId) return;
@@ -934,6 +941,7 @@ export default function usePartyLedger() {
         deleteParty,
         deleteAllParties,
         datePreset, setDatePreset,
+        billSeriesMode, setBillSeriesMode,
         customStartDate, setCustomStartDate,
         customEndDate, setCustomEndDate,
         appliedFilters, setAppliedFilters,

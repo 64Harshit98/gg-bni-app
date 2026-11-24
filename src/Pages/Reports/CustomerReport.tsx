@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { Modal } from '../../constants/Modal';
 import BackButton from '../../Components/BackButton';
+import { KSeriesButton } from '../../Components/KBillButton';
 import { State } from '../../enums';
 import { ROUTES } from '../../constants/routes.constants';
 import useCustomerReport from './CustomerReportComponents/useCustomerReport';
@@ -127,6 +128,8 @@ const CustomerReport: React.FC = () => {
     lastUpdated,
     error,
     refresh,
+    billSeriesMode,
+    setBillSeriesMode,
   } = useCustomerReport();
 
   const navigate = useNavigate();
@@ -1701,8 +1704,9 @@ const CustomerReport: React.FC = () => {
       )}
 
       {/* DATE FILTERS */}
-      <div className="relative mb-4 flex items-center gap-3">
-        <div className="flex flex-1 gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="relative mb-4 flex items-center gap-2 md:gap-3">
+        <KSeriesButton mode={billSeriesMode} onChange={setBillSeriesMode} />
+        <div className="flex flex-1 min-w-0 gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {DATE_PRESETS.map((p) => (
             <button key={p.value} onClick={() => handleDatePresetChange(p.value)} className={chipClass(datePreset === p.value)}>
               <span className="md:hidden">{p.shortLabel}</span>

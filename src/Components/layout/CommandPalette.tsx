@@ -5,6 +5,7 @@ import { ArrowRight, Search } from 'lucide-react';
 import { ROUTES } from '../../constants/routes.constants';
 import { ROLES } from '../../enums';
 import { useAuth } from '../../context/auth-context';
+import { SHORTCUTS } from '../../lib/shortcuts';
 
 /**
  * Some destinations are NOT pages — they open a modal that lives in the layout
@@ -22,6 +23,7 @@ export interface Destination {
   action?: LayoutAction; // opens a layout-level modal instead of navigating
   state?: Record<string, unknown>; // router state passed on navigate (e.g. open a modal on the target page)
   ownerOnly?: boolean; // hide for non-owner roles
+  shortcut?: string; // keyboard shortcut shown on the row, e.g. "Alt+S"
 }
 
 // If TypeScript says a ROUTES key doesn't exist, just delete that line.
@@ -33,9 +35,9 @@ export const DESTINATIONS: Destination[] = [
   { label: 'Edit Profile', hint: 'Update your business profile', to: ROUTES.EDIT_PROFILE, keywords: 'account business' },
 
   // --- Create / Entry ---
-  { label: 'Add Sales', hint: 'Create a new sale', to: ROUTES.SALES, keywords: 'sale bill invoice' },
+  { label: 'Add Sales', hint: 'Create a new sale', to: ROUTES.SALES, keywords: 'sale bill invoice', shortcut: SHORTCUTS.newSale.label },
   { label: 'Sales Return', hint: 'Return items sold to customer', to: ROUTES.SALES_RETURN, keywords: 'return credit note' },
-  { label: 'Add Purchase', hint: 'Record a purchase', to: ROUTES.PURCHASE, keywords: 'buy supplier' },
+  { label: 'Add Purchase', hint: 'Record a purchase', to: ROUTES.PURCHASE, keywords: 'buy supplier', shortcut: SHORTCUTS.newPurchase.label },
   { label: 'Purchase Return', hint: 'Return items to supplier', to: ROUTES.PURCHASE_RETURN, keywords: 'return debit note' },
   { label: 'Print Barcode', hint: 'Generate item barcodes', to: ROUTES.PRINTQR, keywords: 'qr label' },
   { label: 'Add Expense', hint: 'Record a new expense', action: 'add-expense', keywords: 'kharcha spend cost' },
@@ -242,7 +244,14 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                 <span className="block font-medium text-slate-800">{d.label}</span>
                 <span className="block text-xs text-slate-500">{d.hint}</span>
               </span>
-              <ArrowRight className="size-4 shrink-0 text-slate-400 opacity-0 transition-opacity group-hover:opacity-100" />
+              <span className="flex shrink-0 items-center gap-2">
+                {d.shortcut && (
+                  <kbd className="hidden rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-sans text-[10px] font-medium text-slate-500 sm:block">
+                    {d.shortcut.replace('+', ' ')}
+                  </kbd>
+                )}
+                <ArrowRight className="size-4 shrink-0 text-slate-400 opacity-0 transition-opacity group-hover:opacity-100" />
+              </span>
             </button>
           ))}
         </div>

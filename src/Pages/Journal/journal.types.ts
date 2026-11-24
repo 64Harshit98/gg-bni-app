@@ -76,6 +76,7 @@ export interface Invoice {
   };
   /** What this bill did to the customer's loyalty points (see lib/loyalty.ts). */
   loyalty?: import('../../lib/loyalty').SaleLoyalty | null;
+  isExemptBill?: boolean;
 }
 
 export interface PdfData {
@@ -85,6 +86,8 @@ export interface PdfData {
   enableWatermark?: boolean;
   gstScheme: string;
   taxType: string;
+  /** K (kacha) bill — the PDF prints it without any GST. */
+  isExemptBill?: boolean;
   companyName: string;
   companyAddress: string;
   companyContact: string;

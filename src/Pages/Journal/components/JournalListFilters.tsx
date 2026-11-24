@@ -7,6 +7,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../context/auth-context';
 import { ROLES } from '../../../enums';
 import { todayDateInputValue } from '../../../lib/format';
+import { KSeriesButton } from '../../../Components/KBillButton';
+import type { BillSeriesMode } from '../../../lib/billSeries';
 
 export interface JournalSummary {
   total: number;
@@ -50,6 +52,8 @@ interface JournalListFiltersProps {
   // Sales/Purchase toggle
   activeType: 'Debit' | 'Credit';
   setActiveType: (v: 'Debit' | 'Credit') => void;
+  billSeriesMode: BillSeriesMode;
+  setBillSeriesMode: (v: BillSeriesMode) => void;
   hasPermission: (perm: Permissions) => boolean;
 
   // Summary strip (derived from the filtered list)
@@ -124,6 +128,8 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
   setCustomEndDate,
   activeType,
   setActiveType,
+  billSeriesMode,
+  setBillSeriesMode,
   hasPermission,
   summary,
 }) => {
@@ -311,36 +317,42 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
         <div className="hidden lg:block lg:order-4 basis-full h-4" aria-hidden="true" />
 
         {/* Sales / Purchase (Step 4) */}
-        <div className="order-5 basis-full lg:basis-auto">
-          <TutorialStep
-            step={4}
-            currentStep={tutorialStep}
-            text="Switch between Sales (money received) and Purchase (money spent) transactions here."
-            onNext={() => next(5)}
-            onSkip={skip}
-          >
-            <div role="group" className="flex gap-0.5 p-[3px] bg-[#f5f7ff] border border-[#dfe6fb] rounded-sm w-full lg:w-[240px]">
-              <button
-                type="button"
-                aria-pressed={activeType === 'Credit'}
-                onClick={() => setActiveType('Credit')}
-                className={`flex-1 h-9 rounded-sm text-sm font-medium transition-colors ${activeType === 'Credit' ? 'bg-[#0f172b] text-white' : 'text-[#45556c] hover:bg-white'
-                  }`}
-              >
-                Sales
-              </button>
-              <button
-                type="button"
-                aria-pressed={activeType === 'Debit'}
-                onClick={() => setActiveType('Debit')}
-                disabled={!hasPermission(Permissions.HiddenProFeatures)}
-                className={`flex-1 h-9 rounded-sm text-sm font-medium transition-colors disabled:opacity-45 disabled:cursor-not-allowed ${activeType === 'Debit' ? 'bg-[#0f172b] text-white' : 'text-[#45556c] hover:bg-white'
-                  }`}
-              >
-                {hasPermission(Permissions.HiddenProFeatures) ? 'Purchase' : '🔒 Purchase'}
-              </button>
-            </div>
-          </TutorialStep>
+        <div className="order-5 basis-full lg:basis-auto flex items-center gap-2">
+          <div className="flex-1 lg:flex-initial">
+            <TutorialStep
+              step={4}
+              currentStep={tutorialStep}
+              text="Switch between Sales (money received) and Purchase (money spent) transactions here."
+              onNext={() => next(5)}
+              onSkip={skip}
+            >
+              <div role="group" className="flex gap-0.5 p-[3px] bg-[#f5f7ff] border border-[#dfe6fb] rounded-sm w-full lg:w-[240px]">
+                <button
+                  type="button"
+                  aria-pressed={activeType === 'Credit'}
+                  onClick={() => setActiveType('Credit')}
+                  className={`flex-1 h-9 rounded-sm text-sm font-medium transition-colors ${activeType === 'Credit' ? 'bg-[#0f172b] text-white' : 'text-[#45556c] hover:bg-white'
+                    }`}
+                >
+                  Sales
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={activeType === 'Debit'}
+                  onClick={() => setActiveType('Debit')}
+                  disabled={!hasPermission(Permissions.HiddenProFeatures)}
+                  className={`flex-1 h-9 rounded-sm text-sm font-medium transition-colors disabled:opacity-45 disabled:cursor-not-allowed ${activeType === 'Debit' ? 'bg-[#0f172b] text-white' : 'text-[#45556c] hover:bg-white'
+                    }`}
+                >
+                  {hasPermission(Permissions.HiddenProFeatures) ? 'Purchase' : '🔒 Purchase'}
+                </button>
+              </div>
+            </TutorialStep>
+          </div>
+
+          {activeType === 'Credit' && (
+            <KSeriesButton mode={billSeriesMode} onChange={setBillSeriesMode} />
+          )}
         </div>
 
         {/* Desktop only: always-visible search field (Step 1) */}

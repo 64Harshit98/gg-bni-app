@@ -28,13 +28,14 @@ const DownloadBill: React.FC = () => {
       try {
         // 1. References
         const invoiceRef = doc(db, 'companies', companyId, 'sales', invoiceId);
+        const exemptInvoiceRef = doc(db, 'companies', companyId, 'exemptSales', invoiceId);
         const businessRef = doc(db, 'companies', companyId, 'business_info', companyId);
         const salesSettingsRef = doc(db, 'companies', companyId, 'settings', 'sales-settings');
         const billSettingsRef = doc(db, 'companies', companyId, 'settings', 'bill');
         const companyRef = doc(db, 'companies', companyId);
 
         // 2. Fetch everything (logo failure must never break the bill)
-        const [invoiceSnap, businessSnap, salesSnap, billSnap, companySnap, companyLogoBase64] =
+        const [primaryInvoiceSnap, businessSnap, salesSnap, billSnap, companySnap, companyLogoBase64] =
           await Promise.all([
             getDoc(invoiceRef),
             getDoc(businessRef),
@@ -43,6 +44,10 @@ const DownloadBill: React.FC = () => {
             getDoc(companyRef),
             resolveCompanyLogoBase64(companyId).catch(() => ''),
           ]);
+
+        const invoiceSnap = primaryInvoiceSnap.exists()
+          ? primaryInvoiceSnap
+          : await getDoc(exemptInvoiceRef);
 
         if (!invoiceSnap.exists()) throw new Error('Invoice not found');
 
@@ -187,6 +192,8 @@ const DownloadBill: React.FC = () => {
           enableItemImages: false, // item photos need item master; skipped on public page
           gstScheme: salesSettings?.gstScheme || '',
           taxType: resolvedInvoiceTaxType,
+          // Found in exemptSales (or flagged on the bill) → K bill, printed without GST
+          isExemptBill: invoiceSnap.ref.parent.id === 'exemptSales' || Boolean(invoiceData.isExemptBill),
 
           companyName: businessInfo?.businessName || businessInfo?.name || '',
           companyAddress: addressParts || businessInfo?.address || '',

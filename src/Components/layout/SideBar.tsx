@@ -28,7 +28,18 @@ export interface QuickAction {
   permission?: AnyPermission | null;
   to?: string;
   onClick?: () => void;
+  /** Keyboard shortcut shown next to the label, e.g. "Alt+S". */
+  shortcut?: string;
 }
+
+const ShortcutHint = ({ keys }: { keys: string }) => (
+  <kbd
+    aria-hidden="true"
+    className="ml-auto shrink-0 rounded-sm border border-slate-200 bg-white px-1.5 py-0.5 font-sans text-[10px] font-semibold leading-none text-slate-500"
+  >
+    {keys.replace('+', ' ')}
+  </kbd>
+);
 
 export interface SidebarTutorial {
   activeKey: string | null; // 'nav:<to>' | 'qa:<key>' ; null = no step active
@@ -182,7 +193,10 @@ export function Sidebar({ navItems, quickActions, userName, userRole, switcher, 
                 key={action.key}
                 to={action.to}
                 end
-                title={collapsed ? action.label : undefined}
+                aria-keyshortcuts={action.shortcut}
+                title={collapsed || action.shortcut
+                  ? `${action.label}${action.shortcut ? ` (${action.shortcut})` : ''}`
+                  : undefined}
                 className={({ isActive }) =>
                   cx(
                     rowBase,
@@ -199,6 +213,7 @@ export function Sidebar({ navItems, quickActions, userName, userRole, switcher, 
                       {action.icon}
                     </span>
                     {!collapsed && <span className="truncate">{action.label}</span>}
+                    {!collapsed && action.shortcut && <ShortcutHint keys={action.shortcut} />}
                   </>
                 )}
               </NavLink>

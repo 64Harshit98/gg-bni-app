@@ -4,7 +4,7 @@ import { db } from '../../../lib/Firebase';
 import { ROUTES } from '../../../constants/routes.constants';
 import type { Order } from '../../Orders';
 import type { TransactionItem, ExchangeItem, Customer } from '../ordersReturn.types';
-import { mapOrderItemToTransactionItem } from '../ordersReturn.calculations';
+import { mapOrderItemToTransactionItem, orderPaidSoFar } from '../ordersReturn.calculations';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Moved verbatim from OrdersReturn.tsx (formatting/hoisting only — no
@@ -105,19 +105,18 @@ export const useSaleSelection = ({
     }
   }, [locationState, salesList]);
 
-  const paidAmountOnSale = useMemo(() => {
-    const methods = selectedSale?.paymentMethods || {};
-    return Object.entries(methods)
-      .filter(([key]) => key !== 'due')
-      .reduce((sum, [, val]) => sum + (Number(val) || 0), 0);
-  }, [selectedSale]);
+  // What was actually paid — not "is there a stored due". Orders placed from the shared
+  // catalogue have no payment entries (no `due` key) until a payment is recorded, so the
+  // old check treated those unpaid orders as paid and allowed credit notes / refunds.
+  const paidAmountOnSale = useMemo(() => orderPaidSoFar(selectedSale as any), [selectedSale]);
 
-  const isDueSale = paidAmountOnSale <= 0 && (selectedSale?.paymentMethods?.due ?? 0) > 0;
+  /** Nothing paid yet: no credit note / cash refund — a return only lowers what's owed. */
+  const isDueSale = !!selectedSale && paidAmountOnSale <= 0.01 && Number(selectedSale.totalAmount || 0) > 0;
 
+  // Unpaid: Exchange is the only option (with or without new items — see handleProcessReturn)
   useEffect(() => {
-    if (isDueSale) {
-      setModeOfReturn('Exchange');
-    }
+    if (isDueSale) setModeOfReturn('Exchange');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDueSale]);
 
   // Click Outside Handler for both Dropdowns

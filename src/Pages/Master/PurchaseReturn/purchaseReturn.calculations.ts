@@ -222,15 +222,10 @@ export const calculatePurchaseReturnTotals = (
 
   const netReturnVal = returnGross + returnExclusiveTax - discountDeducted;
   const netNewItemsVal = newItemsGross + newItemsExclusiveTax;
-  let finalBalance = netReturnVal - netNewItemsVal;
-
-  const paidAmountOnPurchase = Object.entries(selectedPurchase?.paymentMethods || {})
-    .filter(([mode]) => mode !== 'due')
-    .reduce((sum, [, val]) => sum + Number(val || 0), 0);
-
-  finalBalance = finalBalance > 0
-    ? Math.min(finalBalance, paidAmountOnPurchase)
-    : finalBalance;
+  // The real difference. How much of it the supplier pays back (vs. just lowering what
+  // you still owe) is split by splitReturnBalance in useSavePurchaseReturn — this used to
+  // cap it at everything paid, which still paid back money that only covered the due.
+  const finalBalance = netReturnVal - netNewItemsVal;
 
   return {
     totalReturnValue: netReturnVal,

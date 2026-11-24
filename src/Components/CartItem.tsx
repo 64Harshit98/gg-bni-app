@@ -1,6 +1,7 @@
 import { FiEdit, FiTrash2 } from 'react-icons/fi';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import type { Item } from '../constants/models';
+import { buildItemMatcher, type ItemMatcher } from '../lib/itemNameMatch';
 import { Permissions, State } from '../enums';
 import ShowWrapper from '../context/ShowWrapper';
 import { useFormatNumber } from '../lib/formatNumber';
@@ -62,6 +63,8 @@ interface GenericCartListProps<T extends CartItem> {
   newItemExtraPrice?: { key: string; label: string };
   /** Focus this line's Net Price box once (set right after a quick-add). */
   focusLineId?: string | null;
+  /** NEW lines: link the line to an item already in the catalogue (name box doubles as a search). */
+  onAttachNewItem?: (lineId: string, item: Item) => void;
 }
 // "(Not in DB)" flag ko red color mein dikhane ke liye name ko split karta hai
 const NOT_IN_DB_FLAG = '(Not in DB)';
@@ -142,23 +145,98 @@ const FloatingInput = ({
 };
 
 
+const fmtRs = (n: unknown) => {
+  const v = Number(n) || 0;
+  return `₹${v.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+};
+
+/** One catalogue item offered in the NEW row's name box. */
+const MatchOption = ({ match, active, onPick, onHover }: {
+  match: Item; active: boolean; onPick: () => void; onHover: () => void;
+}) => {
+  const m = match as any;
+  const details = [
+    Number(m.mrp) > 0 && `MRP ${fmtRs(m.mrp)}`,
+    Number(m.purchasePrice) > 0 && `Cost ${fmtRs(m.purchasePrice)}`,
+    m.stock !== undefined && `Stock ${Number(m.stock) || 0}`,
+  ].filter(Boolean).join(' · ');
+  return (
+    <button
+      type="button"
+      role="option"
+      aria-selected={active}
+      // mousedown, not click: the name box must not lose focus (and close the list) first
+      onMouseDown={(e) => { e.preventDefault(); onPick(); }}
+      onMouseEnter={onHover}
+      className={`w-full flex items-center gap-2 px-2.5 py-2 text-left ${active ? 'bg-blue-50' : 'bg-white hover:bg-blue-50'}`}
+    >
+      <span className="flex-1 min-w-0">
+        <span className="block text-sm font-medium text-gray-800 truncate">{match.name}</span>
+        {details && <span className="block text-[11px] text-gray-500 truncate">{details}</span>}
+      </span>
+      <span className="flex-shrink-0 text-xs font-semibold text-blue-600">Link</span>
+    </button>
+  );
+};
+
 // Inline details for a quick-added (NEW) line. One block for both layouts:
 // phone = name on its own row + a sideways-scrolling row of numbers (fits 360px),
 // sm+ = everything on one row under the main row.
+//
+// With `matcher` + `onAttach`, the name box is also a search: typing lists items
+// already in the catalogue, and picking one links this line to it (no new item
+// is created). Lines from a scanned bill also show their best guess up front.
 const NewItemStrip = ({
   item,
   extraPrice,
   onChange,
+  matcher,
+  suggestion,
+  onAttach,
 }: {
   item: CartItem;
   extraPrice?: { key: string; label: string };
   onChange: (field: 'name' | 'mrp' | 'tax' | 'extraPrice', value: string) => void;
+  matcher?: ItemMatcher;
+  suggestion?: Item;
+  onAttach?: (picked: Item) => void;
 }) => {
   const tax = item.tax ?? item.taxRate ?? 0;
   const numBox = 'w-full h-9 px-1.5 text-sm text-right border border-amber-300 rounded-sm bg-white focus:border-blue-500';
   const label = 'absolute -top-1.5 left-1.5 bg-amber-50 px-1 text-[10px] text-gray-500 leading-none z-10';
+
+  const canSearch = !!matcher && !!onAttach;
+  const [focused, setFocused] = useState(false);
+  const [activeIdx, setActiveIdx] = useState(0);
+  const query = (item.name || '').trim();
+  const matches = useMemo(
+    () => (canSearch && query.length >= 2 ? matcher!.rank(query, 5, 0.4).map(m => m.item) : []),
+    [canSearch, matcher, query],
+  );
+  // Same name as an existing item: saving would be refused, so offer the link right away
+  const exact = canSearch && query ? matcher!.exact(query) : undefined;
+  const scannedName: string | undefined = item.scannedName;
+  const showList = focused && matches.length > 0;
+  const showSuggestion = canSearch && !focused && !exact && !!suggestion;
+
+  useEffect(() => { setActiveIdx(0); }, [query]);
+
+  const pick = (it: Item) => {
+    setFocused(false);
+    onAttach?.(it);
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showList) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIdx(i => Math.min(matches.length - 1, i + 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActiveIdx(i => Math.max(0, i - 1)); }
+    else if (e.key === 'Enter') { e.preventDefault(); pick(matches[activeIdx]); }
+    else if (e.key === 'Escape') { setFocused(false); }
+  };
+
   return (
-    <div className="border-t border-amber-200 bg-amber-50 px-2.5 sm:px-3 pt-2.5 pb-2 flex flex-col sm:flex-row sm:items-center gap-2">
+    <div className="border-t border-amber-200 bg-amber-50">
+    <div className="px-2.5 sm:px-3 pt-2.5 pb-2 flex flex-col sm:flex-row sm:items-center gap-2">
       <div className="flex items-center gap-2 min-w-0 sm:flex-1">
         <span
           className="text-[10px] font-bold tracking-wide uppercase bg-amber-500 text-white px-1.5 py-0.5 rounded-sm flex-shrink-0"
@@ -167,14 +245,20 @@ const NewItemStrip = ({
           New
         </span>
         <div className="relative flex-1 min-w-0">
-          <label className={label}>Item name</label>
+          <label className={label}>{canSearch ? 'Item name · type to find existing' : 'Item name'}</label>
           <input
             type="text"
             value={item.name}
-            onChange={(e) => onChange('name', e.target.value)}
+            onChange={(e) => { onChange('name', e.target.value); setFocused(true); }}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            onKeyDown={onKeyDown}
             placeholder="Item name"
             autoComplete="off"
-            enterKeyHint="next"
+            enterKeyHint={showList ? 'search' : 'next'}
+            role={canSearch ? 'combobox' : undefined}
+            aria-expanded={canSearch ? showList : undefined}
+            aria-autocomplete={canSearch ? 'list' : undefined}
             className="w-full h-9 px-2 text-sm border border-amber-300 rounded-sm bg-white outline-none focus:border-blue-500"
           />
         </div>
@@ -218,6 +302,53 @@ const NewItemStrip = ({
         <span className="hidden lg:inline text-[11px] text-amber-700 whitespace-nowrap">Saved to items with this bill</span>
       </div>
     </div>
+
+    {scannedName && scannedName !== query && (
+      <p className="m-0 px-2.5 sm:px-3 pb-2 -mt-1 text-[11px] text-gray-500 truncate" title={scannedName}>
+        On bill: {scannedName}
+      </p>
+    )}
+
+    {showList && (
+      <div className="mx-2.5 sm:mx-3 mb-2.5 border border-blue-200 rounded-sm overflow-hidden divide-y divide-gray-100" role="listbox">
+        <p className="m-0 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 bg-gray-50">
+          Already in your items? Link it
+        </p>
+        {matches.map((m, i) => (
+          <MatchOption key={m.id} match={m} active={i === activeIdx} onPick={() => pick(m)} onHover={() => setActiveIdx(i)} />
+        ))}
+        <button
+          type="button"
+          // no preventDefault: pressing this takes focus off the name box, which closes the list
+          onMouseDown={() => setFocused(false)}
+          className="w-full px-2.5 py-2 text-left text-xs text-amber-700 bg-white hover:bg-amber-50"
+        >
+          Keep "{query}" as a new item
+        </button>
+      </div>
+    )}
+
+    {exact && !showList && (
+      <div className="mx-2.5 sm:mx-3 mb-2.5 flex items-center gap-2 px-2.5 py-2 rounded-sm bg-white border border-red-200 text-xs text-red-700">
+        <span className="flex-1 min-w-0"><b className="font-semibold">"{exact.name}"</b> is already in your items.</span>
+        <button type="button" onClick={() => pick(exact)} className="flex-shrink-0 h-7 px-2.5 rounded-sm bg-blue-600 text-white font-semibold hover:bg-blue-700">
+          Link
+        </button>
+      </div>
+    )}
+
+    {showSuggestion && (
+      <div className="mx-2.5 sm:mx-3 mb-2.5 flex items-center gap-2 px-2.5 py-2 rounded-sm bg-white border border-blue-200 text-xs text-gray-700">
+        <span className="flex-1 min-w-0 truncate">
+          Looks like <b className="font-semibold text-gray-900">{suggestion!.name}</b>
+          {Number((suggestion as any).mrp) > 0 && <span className="text-gray-500"> · MRP {fmtRs((suggestion as any).mrp)}</span>}
+        </span>
+        <button type="button" onClick={() => pick(suggestion!)} className="flex-shrink-0 h-7 px-2.5 rounded-sm bg-blue-600 text-white font-semibold hover:bg-blue-700">
+          Link
+        </button>
+      </div>
+    )}
+    </div>
   );
 };
 
@@ -249,9 +380,16 @@ export const GenericCartList = <T extends CartItem>({
   onNewItemFieldChange,
   newItemExtraPrice,
   focusLineId,
+  onAttachNewItem,
 }: GenericCartListProps<T>) => {
   const fmt = useFormatNumber();
   const listRef = useRef<HTMLDivElement | null>(null);
+  const hasNewLines = items.some(i => i.isNewItem === true);
+  // Only built while a NEW line is on the bill and linking is wired up
+  const matcher = useMemo(
+    () => (onAttachNewItem && hasNewLines ? buildItemMatcher(availableItems) : undefined),
+    [onAttachNewItem, hasNewLines, availableItems],
+  );
 
   // After a quick-add: jump straight to the new line's price (phone keypad opens too).
   // Both layouts render an input; only the visible one (phone card or desktop row) gets focus.
@@ -729,6 +867,9 @@ export const GenericCartList = <T extends CartItem>({
                   item={item}
                   extraPrice={newItemExtraPrice}
                   onChange={(field, value) => onNewItemFieldChange(item.id, field, value)}
+                  matcher={matcher}
+                  suggestion={item.scanSuggestionId ? availableItems.find(a => a.id === item.scanSuggestionId) : undefined}
+                  onAttach={onAttachNewItem ? (picked) => onAttachNewItem(item.id, picked) : undefined}
                 />
               )}
               {(Array.isArray(item.priceFlag) ? item.priceFlag : item.priceFlag ? [item.priceFlag] : [])

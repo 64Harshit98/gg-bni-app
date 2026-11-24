@@ -152,7 +152,7 @@ const PurchaseReturnPage: React.FC = () => {
     returnDate, setReturnDate,
     isDrawerOpen, setIsDrawerOpen,
     activeTaxMode, setActiveTaxMode,
-    isPurchaseUnpaid,
+    isPurchaseUnpaid, refundable, dueReduction,
     totalReturnValue, totalNewItemsValue, finalBalance, discountDeducted, totalTax, totalMrp,
     saveReturnTransaction,
     handleProcessReturn: handleProcessReturnBase,
@@ -202,7 +202,7 @@ const PurchaseReturnPage: React.FC = () => {
 
   const modeOptions = [
     { value: 'Debit Note', label: 'Debit note', sub: 'Supplier owes you', disabled: isPurchaseUnpaid },
-    { value: 'Cash Refund', label: 'Refund', sub: 'Supplier pays' },
+    { value: 'Cash Refund', label: 'Refund', sub: 'Supplier pays', disabled: isPurchaseUnpaid },
     { value: 'Exchange', label: 'Exchange', sub: 'Replacement' },
   ];
 
@@ -213,6 +213,15 @@ const PurchaseReturnPage: React.FC = () => {
   );
 
   const balanceTone = finalBalance >= 0 ? 'bg-[#e9faef] text-[#008236]' : 'bg-[#fff3dd] text-[#bb4d00]';
+  // Amount on the balance panel: what the supplier actually pays back, else the full balance
+  const shownBalance = finalBalance > 0 && refundable > 0 ? refundable : finalBalance;
+  // Debit note / refund choice only when some paid money actually comes back
+  const showBalanceSelect = modeOfReturn === 'Exchange' && finalBalance > 0 && refundable > 0;
+  const balanceNote = finalBalance > 0 && refundable <= 0
+    ? (isPurchaseUnpaid ? 'Nothing was paid on this bill, so no money comes back.' : 'This is within what you still owe, so no money comes back.')
+    : refundable > 0 && dueReduction > 0
+      ? `₹${fmt(dueReduction, 2)} first clears what you still owe — only the amount paid over the new total comes back.`
+      : '';
 
   const balanceSelect = (
     <select
@@ -535,11 +544,12 @@ const PurchaseReturnPage: React.FC = () => {
                     </div>
 
                     <div className={`flex items-center justify-between gap-3 rounded-sm px-3.5 py-3 ${balanceTone}`}>
-                      {modeOfReturn === 'Exchange' && finalBalance > 0 ? balanceSelect : (
+                      {showBalanceSelect ? balanceSelect : (
                         <p className="text-sm font-medium">{getBalanceLabel()}</p>
                       )}
-                      <b className="text-2xl font-semibold tabular-nums tracking-tight">₹{fmt(Math.abs(finalBalance), 2)}</b>
+                      <b className="text-2xl font-semibold tabular-nums tracking-tight">₹{fmt(Math.abs(shownBalance), 2)}</b>
                     </div>
+                    {balanceNote && <p className="-mt-1 text-xs text-[#45556c]">{balanceNote}</p>}
 
                     <div className="hidden md:block xl:hidden">
                       <CustomButton onClick={handleProcessReturn} variant={Variant.Payment} className="w-full py-3 text-lg font-semibold shadow-md">Process Transaction</CustomButton>
@@ -591,11 +601,12 @@ const PurchaseReturnPage: React.FC = () => {
               {/* Pinned footer: balance + button hamesha visible */}
               <div className="grid flex-none gap-3">
                 <div className={`flex items-center justify-between gap-3 rounded-sm px-3.5 py-3 ${balanceTone}`}>
-                  {modeOfReturn === 'Exchange' && finalBalance > 0 ? balanceSelect : (
+                  {showBalanceSelect ? balanceSelect : (
                     <span className="text-sm font-medium">{getBalanceLabel()}</span>
                   )}
-                  <b className="text-[26px] font-semibold leading-8 tracking-tight tabular-nums">₹{fmt(Math.abs(finalBalance), 2)}</b>
+                  <b className="text-[26px] font-semibold leading-8 tracking-tight tabular-nums">₹{fmt(Math.abs(shownBalance), 2)}</b>
                 </div>
+                {balanceNote && <p className="-mt-1.5 text-xs text-[#45556c]">{balanceNote}</p>}
                 <button
                   onClick={handleProcessReturn}
                   className="h-[54px] w-full flex-none shrink-0 rounded-sm bg-[#155dfc] text-[15px] font-medium text-white transition-colors hover:bg-[#1447e6] active:scale-[0.99]"

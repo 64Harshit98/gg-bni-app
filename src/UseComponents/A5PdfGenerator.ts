@@ -124,7 +124,25 @@ export const generateA5Invoice = async (
     // returns the Y position where the items table should start.
     const drawHeaderAndParties = (isDuplicate: boolean = false): number => {
         // --- 1. HEADER (colour fill removed, wrapped in a border box — same plain style as A4) ---
-        const headerHeight = showGstinDetails && data.companyGstin ? 26 : 24;
+        // Company address + contact sit under the name (same as A4). The text
+        // block is centred between the QR (left) and logo (right), so the box
+        // height is worked out from the wrapped address before drawing.
+        const nameY = 13;
+        const lineH = 3;
+        const addrStartY = nameY + 4.5;
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7);
+        const headerAddrLines: string[] = data.companyAddress
+            ? doc.splitTextToSize(data.companyAddress, pageWidth - 60)
+            : [];
+        const contactY = addrStartY + (headerAddrLines.length * lineH);
+        const hasContact = !!(data.companyContact && String(data.companyContact).trim());
+        const gstLineY = contactY + (hasContact ? lineH + 0.5 : 0);
+        const estimateY = gstLineY + (showGstinDetails ? lineH + 1.5 : 1.5);
+        const textBottomY = resolvedIsEstimate
+            ? estimateY + 1.5
+            : gstLineY + (showGstinDetails ? lineH : 0) - 1.5;
+        const headerHeight = Math.max(showGstinDetails && data.companyGstin ? 26 : 24, textBottomY + 2);
 
         // Border box around the whole header
         doc.setDrawColor(0, 0, 0);
@@ -165,30 +183,43 @@ export const generateA5Invoice = async (
         doc.setTextColor("#000000");
         doc.setFont("helvetica", "bold");
         doc.setFontSize(22);
-        doc.text(data.companyName || "Giftinguru.com", pageWidth / 2, 13, { align: "center" });
+        doc.text(data.companyName || "Giftinguru.com", pageWidth / 2, nameY, { align: "center" });
+
+        // Company address + contact (moved up from the footer)
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7);
+        if (headerAddrLines.length) {
+            doc.text(headerAddrLines, pageWidth / 2, addrStartY, { align: "center", lineHeightFactor: 1.2 });
+        }
+        if (hasContact) {
+            doc.text(`Phone : ${data.companyContact}`, pageWidth / 2, contactY, { align: "center" });
+        }
 
         // Use the new showGstinDetails switch here
         if (showGstinDetails) {
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(8);
-
             let gstText = safeScheme;
 
             if (safeScheme === "REGULAR" && data.taxType) {
                 gstText += ` (${data.taxType.toLowerCase() === "inclusive" ? "Inclusive" : "Exclusive"})`;
             }
 
-            doc.text(`GST Type: ${gstText}`, pageWidth / 2, 18, { align: "center" });
-            if (data.companyGstin) {
-                doc.setFontSize(7);
-                doc.text(`GSTIN: ${data.companyGstin}`, pageWidth / 2, 21, { align: "center" });
-            }
+            doc.setFont("helvetica", "bold");
+            doc.text(
+                data.companyGstin
+                    ? `GSTIN : ${data.companyGstin}   GST Type : ${gstText}`
+                    : `GST Type : ${gstText}`,
+                pageWidth / 2,
+                gstLineY,
+                { align: "center" }
+            );
+            doc.setFont("helvetica", "normal");
         }
 
         if (resolvedIsEstimate) {
+            doc.setFont("helvetica", "bold");
             doc.setFontSize(10);
             doc.setTextColor("#000000");
-            doc.text("ESTIMATE", pageWidth / 2, 18, { align: "center" });
+            doc.text("ESTIMATE", pageWidth / 2, estimateY + 1.5, { align: "center" });
         }
 
         // --- 2. META INFO ROW ---
@@ -749,7 +780,7 @@ export const generateA5Invoice = async (
         }
         // ===== SMART SPACE CALCULATION =====
 
-        const footerHeight = 18;
+        const footerHeight = 12;
 
         // --- 4. BANK DETAIL ---
         if (!resolvedIsEstimate) {
@@ -889,15 +920,7 @@ export const generateA5Invoice = async (
         doc.setDrawColor(200, 200, 200);
         doc.line(5, footerY, rightMargin, footerY);
 
-        doc.setTextColor("#000000");
-        doc.setFontSize(8);
-
-        const footeraddressLines = doc.splitTextToSize(data.companyAddress || "", 70);
-        doc.text(footeraddressLines, 10, footerY + 6);
-
-        const addressEndY = footerY + 6 + (footeraddressLines.length * 3.2);
-
-        doc.text(`Contact No. - ${data.companyContact || ""}`, 10, addressEndY + 1);
+        // Company address + contact now print in the header (same as A4).
 
         // ===== BRANDING =====
         const pbText = "Powered by ";
@@ -912,22 +935,22 @@ export const generateA5Invoice = async (
         let brandingX = rightMargin - (pbWidth + linkWidth);
 
         doc.setTextColor(0, 0, 0);
-        doc.text(pbText, brandingX, footerY + 8);
+        doc.text(pbText, brandingX, footerY + 5);
         brandingX += pbWidth;
 
         doc.setTextColor(0, 102, 204);
-        doc.text(linkText, brandingX, footerY + 8);
+        doc.text(linkText, brandingX, footerY + 5);
 
         doc.setDrawColor(0, 102, 204);
-        doc.line(brandingX, footerY + 8.5, brandingX + linkWidth, footerY + 8.5);
+        doc.line(brandingX, footerY + 5.5, brandingX + linkWidth, footerY + 5.5);
 
-        doc.link(brandingX, footerY + 5, linkWidth, 4, { url: "https://www.sellar.in" });
+        doc.link(brandingX, footerY + 2, linkWidth, 4, { url: "https://www.sellar.in" });
 
         // ===== MADE WITH LOVE =====
         doc.setFont("helvetica", "normal");
         doc.setFontSize(7);
         doc.setTextColor(0, 0, 0);
-        doc.text("Made with love for a dukandar, by a dukandar", rightMargin, footerY + 11.5, { align: "right" });
+        doc.text("Made with love for a dukandar, by a dukandar", rightMargin, footerY + 8.5, { align: "right" });
 
     }; // end drawPage
 

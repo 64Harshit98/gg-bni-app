@@ -168,7 +168,7 @@ const SalesReturnPage: React.FC = () => {
     activeTaxMode, setActiveTaxMode,
     returnSuccess, setReturnSuccess,
     totalReturnGross, totalReturnValue, totalExchangeValue, finalBalance, discountDeducted, totalMrp, totalTax,
-    paidAmountOnSale, isDueSale,
+    paidAmountOnSale, isDueSale, refundable, dueReduction,
     saveReturnTransaction,
     handleProcessReturn: handleProcessReturnBase,
     getBalanceLabel: getBalanceLabelBase,
@@ -254,17 +254,14 @@ const SalesReturnPage: React.FC = () => {
 
   if (isLoading) return <div className="flex min-h-screen items-center justify-center bg-[#eef2ff] text-[#45556c]">Loading...</div>;
 
-  // Option values are intentionally different between mobile ("Refund") and desktop ("Cash Refund"), as before.
+  // Same value on phone and desktop: the save only recognises "Cash Refund" (the phone used
+  // "Refund", so a refund made on a phone was never recorded). Nothing paid → no Refund / Credit note.
   const mobileModeOptions = [
-    { value: 'Refund', label: 'Refund', sub: 'Money back' },
+    { value: 'Cash Refund', label: 'Refund', sub: 'Money back', disabled: isDueSale },
     { value: 'Exchange', label: 'Exchange', sub: 'Swap items' },
     { value: 'Credit Note', label: 'Credit note', sub: 'Store credit', disabled: isDueSale },
   ];
-  const desktopModeOptions = [
-    { value: 'Cash Refund', label: 'Refund', sub: 'Money back' },
-    { value: 'Exchange', label: 'Exchange', sub: 'Swap items' },
-    { value: 'Credit Note', label: 'Credit note', sub: 'Store credit', disabled: isDueSale },
-  ];
+  const desktopModeOptions = mobileModeOptions;
 
   // selectedSale may not carry totalAmount (e.g. opened via route state) — fall back to the same list the dropdown uses.
   const listedSale: any = selectedSale ? salesList.find((x: any) => x.id === (selectedSale as any).id) : undefined;
@@ -274,6 +271,15 @@ const SalesReturnPage: React.FC = () => {
   const billPaid = Number(paidAmountOnSale ?? 0);
 
   const balanceTone = finalBalance >= 0 ? 'bg-[#e9faef] text-[#008236]' : 'bg-[#ffeef0] text-[#d5000c]';
+  // Amount on the balance panel: what actually goes back, else the full balance
+  const shownBalance = finalBalance > 0 && refundable > 0 ? refundable : finalBalance;
+  // Credit / refund choice only when some paid money actually goes back
+  const showBalanceSelect = modeOfReturn === 'Exchange' && finalBalance > 0 && refundable > 0;
+  const balanceNote = finalBalance > 0 && refundable <= 0
+    ? (isDueSale ? 'Nothing was paid on this sale, so no money goes back.' : 'This is within what’s still owed, so no money goes back.')
+    : refundable > 0 && dueReduction > 0
+      ? `₹${fmt(dueReduction, 2)} first clears what’s still owed — only the amount paid over the new total goes back.`
+      : '';
 
   const balanceSelect = (
     <select
@@ -643,11 +649,12 @@ const SalesReturnPage: React.FC = () => {
                     </div>
 
                     <div className={`flex items-center justify-between gap-3 rounded-sm px-3.5 py-3 ${balanceTone}`}>
-                      {modeOfReturn === 'Exchange' && finalBalance > 0 ? balanceSelect : (
+                      {showBalanceSelect ? balanceSelect : (
                         <p className="text-sm font-medium">{getBalanceLabel()}</p>
                       )}
-                      <b className="text-2xl font-semibold tabular-nums tracking-tight">₹{fmt(Math.abs(finalBalance), 2)}</b>
+                      <b className="text-2xl font-semibold tabular-nums tracking-tight">₹{fmt(Math.abs(shownBalance), 2)}</b>
                     </div>
+                    {balanceNote && <p className="-mt-1 text-xs text-[#45556c]">{balanceNote}</p>}
 
                     <div className="hidden md:block xl:hidden">
                       <CustomButton onClick={handleProcessReturn} variant={Variant.Payment} className="w-full py-3 text-lg font-semibold shadow-md">Process Transaction</CustomButton>
@@ -703,11 +710,12 @@ const SalesReturnPage: React.FC = () => {
               {/* Pinned footer: balance + button hamesha visible */}
               <div className="grid flex-none gap-3">
                 <div className={`flex items-center justify-between gap-3 rounded-sm px-3.5 py-3 ${balanceTone}`}>
-                  {modeOfReturn === 'Exchange' && finalBalance > 0 ? balanceSelect : (
+                  {showBalanceSelect ? balanceSelect : (
                     <span className="text-sm font-medium">{getBalanceLabel()}</span>
                   )}
-                  <b className="text-[26px] font-semibold leading-8 tracking-tight tabular-nums">₹{fmt(Math.abs(finalBalance), 2)}</b>
+                  <b className="text-[26px] font-semibold leading-8 tracking-tight tabular-nums">₹{fmt(Math.abs(shownBalance), 2)}</b>
                 </div>
+                {balanceNote && <p className="-mt-1.5 text-xs text-[#45556c]">{balanceNote}</p>}
                 <button
                   onClick={handleProcessReturn}
                   className="h-[54px] w-full flex-none shrink-0 rounded-sm bg-[#155dfc] text-[15px] font-medium text-white transition-colors hover:bg-[#1447e6] active:scale-[0.99]"

@@ -50,7 +50,13 @@ export const useOrdersList = ({ companyId, isTutorialActive, tutorialStep }: Use
     const [activeStatusTab, setActiveStage] = useState<OrderStatus>(
         (location.state?.defaultStatus as OrderStatus) || 'Confirmed'
     );
-    const [activeDateFilter, setActiveDateFilter] = useState<string>('today');
+    // Opens on the last 30 days — served from the local orders cache, so the
+    // wider default costs no extra reads after the first sync.
+    const [activeDateFilter, setActiveDateFilter] = useState<string>(() =>
+        location.state?.startDate && location.state?.endDate
+            ? (DATE_FILTERS.some(f => f.value === location.state.activeDateFilter) ? location.state.activeDateFilter : 'custom')
+            : 'last30'
+    );
     const [searchQuery, setSearchQuery] = useState('');
     const [showSearch, setShowSearch] = useState(false);
     const [expandedorderId, setExpandedorderId] = useState<string | null>(null);
@@ -70,10 +76,7 @@ export const useOrdersList = ({ companyId, isTutorialActive, tutorialStep }: Use
             return { start, end };
         }
 
-        return {
-            start: new Date(new Date().setHours(0, 0, 0, 0)),
-            end: new Date(new Date().setHours(23, 59, 59, 999))
-        };
+        return getDateRange('last30');
     });
 
     // Every stage opens on All, so a filter picked in one stage can't hide orders in the next

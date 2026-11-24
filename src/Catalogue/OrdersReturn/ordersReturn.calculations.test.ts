@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeOrderReturn, isOrderTaxEnabled, mapOrderItemToTransactionItem } from './ordersReturn.calculations';
+import { computeOrderReturn, isOrderTaxEnabled, mapOrderItemToTransactionItem, orderPaidSoFar } from './ordersReturn.calculations';
 
 const exclusiveOrder = (extra: Record<string, any> = {}) => ({
     gstScheme: 'regular',
@@ -97,6 +97,41 @@ describe('computeOrderReturn', () => {
         const r = computeOrderReturn(order, [rowFor(order, 'a', 1)], [], 'Credit Note', []);
         expect(r.totalReturnValue).toBe(100);
         expect(r.finalBalance).toBe(100);
+    });
+});
+
+describe('money back only if it was paid', () => {
+    // Order total 295 (A 2×100 + B 50, 18% exclusive). Return 1 × A = 118.
+    it('unpaid order: nothing goes back, the whole balance lowers the due', () => {
+        const order = exclusiveOrder();   // no payment entries at all (placed from the catalogue)
+        expect(orderPaidSoFar(order)).toBe(0);
+        const r = computeOrderReturn(order, [rowFor(order, 'a', 1)], [], 'Credit Note', []);
+        expect(r.finalBalance).toBe(118);
+        expect(r.refundable).toBe(0);
+        expect(r.dueReduction).toBe(118);
+    });
+
+    it('unpaid order exchange: a positive balance is not paid out either', () => {
+        const order = exclusiveOrder();
+        const exchange = [{ id: 'x1', originalItemId: 'x', name: 'X', mrp: 60, quantity: 1, unitPrice: 50, salesPrice: 50, amount: 50, discount: 0, basePrice: 60 }];
+        const r = computeOrderReturn(order, [rowFor(order, 'a', 1)], exchange, 'Exchange', [{ id: 'x', tax: 18 }]);
+        expect(r.finalBalance).toBe(59);
+        expect(r.refundable).toBe(0);
+    });
+
+    it('part-paid: the balance clears the due first, only the overpaid part goes back', () => {
+        const order = exclusiveOrder({ paidAmount: 200 });   // owes 95
+        const r = computeOrderReturn(order, [rowFor(order, 'a', 1)], [], 'Credit Note', []);
+        expect(r.after.total).toBe(177);
+        expect(r.refundable).toBe(23);       // paid 200 − new total 177
+        expect(r.dueReduction).toBe(95);
+    });
+
+    it('fully paid: the whole balance can go back', () => {
+        const order = exclusiveOrder({ paymentMethods: { CASH: 295, due: 0 } });
+        const r = computeOrderReturn(order, [rowFor(order, 'a', 1)], [], 'Cash Refund', []);
+        expect(r.refundable).toBe(118);
+        expect(r.dueReduction).toBe(0);
     });
 });
 

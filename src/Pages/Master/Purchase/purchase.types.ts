@@ -44,6 +44,10 @@ export interface PurchaseItem extends Omit<SalesItem, 'finalPrice' | 'effectiveU
   isNewItem?: boolean;
   /** Sale price typed for a quick-added item (saved to the new item, not used on the purchase). */
   salesPrice?: number;
+  /** Cart-only: the item name exactly as read from the supplier bill (Smart Scan). */
+  scannedName?: string;
+  /** Cart-only: a likely catalogue match for a scanned NEW line (shown as "Looks like …"). */
+  scanSuggestionId?: string;
 }
 
 // Moved verbatim from Purchase.tsx (was defined inline around L54-78). The

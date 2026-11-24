@@ -292,6 +292,57 @@ export const usePurchaseCart = ({
             : i));
     };
 
+    // NEW line → an item that's already in the catalogue (picked from the name box).
+    // A rate already on the line (scanned from the bill, or typed) is the real cost and
+    // stays; the MRP comes from the catalogue and the discount is worked out again.
+    // A line with no rate yet takes the catalogue's purchase pricing, like a search add.
+    const attachLineToItem = (lineId: string, picked: Item) => {
+        const inv = picked as any;
+        setItems(prev => prev.map(line => {
+            if (line.id !== lineId) return line;
+            const invMrp = Number(inv.mrp) || 0;
+            const invCost = Number(inv.purchasePrice) || 0;
+            const lineRate = Number(line.purchasePrice) || 0;
+
+            let mrp: number, rate: number, disc: number;
+            if (lineRate > 0) {
+                rate = lineRate;
+                mrp = invMrp > 0 ? invMrp : (Number(line.mrp) || 0);
+                disc = discountFromPrice(mrp, rate);
+            } else if (invCost > 0) {
+                rate = invCost;
+                mrp = invMrp;
+                disc = discountFromPrice(mrp, rate);
+            } else {
+                const d = Number(inv.purchasediscount) || purchaseSettings?.defaultDiscount || 0;
+                const base = invMrp > 0 ? invMrp : (Number(inv.salesPrice) || 0);
+                mrp = invMrp;
+                disc = d;
+                rate = parseFloat((base * (1 - d / 100)).toFixed(2));
+            }
+
+            const next: PurchaseItem = {
+                ...line,
+                productId: picked.id!,
+                name: picked.name || line.name,
+                unit: picked.unit || line.unit,
+                barcode: picked.barcode || '',
+                mrp,
+                purchasePrice: rate,
+                originalPurchasePrice: invCost,
+                discount: disc,
+                purchasediscount: disc,
+                purchasediscount2: 0,
+                taxRate: inv.tax ?? inv.taxRate ?? line.taxRate ?? 0,
+                stock: inv.stock || inv.Stock || 0,
+            };
+            delete next.isNewItem;
+            delete next.scanSuggestionId;
+            delete next.salesPrice;
+            return next;
+        }));
+    };
+
     // --- LOGIC 2: HANDLE PRICE CHANGE (Typing) ---
     const handlePriceChange = (id: string, val: string) => {
         if (val === '' || /^[0-9]*\.?[0-9]*$/.test(val)) {
@@ -585,6 +636,7 @@ const handleAddAsNewLine = () => {
         handleQuickAddItem,
         handleNewItemFieldChange,
         applyNewItemDetails,
+        attachLineToItem,
         handlePriceChange,
         handleDiscountChange,
         handleDiscount2Change,

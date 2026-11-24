@@ -851,6 +851,8 @@ const OrderingPage: React.FC = () => {
                 totalAmount: cartValue,
                 status: 'Upcoming',
                 createdAt: serverTimestamp(),
+                // Every Orders write bumps updatedAt — the orders cache syncs on it
+                updatedAt: serverTimestamp(),
                 userName: customerName,
                 userPhone: customerPhone,
                 companyId: currentUser!.companyId,

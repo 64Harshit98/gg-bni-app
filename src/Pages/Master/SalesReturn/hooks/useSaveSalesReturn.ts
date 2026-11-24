@@ -20,6 +20,7 @@ import {
     sumFinalizedReturnTotals,
     calculateSaveTimeDiscountDeduction,
 } from '../salesReturn.calculations';
+import { isBillUnpaid, splitReturnBalance } from '../../../../shared/calculations/returnBalance';
 import type { SalesData, TransactionItem, ExchangeItem } from '../salesReturn.types';
 import type { Item } from '../../../../constants/models';
 import { addOnStockToRestore } from '../../../../constants/models';
@@ -87,7 +88,18 @@ export const useSaveSalesReturn = ({
     );
 
     const paidAmountOnSale = useMemo(() => calculatePaidAmountOnSale(selectedSale), [selectedSale]);
-    const isDueSale = paidAmountOnSale <= 0 && (selectedSale?.paymentMethods?.due ?? 0) > 0;
+    // The bill's total (route-state sales can arrive without totalAmount — rebuild it from the lines)
+    const billTotal = useMemo(() => {
+        if (!selectedSale) return 0;
+        const saved = Number(selectedSale.totalAmount);
+        if (Number.isFinite(saved) && saved > 0) return saved;
+        const lines = (selectedSale.items || []).reduce((s, i: any) => s + (Number(i.finalPrice) || 0), 0);
+        return Math.max(0, lines - (Number(selectedSale.manualDiscount) || 0));
+    }, [selectedSale]);
+    // Unpaid = nothing actually paid (was: "has a stored due" — missed bills without one)
+    const isDueSale = !!selectedSale && isBillUnpaid(paidAmountOnSale, billTotal);
+    // Money goes back only if it was paid: the balance first lowers what's still owed
+    const { refundable, dueReduction } = splitReturnBalance(finalBalance, paidAmountOnSale, billTotal - finalBalance);
 
     useEffect(() => {
         if (isDueSale) {
@@ -104,9 +116,11 @@ export const useSaveSalesReturn = ({
         const finalPartyName = (completionData?.partyName || partyName || selectedSale.partyName || '').trim();
         const finalPartyNumber = (completionData?.partyNumber || partyNumber || selectedSale.partyNumber || '').trim();
 
-        // --- SCRUM-973 FIX: Hard block at the transaction level ---
-        const shouldAddCredit = finalBalance > 0 &&
+        // Only the paid-back part (refundable) becomes a credit note / cash refund
+        const shouldAddCredit = refundable > 0 &&
             (modeOfReturn === 'Credit Note' || (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Credit Note'));
+        const shouldRefundCash = refundable > 0 &&
+            (modeOfReturn === 'Cash Refund' || modeOfReturn === 'Refund' || (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Cash Refund'));
 
         if (shouldAddCredit && finalPartyNumber.length < 3) {
             return setModal({ type: State.ERROR, message: 'A valid Customer Number is required to issue a Credit Note.' });
@@ -270,9 +284,10 @@ export const useSaveSalesReturn = ({
                 Object.entries(completionData.paymentDetails).forEach(([mode, amount]) => {
                     if (mode !== 'due') updatedPaymentMethods[mode] = (updatedPaymentMethods[mode] || 0) + Number(amount);
                 });
-            } else if (modeOfReturn === 'Cash Refund' && finalBalance > 0) {
-                // If cash refund is processed without opening drawer, deduct it from cash.
-                updatedPaymentMethods['cash'] = (updatedPaymentMethods['cash'] || 0) - finalBalance;
+            } else if (shouldRefundCash) {
+                // Cash handed back comes out of what was paid in cash — only the paid-back
+                // part; the rest of the balance just lowers the due (computed below).
+                updatedPaymentMethods['cash'] = (updatedPaymentMethods['cash'] || 0) - refundable;
             }
 
             const totalPaidSoFar = Object.entries(updatedPaymentMethods)
@@ -294,6 +309,9 @@ export const useSaveSalesReturn = ({
                 returnedItems: itemsToReturn.map(i => ({ originalItemId: i.originalItemId, name: i.name, quantity: i.quantity, amount: i.amount })),
                 exchangeItems: exchangeItems.map(i => ({ originalItemId: i.originalItemId, name: i.name, quantity: i.quantity, amount: i.amount })),
                 finalBalance,
+                // Of the balance: what went back as credit / refund, and what only lowered the due
+                refunded: shouldAddCredit || shouldRefundCash ? refundable : 0,
+                dueReduced: dueReduction,
                 discountDeducted: discountDeductionAmount,
                 newDiscountApplied: newDrawerDiscount,
                 modeOfReturn: actualReturnMode,
@@ -350,7 +368,7 @@ export const useSaveSalesReturn = ({
                 const customerUpdateData: any = { name: finalPartyName, number: finalPartyNumber, companyId, lastUpdatedAt: serverTimestamp() };
 
                 if (shouldAddCredit) {
-                    customerUpdateData.creditBalance = firebaseIncrement(finalBalance);
+                    customerUpdateData.creditBalance = firebaseIncrement(refundable);
                 }
                 batch.set(customerRef, customerUpdateData, { merge: true });
             }
@@ -388,7 +406,7 @@ export const useSaveSalesReturn = ({
                 setReturnSuccess({
                     invoice: updatedInvoice,
                     creditUpdated: !!shouldAddCredit,
-                    creditAdded: shouldAddCredit ? finalBalance : 0,
+                    creditAdded: shouldAddCredit ? refundable : 0,
                     newCreditBalance,
                 });
             } else {
@@ -406,25 +424,19 @@ export const useSaveSalesReturn = ({
     };
 
     const handleProcessReturn = (exchangeBalanceAction: 'Credit Note' | 'Cash Refund') => {
-        if (modeOfReturn === 'Exchange' && exchangeItems.length == 0) return setModal({ type: State.ERROR, message: 'No exchange items selected.' });
+        // Unpaid sale: Exchange with no new items is allowed — the items come back and the due goes down
+        if (modeOfReturn === 'Exchange' && exchangeItems.length == 0 && !isDueSale) return setModal({ type: State.ERROR, message: 'No exchange items selected.' });
         if (itemsToReturn.length === 0 && exchangeItems.length === 0) return setModal({ type: State.ERROR, message: 'No items selected.' });
 
         const isCreditNote = modeOfReturn === 'Credit Note' || (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Credit Note');
-        const isCashRefund = modeOfReturn === 'Cash Refund' || (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Cash Refund');
+        const isCashRefund = modeOfReturn === 'Cash Refund' || modeOfReturn === 'Refund' || (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Cash Refund');
 
-        // A standalone Credit Note/Cash Refund (no exchange) is still blocked on a
-        // due sale — that's a real return with nothing new bought, so cash/credit
-        // shouldn't move while the original sale is still unpaid. But an EXCHANGE's
-        // balance (return value vs exchange value) must always be offered as
-        // Credit Note or Cash Refund regardless of the original sale's paid status
-        // — it's the difference on the new, replacing purchase, not a payout
-        // against the old unpaid one. (Product decision: previously this was
-        // blocked here too via a "SCRUM-973" fix that also zeroed the balance
-        // itself in calculateReturnTotals — removed there for the same reason.)
-        if (modeOfReturn !== 'Exchange' && (isCreditNote || isCashRefund) && isDueSale && finalBalance > 0) {
-            return setModal({ type: State.ERROR, message: 'Credit Note / Cash Refund cannot be issued for a sale with pending dues. Please choose Exchange.' });
+        // Nothing paid on this sale → no money can go back (return or exchange balance).
+        // Part-paid → only what was paid beyond the new total goes back (see refundable).
+        if (modeOfReturn !== 'Exchange' && (isCreditNote || isCashRefund) && isDueSale) {
+            return setModal({ type: State.ERROR, message: 'Nothing was paid on this sale, so a credit note or cash refund can’t be given. Use Exchange — with no new items it just lowers the due.' });
         }
-        if (isCreditNote && finalBalance > 0 && partyNumber.trim().length < 3) {
+        if (isCreditNote && refundable > 0 && partyNumber.trim().length < 3) {
             return setModal({ type: State.ERROR, message: 'A valid Customer Number is required to issue a Credit Note.' });
         }
 
@@ -435,6 +447,7 @@ export const useSaveSalesReturn = ({
 
     const getBalanceLabel = (exchangeBalanceAction: 'Credit Note' | 'Cash Refund') => {
         if (finalBalance < 0) return 'Payment Due';
+        if (finalBalance > 0 && refundable <= 0) return 'Due goes down by';
         if (modeOfReturn === 'Cash Refund') return 'Refund Amount';
         if (modeOfReturn === 'Exchange' && finalBalance > 0 && exchangeBalanceAction === 'Cash Refund') return 'Refund Amount';
         return 'Credit Due';
@@ -447,7 +460,7 @@ export const useSaveSalesReturn = ({
         activeTaxMode, setActiveTaxMode,
         returnSuccess, setReturnSuccess,
         totalReturnGross, totalReturnValue, totalExchangeValue, finalBalance, discountDeducted, totalMrp, totalTax,
-        paidAmountOnSale, isDueSale,
+        paidAmountOnSale, isDueSale, refundable, dueReduction,
         saveReturnTransaction,
         handleProcessReturn,
         getBalanceLabel,

@@ -41,6 +41,8 @@ import {
   usePurchasePayment,
   usePurchaseSmartScan,
 } from './hooks';
+import { normalizeUnit } from './hooks/usePurchaseSmartScan';
+import { rememberScanAliases } from '../../../lib/scanAliases';
 import useTutorial from '../../../Catalogue/hooks/useTutorial';
 import { completeTutorial } from '../../../Catalogue/hooks/useCompleteTutorial';
 import { TutorialStep } from '../../../Components/TutorialStep';
@@ -110,18 +112,6 @@ const segBtnCls = (active: boolean) =>
     ? 'bg-white text-[#155dfc] shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]'
     : 'text-[#45556c] hover:text-[#0f172b]'}`;
 
-// Maps OCR-extracted unit text to one of the standard UNIT_OPTIONS values used in ItemAdd/ItemEditDrawer
-const normalizeUnit = (rawUnit: string | undefined | null): string => {
-  if (!rawUnit) return 'pcs';
-  const u = rawUnit.trim().toLowerCase();
-  if (['pcs', 'pc', 'piece', 'pieces', 'nos', 'no', 'unit', 'units', 'each', 'ea'].includes(u)) return 'pcs';
-  if (['box', 'boxes', 'bx'].includes(u)) return 'box';
-  if (['dozen', 'doz', 'dz'].includes(u)) return 'doz';
-  if (['quintal', 'quintals', 'qtl', 'qt'].includes(u)) return 'qt';
-  if (['ton', 'tons', 'tonne', 'tonnes'].includes(u)) return 'ton';
-  if (['pkt', 'packet', 'packets', 'pack', 'pk'].includes(u)) return 'pkt';
-  return 'pcs'; // safe fallback — always a valid dropdown option
-};
 // ── Tutorial sample data (shown only while the tutorial is running) ──
 const SAMPLE_SUPPLIER = { name: 'Sample Supplier', phone: '9000000000' };
 
@@ -219,6 +209,7 @@ const PurchasePage: React.FC = () => {
     handleQuickAddItem,
     handleNewItemFieldChange,
     applyNewItemDetails,
+    attachLineToItem,
     handlePriceChange,
     handleDiscountChange,
     handleDiscount2Change,
@@ -354,6 +345,7 @@ const PurchasePage: React.FC = () => {
 
   const {
     fileInputRef, isScanning, scannedData, setScannedData, processFile, clearScannedData,
+    scanResolutions,
     showScannerModal, setShowScannerModal,
     isScannerOpen, setIsScannerOpen,
     handleApplySmartScan,
@@ -363,7 +355,19 @@ const PurchasePage: React.FC = () => {
     setItems,
     addItemToCart,
     setModal,
+    companyId: currentUser?.companyId,
   });
+  const scanLinkedCount = scanResolutions.filter(r => r.linked).length;
+
+  // NEW row's name box → picked an existing item: link the line to it instead of creating one.
+  // A scanned bill name is remembered, so the next bill links it on its own.
+  const handleAttachNewItem = (lineId: string, picked: Item) => {
+    const line = items.find(i => i.id === lineId);
+    attachLineToItem(lineId, picked);
+    if (line?.scannedName) rememberScanAliases(currentUser?.companyId, [{ billName: line.scannedName, itemId: picked.id }]);
+    setModal({ message: `Linked to "${picked.name}"`, type: State.SUCCESS });
+    setTimeout(() => setModal(null), 1200);
+  };
 
   // NEW: for unlinked scanned items — opens the ItemAdd form as a popup instead of the edit drawer
   const [showAddItemModal, setShowAddItemModal] = useState(false);
@@ -582,6 +586,10 @@ const PurchasePage: React.FC = () => {
   const handleConfirmLink = () => {
     if (!linkTargetId || !linkPicked) return;
     const picked = linkPicked as any; // remove `as any` if barcode/tax/stock are typed on Item
+    const linkLine = items.find(ci => ci.id === linkTargetId);
+    if (linkLine) {
+      rememberScanAliases(currentUser?.companyId, [{ billName: linkLine.scannedName || stripUnlinkedFlag(linkLine.name), itemId: picked.id }]);
+    }
 
     setItems(prev => prev.map(ci => {
       if (ci.id !== linkTargetId) return ci;
@@ -1914,26 +1922,46 @@ const PurchasePage: React.FC = () => {
               {/* --- ITEM LIST PREVIEW --- */}
               {scannedData.items && scannedData.items.length > 0 ? (
                 <div className="pt-4 border-t border-[#dfe6fb]">
-                  <label className={`block mb-2 ${OVERLINE}`}>
-                    Items found ({scannedData.items.length})
-                  </label>
-                  <div className="max-h-48 overflow-y-auto border border-[#dfe6fb] rounded-sm divide-y divide-[#dfe6fb]">
-                    {scannedData.items.map((item, idx) => (
-                      <div key={idx} className="px-3 py-2 text-xs flex justify-between items-center bg-[#f5f7ff]">
-                        <span className="font-medium text-[#0f172b] truncate pr-2 w-3/5" title={item.name}>
-                          {item.name}
-                        </span>
-                        <span className="text-[#45556c] w-1/5 text-right tabular-nums">
-                          {item.quantity} {item.unit}
-                        </span>
-                        <span className="text-[#155dfc] font-semibold w-1/5 text-right tabular-nums">
-                          ₹{item.purchasePrice}
-                        </span>
-                      </div>
-                    ))}
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <label className={OVERLINE}>
+                      Items found ({scannedData.items.length})
+                    </label>
+                    <span className="text-[11px] text-[#45556c]">
+                      <b className="font-semibold text-[#008236]">{scanLinkedCount} linked</b>
+                      {' · '}
+                      <b className="font-semibold text-[#bb4d00]">{scannedData.items.length - scanLinkedCount} new</b>
+                    </span>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto border border-[#dfe6fb] rounded-sm divide-y divide-[#dfe6fb]">
+                    {scannedData.items.map((item, idx) => {
+                      const res = scanResolutions[idx];
+                      return (
+                        <div key={item.id ?? idx} className="px-3 py-2 text-xs flex items-center gap-2 bg-[#f5f7ff]">
+                          <span className="flex-1 min-w-0">
+                            <span className="block font-medium text-[#0f172b] truncate" title={item.name}>{item.name}</span>
+                            {res?.linked ? (
+                              <span className="block text-[11px] text-[#008236] truncate" title={res.linked.name}>
+                                <FiCheckCircle size={11} className="inline -mt-px mr-1" aria-hidden />
+                                {res.linkedBy === 'learned' ? 'Linked (remembered)' : 'Linked'}: {res.linked.name}
+                              </span>
+                            ) : (
+                              <span className="block text-[11px] text-[#bb4d00] truncate">
+                                New item{res?.suggestion ? ` · looks like ${res.suggestion.name}` : ''}
+                              </span>
+                            )}
+                          </span>
+                          <span className="text-[#45556c] flex-shrink-0 text-right tabular-nums">
+                            {item.quantity} {item.unit}
+                          </span>
+                          <span className="text-[#155dfc] font-semibold flex-shrink-0 w-16 text-right tabular-nums">
+                            ₹{fmtINR(item.purchasePrice * (1 - (item.discountPercentage || 0) / 100))}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                   <p className="mt-1.5 mb-0 text-[11px] text-[#5b6b86]">
-                    These items will be matched with your inventory when applied.
+                    New items come in as NEW rows. Rename them, or type in the name box to link an existing item.
                   </p>
                 </div>
               ) : (
@@ -2176,6 +2204,7 @@ const PurchasePage: React.FC = () => {
                   onNewItemFieldChange={handleNewItemFieldChange}
                   newItemExtraPrice={{ key: 'salesPrice', label: 'Sale' }}
                   focusLineId={focusLineId}
+                  onAttachNewItem={isTutorialActive ? undefined : handleAttachNewItem}
                 />
               </div>
 

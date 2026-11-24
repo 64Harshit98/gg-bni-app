@@ -214,7 +214,8 @@ const StoreBuilder: React.FC = () => {
         return next;
     });
     const imagePathsOf = (s: StoreSection): string[] => {
-        if (s.type === 'hero' || s.type === 'imageText') return s.data.imagePath ? [s.data.imagePath] : [];
+        if (s.type === 'hero') return [s.data.imagePath, ...(s.data.slides || []).map((x) => x.path)].filter((p): p is string => !!p);
+        if (s.type === 'imageText') return s.data.imagePath ? [s.data.imagePath] : [];
         if (s.type === 'banners') return s.data.items.map((b) => b.imagePath || '').filter(Boolean);
         if (s.type === 'gallery') return s.data.images.map((i) => i.path || '').filter(Boolean);
         return [];

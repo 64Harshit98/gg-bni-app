@@ -27,12 +27,8 @@ import { OrderListFilters, PaymentSwitch, OrderEditModal, TransportDetailsModal,
 // ─── Total tutorial steps for Orders ────────────────────────────────────────
 const TOTAL_STEPS = 5;
 
-const NOTIFICATION_SEEN_ORDERS_KEY = "seenOrderNotifications";
-
 const OrdersPage: React.FC = () => {
 
-    // AUDIO REF
-    const audioRef = useRef<HTMLAudioElement | null>(null);
     // ─── Refs for tutorial autoscroll ─────────────────────────────────────────
     const tutorialRefs = useRef<(HTMLElement | null)[]>([]);
     const setTutorialRef = (index: number) => (el: HTMLElement | null) => {
@@ -40,10 +36,6 @@ const OrdersPage: React.FC = () => {
     };
     const paneHostRef = useRef<HTMLDivElement | null>(null);
     useCollapsingPageHeader(paneHostRef, 1024); // lg: where the list + detail split starts
-    const seenOrdersRef = useRef<Set<string>>(
-        new Set(JSON.parse(localStorage.getItem(NOTIFICATION_SEEN_ORDERS_KEY) || "[]"))
-    );
-    const isInitialNotificationLoadRef = useRef(true);
     const navigate = useNavigate();
 
     const [companyInfo, setCompanyInfo] = useState<any>(null);
@@ -278,76 +270,6 @@ const OrdersPage: React.FC = () => {
         catalogueWhatsappExtra,
         setModal,
     });
-
-    useEffect(() => {
-        if (isInitialNotificationLoadRef.current) {
-            Orders.forEach(order => {
-                seenOrdersRef.current.add(order.id);
-            });
-            localStorage.setItem(
-                NOTIFICATION_SEEN_ORDERS_KEY,
-                JSON.stringify(Array.from(seenOrdersRef.current))
-            );
-            isInitialNotificationLoadRef.current = false;
-            return;
-        }
-
-        let updated = false;
-
-        Orders.forEach(order => {
-            const isNewOrder = !seenOrdersRef.current.has(order.id);
-            const isActiveOrder = order.status !== 'Cancelled';
-
-            if (isNewOrder && isActiveOrder) {
-                // ✅ KEEP THIS: Play the sound
-                const audio = audioRef.current;
-                if (audio) {
-                    audio.currentTime = 0;
-                    audio.play().catch((err) => {
-                        console.error("Audio play failed:", err);
-                    });
-                }
-                if (isNewOrder && isActiveOrder) {
-                    const audio = audioRef.current;
-                    if (audio) {
-                        audio.currentTime = 0;
-                        audio.play().catch((err) => {
-                            console.error(err);
-                        });
-                    }
-
-                    window.dispatchEvent(
-                        new CustomEvent('pdc_notification', {
-                            detail: {
-                                type: 'NEW_ORDER',
-                                invoiceNumber: order.orderId,
-                                partyName: order.userName || order.billingDetails?.name || 'Customer',
-                                amount: Number(order.totalAmount || 0),
-                                status: 'UPCOMING',
-                                createdAt: order.createdAt ? new Date(order.createdAt).toISOString() : new Date().toISOString(),
-
-                                // 🔥 ADD THIS LINE TO PREVENT DUPLICATES 🔥
-                                orderDocId: order.id,
-                            },
-                        })
-                    );
-
-                    seenOrdersRef.current.add(order.id);
-                    updated = true;
-                }
-                seenOrdersRef.current.add(order.id);
-                updated = true;
-            }
-        });
-
-        // Update local storage
-        if (updated) {
-            localStorage.setItem(
-                NOTIFICATION_SEEN_ORDERS_KEY,
-                JSON.stringify(Array.from(seenOrdersRef.current))
-            );
-        }
-    }, [Orders]);
 
     useEffect(() => {
         const fetchCompanyInfo = async () => {

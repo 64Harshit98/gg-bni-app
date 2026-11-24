@@ -209,6 +209,8 @@ export const syncOrderEarnedPoints = async (
             });
             txn.update(orderRef, {
                 loyalty: { phone, earned, redeemed: prev?.redeemed ?? 0, redeemValue } satisfies SaleLoyalty,
+                // The orders cache syncs on updatedAt
+                updatedAt: serverTimestamp(),
             });
         });
     } catch (err) {

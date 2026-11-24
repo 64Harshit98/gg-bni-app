@@ -257,7 +257,16 @@ const BillPaper: React.FC<{ business: BusinessInfoData; settings: BillSettingsDa
                 {showWatermark && <div className={WM}>SELLAR.IN</div>}
                 <div className="grid grid-cols-[1fr_2fr_1fr] items-center gap-2 p-2 border border-black">
                     <div>{qr}</div>
-                    <div className="text-center font-bold text-[28px]">{name}</div>
+                    <div className="text-center">
+                        <div className="font-bold text-[28px] leading-tight">{name}</div>
+                        {business.address && <div className="text-[10px]">{business.address}</div>}
+                        {phone && <div className="text-[10px]">Phone : {phone}</div>}
+                        {business.gstin && (
+                            <div className={`font-bold text-[10px] ${gstinBad ? 'outline outline-2 outline-blue-600 text-amber-700' : ''}`}>
+                                GSTIN : {business.gstin}
+                            </div>
+                        )}
+                    </div>
                     <div className="text-right">
                         {business.msmeNumber && <div className="text-[10px]">Msme No : {business.msmeNumber}</div>}
                         {logo}
@@ -306,8 +315,7 @@ const BillPaper: React.FC<{ business: BusinessInfoData; settings: BillSettingsDa
                     </div>
                     <div className="text-center">{sig}<div className="font-bold">Authorised Sign</div></div>
                 </div>
-                <div className="flex justify-between mt-4 pt-2.5 border-t border-neutral-300">
-                    <div className="font-bold">{business.address}<br />Contact No. - {phone}</div>
+                <div className="flex justify-end mt-4 pt-2.5 border-t border-neutral-300">
                     <div className="text-right">Powered by <b className="text-blue-700 underline">SELLAR.IN</b><br />Made with pride in India</div>
                 </div>
             </div>

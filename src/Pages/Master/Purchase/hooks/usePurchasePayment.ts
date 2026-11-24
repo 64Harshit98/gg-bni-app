@@ -34,6 +34,7 @@ import {
     validateNewItemLines,
     writeNewItemsInTxn,
 } from '../../../../lib/quickAddItems';
+import { rememberScanAliases } from '../../../../lib/scanAliases';
 
 // Moved verbatim from Purchase.tsx (was a module-level helper above the
 // component, L34-38). Removes all undefined values from an object before
@@ -246,7 +247,7 @@ export const usePurchasePayment = ({
 
         const savedSupplierId = getPartyDocId(completionData.partyName, completionData.partyNumber);
         const formattedItemsForDB = formatPurchaseItemsForDB(items, finalTaxType).map((fi, idx) => {
-            const rest = omitKeys(fi, ['rateReviewedFor', ...CART_ONLY_SUPPLIER_KEYS]);
+            const rest = omitKeys(fi, ['rateReviewedFor', 'scannedName', 'scanSuggestionId', ...CART_ONLY_SUPPLIER_KEYS]);
             const audit = rateAudit && rateAudit.supplierId === savedSupplierId && items[idx]
                 ? rateAudit.forLine(items[idx])
                 : null;
@@ -513,6 +514,10 @@ export const usePurchasePayment = ({
             setGodownAssignments({});
             // New lines now point at their real items (matters for "copy voucher" + barcode printing)
             const savedItemsCopy = remapNewItemIds([...items], quickIdMap);
+            // Next bill from this supplier links these scanned names on its own
+            rememberScanAliases(companyId, savedItemsCopy
+                .filter(i => i.scannedName)
+                .map(i => ({ billName: i.scannedName, itemId: i.productId })));
             localStorage.removeItem('purchase_cart_draft');
 
             if (!purchaseSettings?.copyVoucherAfterSaving) {

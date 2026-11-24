@@ -1,6 +1,7 @@
 import type { TransactionItem, ExchangeItem } from './ordersReturn.types';
 import { computeOrderTotals, isOrderTaxEnabled as isOrderTaxEnabledShared, resolveUnitPrice, type OrderTotals } from '../Orders/orders.calculations';
 import { calculateLineTax } from '../../shared/calculations/itemCalculations';
+import { splitReturnBalance } from '../../shared/calculations/returnBalance';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Return / exchange maths for catalogue orders.
@@ -31,6 +32,22 @@ const taxRateOf = (line: AnyLine) => Number(line.tax ?? line.taxRate ?? 0) || 0;
 
 /** Whether this order was billed with GST — shared with the tax report (orders.calculations). */
 export const isOrderTaxEnabled = (order: AnyLine | null | undefined): boolean => isOrderTaxEnabledShared(order);
+
+/**
+ * What the customer has actually paid on this order. `paidAmount` is kept by the
+ * payment drawer and by earlier returns; orders that never had it fall back to the
+ * payment entries. A missing `paymentMethods.due` does NOT mean paid — orders placed
+ * from the shared catalogue have no payment entries at all until one is recorded.
+ */
+export const orderPaidSoFar = (order: AnyLine | null | undefined): number => {
+  if (!order) return 0;
+  if (order.paidAmount !== undefined && order.paidAmount !== null && Number.isFinite(Number(order.paidAmount))) {
+    return Math.max(0, Number(order.paidAmount));
+  }
+  return Math.max(0, Object.entries(order.paymentMethods || {})
+    .filter(([k]) => k.toLowerCase() !== 'due')
+    .reduce((sum, [, v]) => sum + (Number(v) || 0), 0));
+};
 
 /** Tax type new (exchange) lines get: the same as the order's existing lines. */
 export const orderLineTaxType = (order: AnyLine | null | undefined): string => {
@@ -198,8 +215,15 @@ export interface OrderReturnResult {
   exchangeTax: number;
   /** Rounding of the order total to the rupee, folded into the balance. */
   roundOff: number;
-  /** > 0: owed to the customer (credit / refund). < 0: the customer pays. */
+  /** How much the order total went down (> 0) or up (< 0, the customer pays). */
   finalBalance: number;
+  /**
+   * Part of a positive balance that can go back as credit note / cash refund: only
+   * money the customer has actually paid beyond the new total. 0 on an unpaid order.
+   */
+  refundable: number;
+  /** Rest of a positive balance: it only lowers what the customer still owes. */
+  dueReduction: number;
   /** The order's lines after the return, re-taxed. */
   newItems: AnyLine[];
   newManualDiscount: number;
@@ -212,7 +236,9 @@ export const computeOrderReturn = (
   itemsToReturn: TransactionItem[],
   exchangeItems: ExchangeItem[],
   modeOfReturn: string,
-  availableItems: AnyLine[]
+  availableItems: AnyLine[],
+  /** Paid so far (orderPaidSoFar). Defaults to the order's own record. */
+  paidSoFar: number = orderPaidSoFar(order)
 ): OrderReturnResult => {
   const taxEnabled = isOrderTaxEnabled(order);
   const originalLines: AnyLine[] = order?.items || [];
@@ -314,6 +340,10 @@ export const computeOrderReturn = (
   // 5. Balance = how much the order total went down (up, for a bigger exchange)
   const finalBalance = round2(before.total - after.total);
   const unrounded = returnValue - discountDeducted - totalExchangeValue;
+
+  // 6. Money only goes back if it was paid: the balance first clears what's still owed,
+  //    and only what was paid beyond the new total can be a credit note / refund.
+  const { refundable, dueReduction } = splitReturnBalance(finalBalance, paidSoFar, after.total);
   const returnExclusiveTax = round2(returnValue - totalReturnGross);
 
   return {
@@ -326,6 +356,8 @@ export const computeOrderReturn = (
     exchangeTax: round2(exchangeTax),
     roundOff: round2(finalBalance - unrounded),
     finalBalance,
+    refundable,
+    dueReduction,
     newItems,
     newManualDiscount,
     before,

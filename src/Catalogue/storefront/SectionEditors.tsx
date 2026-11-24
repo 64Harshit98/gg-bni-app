@@ -1,8 +1,8 @@
 import React, { useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, GripVertical, ImagePlus, Loader2, Plus, Trash2, Upload, X } from 'lucide-react';
 import type { ItemGroup } from '../../constants/models';
-import type { ButtonLink, CategoryGroup, FactIcon, SectionMap, StoreButton, StoreSection } from './storePage.types';
-import { newId } from './storePage.types';
+import type { ButtonLink, CategoryGroup, FactIcon, HeroData, HeroSlide, SectionMap, StoreButton, StoreSection } from './storePage.types';
+import { HERO_DEFAULT_INTERVAL, HERO_INTERVALS, HERO_MAX_SLIDES, heroSlides, newId } from './storePage.types';
 import { btnClass, Photo } from './StoreUI';
 import { uploadStoreImage } from './uploadStoreImage';
 import { normalizeUrl } from './storefront.utils';
@@ -215,7 +215,7 @@ export const SectionEditor: React.FC<{ section: StoreSection; env: EditorEnv; on
                             ))}
                         </div>
                     </Field>
-                    <PhotoField env={env} sectionId={id} label="Photo" banner url={d.imageUrl} path={d.imagePath} onChange={(v) => set({ imageUrl: v.url, imagePath: v.path })} />
+                    <HeroSlidesField env={env} sectionId={id} data={d} onChange={set} />
                     <TextField id={`${id}-h`} label="Heading" value={d.heading} max={70} onChange={(v) => set({ heading: v })} placeholder="Steel and kitchenware since 1998" />
                     <AreaField id={`${id}-t`} label="Text" value={d.text || ''} max={160} onChange={(v) => set({ text: v })} placeholder="One or two short lines about the shop." />
                     <Field label="Buttons" hint="Up to 2. The first one is the orange button.">
@@ -364,28 +364,81 @@ export const SectionEditor: React.FC<{ section: StoreSection; env: EditorEnv; on
     }
 };
 
-const GalleryAdd: React.FC<{ env: EditorEnv; sectionId: string; max: number; onAdded: (added: { url: string; path: string }[]) => void }> = ({ env, sectionId, max, onAdded }) => {
+/** Hero slideshow photos: add several at once, reorder, remove, and pick how fast they change. */
+const HeroSlidesField: React.FC<{ env: EditorEnv; sectionId: string; data: HeroData; onChange: (p: Partial<HeroData>) => void }> = ({ env, sectionId, data, onChange }) => {
+    const slides = heroSlides(data);
+    // Writing `slides` retires the old single photo field; its path stays inside the list so publish keeps the file
+    const setSlides = (next: HeroSlide[]) => onChange({ slides: next, imageUrl: undefined, imagePath: undefined });
+    return (
+        <>
+            <Field label={`Photos (${slides.length} of ${HERO_MAX_SLIDES})`}
+                hint="Add 2 or more to make a slideshow. Wide photos (3:1) fill the banner on computers; phones show the middle. We shrink big photos so the page opens fast.">
+                <div className="grid grid-cols-3 gap-2">
+                    {slides.map((s, i) => (
+                        <div key={s.id} className="relative">
+                            <Photo src={s.url} alt="" className="aspect-[4/3] border border-sf-line" />
+                            {i === 0 && slides.length > 1 && <span className="absolute bottom-1 left-1 rounded-sm bg-white/90 px-1.5 py-0.5 text-[11px] font-medium text-slate-700">First</span>}
+                            <div className="absolute right-1 top-1 flex gap-0.5">
+                                {i > 0 && <button type="button" aria-label="Move earlier" onClick={() => setSlides(move(slides, i, -1))} className="grid size-7 place-items-center rounded-sm bg-white/90 text-slate-700 shadow-sf-card"><ArrowUp className="size-3.5 -rotate-90" /></button>}
+                                <button type="button" aria-label="Remove photo" onClick={() => { env.onRemovedImage(s.path); setSlides(slides.filter((x) => x.id !== s.id)); }} className="grid size-7 place-items-center rounded-sm bg-white/90 text-red-700 shadow-sf-card"><X className="size-3.5" /></button>
+                            </div>
+                        </div>
+                    ))}
+                    {slides.length < HERO_MAX_SLIDES && (
+                        <GalleryAdd env={env} sectionId={sectionId} kind="banner" max={HERO_MAX_SLIDES - slides.length} className="aspect-[4/3]"
+                            onAdded={(added) => setSlides([...slides, ...added.map((a) => ({ id: newId(), url: a.url, path: a.path }))])} />
+                    )}
+                </div>
+            </Field>
+            {slides.length > 1 && (
+                <Field label="Change photo every">
+                    <div role="group" className="inline-flex gap-0.5 rounded-sm border border-sf-line bg-sf-sunken p-[3px]">
+                        {HERO_INTERVALS.map((sec) => {
+                            const on = (data.interval ?? HERO_DEFAULT_INTERVAL) === sec;
+                            return (
+                                <button key={sec} type="button" aria-pressed={on} onClick={() => onChange({ interval: sec })}
+                                    className={cx('h-[30px] rounded-sm px-3 text-[13px] font-medium tabular-nums', on ? 'bg-white text-sf-primary shadow-sf-card' : 'text-slate-600')}>
+                                    {sec} seconds
+                                </button>
+                            );
+                        })}
+                    </div>
+                </Field>
+            )}
+        </>
+    );
+};
+
+const GalleryAdd: React.FC<{ env: EditorEnv; sectionId: string; max: number; kind?: 'banner' | 'photo'; className?: string; onAdded: (added: { url: string; path: string }[]) => void }> = ({ env, sectionId, max, kind = 'photo', className = 'aspect-square', onAdded }) => {
     const input = useRef<HTMLInputElement>(null);
     const [busy, setBusy] = useState(false);
+    const [err, setErr] = useState<string | null>(null);
     return (
         <>
             <input ref={input} type="file" accept="image/*" multiple className="hidden" onChange={async (e) => {
-                const files = Array.from(e.target.files || []).slice(0, max);
-                if (!files.length) return;
+                const all = Array.from(e.target.files || []);
+                const files = all.filter((f) => f.size <= 10 * 1024 * 1024).slice(0, max);
+                if (!all.length) return;
+                setErr(all.length > files.length ? (all.length > max ? `Only ${max} more photo${max === 1 ? '' : 's'} can be added.` : 'Photos over 10 MB were skipped.') : null);
+                if (!files.length) { if (input.current) input.current.value = ''; return; }
                 setBusy(true);
                 const added: { url: string; path: string }[] = [];
                 try {
-                    for (const f of files) added.push(await uploadStoreImage(env.companyId, sectionId, f));
-                } catch (err) { console.error(err); } finally {
+                    for (const f of files) added.push(await uploadStoreImage(env.companyId, sectionId, f, kind));
+                } catch (err) {
+                    console.error(err);
+                    setErr("Some photos didn't upload. Check your connection and try again.");
+                } finally {
                     if (added.length) onAdded(added);
                     setBusy(false);
                     if (input.current) input.current.value = '';
                 }
             }} />
             <button type="button" disabled={busy} onClick={() => input.current?.click()} aria-label="Add photos"
-                className="grid aspect-square place-items-center rounded-sm border-[1.5px] border-dashed border-sf-control text-sf-primary hover:bg-sf-sunken">
+                className={cx('grid place-items-center rounded-sm border-[1.5px] border-dashed border-sf-control text-sf-primary hover:bg-sf-sunken', className)}>
                 {busy ? <Loader2 className="size-5 animate-spin" /> : <ImagePlus className="size-5" />}
             </button>
+            {err && <p className="col-span-full text-xs text-red-700">{err}</p>}
         </>
     );
 };

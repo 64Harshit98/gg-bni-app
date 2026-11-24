@@ -6,6 +6,8 @@ export interface ParsedItem {
     purchasePrice: number; // Mapped from 'Rate'
     discountPercentage: number; // Mapped from 'DIS%'
     totalAmount: number; // Mapped from 'Amount'
+    mrp?: number; // Only when the bill has a separate MRP column
+    taxRate?: number; // GST % when the bill prints it as a standard slab
 }
 
 export interface ParsedData {

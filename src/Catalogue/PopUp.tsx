@@ -126,6 +126,8 @@ const LeadPopUp: React.FC<LeadPopUpProps> = ({
                         await updateDoc(orderRef, {
                             userName: formData.name,
                             userLoginPhone: formData.number,
+                            // The orders cache syncs on updatedAt
+                            updatedAt: serverTimestamp(),
                         });
                     }
                                 } catch {
@@ -224,7 +226,9 @@ const LeadPopUp: React.FC<LeadPopUpProps> = ({
 
                     await updateDoc(orderRef, {
                         userName: formData.name,
-                        userLoginPhone: formData.number
+                        userLoginPhone: formData.number,
+                        // The orders cache syncs on updatedAt
+                        updatedAt: serverTimestamp()
                     });
                 }
                         } catch {

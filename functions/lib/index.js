@@ -90,9 +90,16 @@ const extractNameOverflow = (text) =>
         .join(' ');
 
 // OCR l / I / | -> 1 is fixed ONLY inside number-like tokens, so "Bottle" never becomes "Bott1e".
+// Same idea for O/o -> 0 ("1O0.00", "25o"), but only when the token already has a real digit,
+// so the word "No" or "OO" never turns into a number.
 function parseNumberToken(tok) {
-    let t = tok.replace(/[₹,%]/g, '').replace(/^Rs\.?/i, '');
-    if (/^[0-9lI|.]+$/.test(t)) t = t.replace(/[lI|]/g, '1');
+    let t = String(tok || '')
+        .replace(/^(Rs|INR)\.?/i, '')
+        .replace(/[₹,%]/g, '')
+        .replace(/\/-$/, '')        // "120/-"
+        .replace(/^[(\[]|[)\]]$/g, '');
+    if (/\d/.test(t) && /^[0-9lI|Oo.]+$/.test(t)) t = t.replace(/[lI|]/g, '1').replace(/[Oo]/g, '0');
+    t = t.replace(/\.$/, '');       // "120." at a cell edge
     return /^\d+(\.\d+)?$/.test(t) ? parseFloat(t) : null;
 }
 function firstNumber(str) {
@@ -120,6 +127,54 @@ function resolveDiscount({ quantity, rate, amount, explicit }) {
         if (valid(effective)) return effective;
     }
     return valid(explicit) ? explicit : 0;
+}
+
+// Amount is usually Qty x Rate, less a discount, sometimes plus GST. A ratio far outside
+// that range means one number was misread. A misread qty (or qty that OCR missed, defaulted
+// to 1) shows up as Amount / Rate being a whole number; otherwise the rate is the bad one.
+const TAX_FACTORS = [1, 1.05, 1.12, 1.18, 1.28, 1.03];
+// The qty is only re-derived when OCR never read one (rescued rows default to 1): if a
+// printed qty exists, a dropped digit in the rate ("10" for "100") is far more likely.
+function reconcileRow({ qty, rate, amount, hasDiscount, qtyMissing }) {
+    if (!(qty > 0 && rate > 0 && amount > 0)) return { qty, rate };
+    const ratio = amount / (qty * rate);
+    if (ratio >= 0.45 && ratio <= 1.3) return { qty, rate };
+
+    if (qtyMissing) for (const f of TAX_FACTORS) {
+        const q = amount / (rate * f);
+        const whole = Math.round(q);
+        if (whole >= 1 && whole !== qty && Math.abs(q - whole) <= Math.max(0.01, whole * 0.005)) {
+            console.warn('QTY CORRECTED:', { from: qty, to: whole, rate, amount });
+            return { qty: whole, rate };
+        }
+    }
+    if (!hasDiscount) {
+        const fixed = round2(amount / qty);
+        console.warn('RATE CORRECTED:', { from: rate, to: fixed, qty, amount });
+        return { qty, rate: fixed };
+    }
+    return { qty, rate };
+}
+
+// GST % for the row when the Tax column prints a rate (not just an amount).
+// Split CGST + SGST columns ("9% 9%") add up to the full rate.
+const GST_SLABS = [0, 0.25, 3, 5, 12, 18, 28, 40];
+const HALF_SLABS = [1.5, 2.5, 6, 9, 14, 20];
+function readTaxRate(taxText, bands) {
+    if (!taxText) return 0;
+    const taxBands = bands.filter(b => b.key === 'TAX');
+    const headerIsPct = taxBands.some(b => b.pct || /RATE|%/i.test(b.label || ''));
+    const isSplit = taxBands.some(b => /CGST|SGST|UTGST/i.test(b.label || ''));
+    const toks = String(taxText).split(/\s+/);
+    let nums = toks.filter(t => /%/.test(t)).map(parseNumberToken).filter(n => n !== null);
+    if (!nums.length && headerIsPct) nums = toks.map(parseNumberToken).filter(n => n !== null);
+    if (!nums.length) return 0;
+
+    const halves = nums.filter(n => HALF_SLABS.includes(n));
+    if (halves.length >= 2 && halves[0] === halves[1]) return halves[0] * 2;
+    if (isSplit && halves.length && !nums.some(n => GST_SLABS.includes(n) && n > halves[0])) return halves[0] * 2;
+    const full = nums.find(n => GST_SLABS.includes(n) && n > 0);
+    return full || 0;
 }
 
 // ---- Step 1: words with real geometry, de-skewed, watermark removed ---------
@@ -396,6 +451,7 @@ function buildItems(lines, endIndex, bands, medH) {
 
         if (hasName && anyAmount > 0) {
             orphan.primary = true;
+            orphan.qtyMissing = !(orphan.qty > 0);
             orphan.qty = orphan.qty > 0 ? orphan.qty : 1;
             orphan.amount = orphan.amount > 0 ? orphan.amount : anyAmount;
             orphan.lines = [orphan.line];
@@ -430,13 +486,20 @@ function buildItems(lines, endIndex, bands, medH) {
             const full = mapWordsToBands(rowWords, bands);
             const own = p.own;
 
-            let rate = firstNumber(own.RATE) || firstNumber(own.MRP);
-            if (!rate) rate = round2(p.amount / p.qty);
+            const mrp = firstNumber(own.MRP);
+            let qty = p.qty;
+            let rate = firstNumber(own.RATE) || mrp;
+            if (!rate) rate = round2(p.amount / qty);
 
             const rawDisc = own.DISCOUNT || '';
             const isPct = /%/.test(rawDisc) || (discBand && discBand.pct);
             const explicit = isPct ? firstNumber(rawDisc) : NaN;
-            const hasTax = firstNumber(own.TAX) > 0;
+            const hasDiscount = Number.isFinite(explicit) && explicit > 0;
+
+            // Qty x Rate should give Amount (less any discount). When it clearly doesn't,
+            // one of the three was misread -- fix the one that makes the row add up.
+            ({ qty, rate } = reconcileRow({ qty, rate, amount: p.amount, hasDiscount, qtyMissing: !!p.qtyMissing }));
+            const taxRate = readTaxRate(own.TAX, bands);
 
             const slNoExtra = (full.SLNO || '').split(/\s+/).slice(1).join(' ');
 
@@ -473,11 +536,13 @@ function buildItems(lines, endIndex, bands, medH) {
             }
             return {
                 name: cleanName(rawName) || 'Unknown Item',
-                quantity: p.qty,
+                quantity: qty,
                 unit: pickUnit(full.UNIT, own.QTY),
                 purchasePrice: rate,
-                discountPercentage: resolveDiscount({ quantity: p.qty, rate, amount: p.amount, explicit }),
+                discountPercentage: resolveDiscount({ quantity: qty, rate, amount: p.amount, explicit }),
                 totalAmount: p.amount,
+                mrp: mrp > 0 ? mrp : 0,
+                taxRate,
             };
         })
         .filter(it => !/^(GRAND\s*TOTAL|TOTAL)$/i.test(it.name));
@@ -498,7 +563,10 @@ exports.scanSmartInvoice = functions.https.onCall(async (data, context) => {
 
         const request = {
             image: { content: cleanBase64 },
-            features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
+            features: [{ type: 'DOCUMENT_TEXT_DETECTION', model: 'builtin/latest' }],
+            // Indian bills mix English with Hindi item names; without hints Vision
+            // sometimes reads Latin letters as look-alike Devanagari (and vice versa).
+            imageContext: { languageHints: ['en', 'hi'] },
         };
 
         const [result] = await client.annotateImage(request);
@@ -1127,6 +1195,31 @@ exports.getPublicCatalogueItems = functions.https.onRequest(async (req, res) => 
         res.status(500).json({ error: "Internal Server Error" });
     }
 });
+
+// Orders are hard-deleted (admin delete, and the storefront removing its
+// upcoming_ draft at checkout). The web app keeps a local copy of Orders kept
+// fresh by an `updatedAt` delta listener, which never sees a delete — this
+// tombstone is how deletes reach it (src/Catalogue/Orders/ordersSync.ts).
+// orderUpdatedAt is the deleted version's updatedAt, so a re-created
+// upcoming_ draft with the same id isn't removed by an older tombstone.
+// Set a Firestore TTL policy on deletedOrders.deletedAt (~120 days).
+exports.onOrderDeleted = functions.firestore
+    .document('companies/{companyId}/Orders/{orderId}')
+    .onDelete(async (snap, context) => {
+        const { companyId, orderId } = context.params;
+        const data = snap.data() || {};
+        try {
+            await db.collection('companies').doc(companyId)
+                .collection('deletedOrders').doc(orderId)
+                .set({
+                    deletedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    orderUpdatedAt: data.updatedAt || data.createdAt || null,
+                });
+        } catch (error) {
+            console.error('Failed to write order tombstone:', companyId, orderId, error);
+        }
+        return null;
+    });
 
 exports.autoAwardUserReferralCredit = functions.firestore
     .document('companies/{newCompanyId}')

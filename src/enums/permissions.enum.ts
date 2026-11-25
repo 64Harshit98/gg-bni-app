@@ -26,6 +26,7 @@ export enum Permissions {
     ViewPurchaseReport = 'ViewPurchaseReport',
     ViewPNLReport = 'ViewPNLReport',
     ViewItemSoldReport = 'ViewItemSoldReport',
+    ViewRestockReport = 'ViewRestockReport',
     ViewCustomerReport = 'ViewCustomerReport',
     ViewExpenseReport = 'ViewExpenseReport',
     ViewPartyLedger = 'ViewPartyLedger',
@@ -49,7 +50,8 @@ export enum Permissions {
     PrintQR = 'PrintQR',
     // Inventory & User Management
     ManageItemGroup = 'ManageItemGroup',
-    ManageItems = 'ManageItems',
+    ManageItems = 'ManageItems',       // sirf Add item page
+    EditItems = 'EditItems',           // Manage items page ka edit/delete + cart edit icons
     ManageUsers = 'ManageUsers',
     ManageEditProfile = 'ManageEditProfile',
     CreateUsers = 'CreateUsers',
@@ -63,6 +65,7 @@ export enum Permissions {
     ManagePurchaseSetting = 'ManagePurchaseSetting',
     ManageItemSetting = 'ManageItemSetting',
     ManageBillSetting = 'ManageBillSetting',
+    ManageBarcodeSetting = 'ManageBarcodeSetting',
     // Customer pricing (owner-grantable)
     ManageCustomerPricing = 'ManageCustomerPricing',
     OverrideCustomerDiscount = 'OverrideCustomerDiscount',

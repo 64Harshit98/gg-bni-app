@@ -10,6 +10,8 @@ import { useWhatsappProvider } from '../../../Pages/Additional/Whatsapp/useWhats
 import type { Order, OrderStatus } from '../orders.types';
 import { formatDayTime } from '../../../lib/format';
 import { splitAddOns } from '../../../UseComponents/addOnText';
+import { useAuth } from '../../../context/auth-context';
+import { Cata_Permissions } from '../../enum/cata_permissions.enum';
 
 interface OrderCardProps {
     order: Order;
@@ -132,7 +134,9 @@ export const OrderCard: React.FC<OrderCardProps> = ({
     isUpdatingStatus,
     variant = 'accordion',
 }) => {
-    const navigate = useNavigate();
+        const navigate = useNavigate();
+    const { hasCataloguePermission } = useAuth();
+    const canEditOrders = hasCataloguePermission(Cata_Permissions.ViewEditButton);
     const { provider: whatsappProvider } = useWhatsappProvider(companyId);
     const [itemQuery, setItemQuery] = useState('');
 
@@ -660,7 +664,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
 
     // Rarely-needed actions behind ⋯ (same conditions as before)
     const moreItems: MoreMenuItem[] = [
-        ...(!isUpcomingStatus ? [{ key: 'edit' as const, label: 'Edit order', onSelect: () => openEditor(Order) }] : []),
+                ...(!isUpcomingStatus && canEditOrders ? [{ key: 'edit' as const, label: 'Edit order', onSelect: () => openEditor(Order) }] : []),
         ...(Order.status === 'Packed' ? [{ key: 'back' as const, label: 'Move back to Confirmed', onSelect: () => handlePreviousStatus(Order.id, Order.status) }] : []),
         { key: 'delete' as const, label: 'Delete order', danger: true, onSelect: () => handleDeleteOrder(Order.id) },
     ];

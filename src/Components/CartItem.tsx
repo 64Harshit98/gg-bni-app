@@ -41,7 +41,8 @@ interface GenericCartListProps<T extends CartItem> {
   applyRounding: (amount: number, isRoundingEnabled: boolean, interval?: number) => number;
   State: typeof State;
   setModal: (modal: { message: string; type: State } | null) => void;
-  onOpenEditDrawer: (item: Item) => void;
+  /** Edit icon sirf tab dikhega jab ye pass ho (permission na ho to undefined do). */
+  onOpenEditDrawer?: (item: Item) => void;
   /** Click on the item name. Return true if handled (e.g. add-ons popup opened). Gets the cart line itself */
   onNameClick?: (cartItem: T) => boolean | void;
   onItemNotFound?: (cartItem: T) => void;
@@ -472,10 +473,10 @@ export const GenericCartList = <T extends CartItem>({
               className={`rounded-sm border overflow-hidden shadow-sm ${isNewLine
                 ? 'bg-white border-amber-300'
                 : isZeroPrice
-                ? 'bg-red-50 border-red-200'
-                : isUnlinked
-                  ? 'bg-yellow-50 border-yellow-300'
-                  : 'bg-white border-gray-100'
+                  ? 'bg-red-50 border-red-200'
+                  : isUnlinked
+                    ? 'bg-yellow-50 border-yellow-300'
+                    : 'bg-white border-gray-100'
                 } ${!item.isEditable ? 'opacity-75' : ''}`}
             >
 
@@ -532,11 +533,11 @@ export const GenericCartList = <T extends CartItem>({
                         ₹{lineSubtotal.toLocaleString('en-IN')}
                       </span>
                     </div>
-                    {!isNewLine && <ShowWrapper requiredPermission={Permissions.ViewTransactions}>
+                    {!isNewLine && onOpenEditDrawer && <ShowWrapper requiredPermission={Permissions.ViewTransactions}>
                       <button
                         onClick={() => {
                           const originalItem = availableItems.find(a => a.id === item.productId || a.id === item.id);
-                          if (originalItem) onOpenEditDrawer(originalItem);
+                          if (originalItem) onOpenEditDrawer?.(originalItem);
                           else if (onItemNotFound) onItemNotFound(item);
                           else setModal({ message: "Original item not found.", type: State.ERROR });
                         }}
@@ -694,7 +695,7 @@ export const GenericCartList = <T extends CartItem>({
                       className={`text-sm font-medium text-gray-800 truncate ${onNameClick ? 'cursor-pointer hover:text-blue-600' : ''}`}
                       onClick={onNameClick ? () => onNameClick(item) : undefined}
                     >
-                                           {item.name ? renderItemName(item.name) : 'Unnamed Item'}
+                      {item.name ? renderItemName(item.name) : 'Unnamed Item'}
                     </span>
                     {item.addOnText && (
                       <span
@@ -714,11 +715,11 @@ export const GenericCartList = <T extends CartItem>({
                   {item.unit && (
                     <span className="text-[11px] text-gray-400 flex-shrink-0">{item.unit}</span>
                   )}
-                  {!isNewLine && <ShowWrapper requiredPermission={Permissions.ViewTransactions}>
+                  {!isNewLine && onOpenEditDrawer && <ShowWrapper requiredPermission={Permissions.ViewTransactions}>
                     <button
                       onClick={() => {
                         const originalItem = availableItems.find(a => a.id === item.productId || a.id === item.id);
-                        if (originalItem) onOpenEditDrawer(originalItem);
+                        if (originalItem) onOpenEditDrawer?.(originalItem);
                         else if (onItemNotFound) onItemNotFound(item);
                         else setModal({ message: "Original item not found.", type: State.ERROR });
                       }}

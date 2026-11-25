@@ -97,6 +97,19 @@ const scrollToSection = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
 
+// UI only: find the nearest scrollable ancestor (app layout may scroll inside a div, not window)
+const getScrollParent = (el: HTMLElement | null): HTMLElement | Window => {
+    let node = el?.parentElement || null;
+    while (node) {
+        const { overflowY } = getComputedStyle(node);
+        if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight) {
+            return node;
+        }
+        node = node.parentElement;
+    }
+    return window;
+};
+
 const GSTIN_RE = /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/i;
 const PAN_RE = /^[A-Z]{5}\d{4}[A-Z]$/i;
 const IFSC_RE = /^[A-Z]{4}0[A-Z0-9]{6}$/i;
@@ -442,6 +455,8 @@ const CatalogueBillSettings: React.FC = () => {
     const [savedSettings, setSavedSettings] = useState<BillSettingsData | null>(null);
     const [sigDirty, setSigDirty] = useState(false);
     const [activeSection, setActiveSection] = useState<string>(SECTIONS[0].id);
+    // UI only: while a nav click is smooth-scrolling, ignore the observer
+    const navLockRef = useRef<number | null>(null);
 
     const [businessInfo, setBusinessInfo] = useState<BusinessInfoData>({
         companyName: '',
@@ -531,15 +546,6 @@ const CatalogueBillSettings: React.FC = () => {
                 };
                 setSettings(loadedSettings);
                 setSavedSettings(loadedSettings); // UI only: baseline for "unsaved changes"
-
-                // Load signature after component has mounted and canvas is ready
-                if (loadedSettings.signatureBase64) {
-                    setTimeout(() => {
-                        if (sigPadRef.current) {
-                            sigPadRef.current.fromDataURL(loadedSettings.signatureBase64);
-                        }
-                    }, 200);
-                }
             } catch (error) {
                 console.error('Error fetching bill settings:', error);
                 setModal({ message: 'Failed to load settings.', type: State.ERROR });
@@ -554,8 +560,10 @@ const CatalogueBillSettings: React.FC = () => {
     // UI only: highlight the section currently in view in the nav / chips.
     useEffect(() => {
         if (isLoading || typeof IntersectionObserver === 'undefined') return;
+
         const obs = new IntersectionObserver(
             entries => {
+                if (navLockRef.current) return; // ignore during nav-click smooth scroll
                 entries.forEach(en => {
                     if (en.isIntersecting) setActiveSection(en.target.id);
                 });
@@ -566,9 +574,34 @@ const CatalogueBillSettings: React.FC = () => {
             const el = document.getElementById(sec.id);
             if (el) obs.observe(el);
         });
-        return () => obs.disconnect();
-    }, [isLoading]);
 
+        // At the bottom of the scroll area, force the last section (T&C never reaches the observer strip)
+        const lastEl = document.getElementById(SECTIONS[SECTIONS.length - 1].id);
+        const scroller = getScrollParent(lastEl);
+        const onScroll = () => {
+            if (navLockRef.current) return;
+            const atBottom =
+                scroller === window
+                    ? window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4
+                    : (scroller as HTMLElement).scrollTop + (scroller as HTMLElement).clientHeight >=
+                    (scroller as HTMLElement).scrollHeight - 4;
+            if (atBottom) setActiveSection(SECTIONS[SECTIONS.length - 1].id);
+        };
+        scroller.addEventListener('scroll', onScroll, { passive: true });
+
+        return () => {
+            obs.disconnect();
+            scroller.removeEventListener('scroll', onScroll);
+        };
+    }, [isLoading]);
+    const handleNavClick = (id: string) => {
+        setActiveSection(id); // highlight immediately
+        if (navLockRef.current) window.clearTimeout(navLockRef.current);
+        navLockRef.current = window.setTimeout(() => {
+            navLockRef.current = null;
+        }, 800);
+        scrollToSection(id);
+    };
     // --- 2. Handle Inputs ---
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
@@ -590,10 +623,12 @@ const CatalogueBillSettings: React.FC = () => {
 
             let currentSignature = settings.signatureBase64;
 
-            if (sigPadRef.current && !sigPadRef.current.isEmpty()) {
-                currentSignature = sigPadRef.current.getCanvas().toDataURL('image/png');
-            } else if (sigPadRef.current && sigPadRef.current.isEmpty()) {
-                currentSignature = '';
+            // Only touch the signature if the user actually drew / uploaded / cleared it.
+            // An empty canvas alone must NOT wipe the saved signature.
+            if (sigDirty && sigPadRef.current) {
+                currentSignature = sigPadRef.current.isEmpty()
+                    ? ''
+                    : sigPadRef.current.getCanvas().toDataURL('image/png');
             }
 
             const dataToSave = {
@@ -645,7 +680,7 @@ const CatalogueBillSettings: React.FC = () => {
     const handleDiscard = () => {
         if (!savedSettings) return;
         setSettings(savedSettings);
-        redrawSignature(savedSettings.signatureBase64);
+        sigPadRef.current?.clear(); // saved signature ab <img> se dikhta hai
         setSigDirty(false);
     };
 
@@ -697,7 +732,11 @@ const CatalogueBillSettings: React.FC = () => {
         window.addEventListener('afterprint', cleanup);
         window.print();
     };
-
+    useEffect(() => {
+        return () => {
+            if (navLockRef.current) window.clearTimeout(navLockRef.current);
+        };
+    }, []);
     if (isLoading) {
         return (
             <div className="min-h-screen bg-orange-50 flex items-center justify-center">
@@ -834,7 +873,7 @@ const CatalogueBillSettings: React.FC = () => {
                             key={sec.id}
                             type="button"
                             aria-pressed={activeSection === sec.id}
-                            onClick={() => scrollToSection(sec.id)}
+                            onClick={() => handleNavClick(sec.id)}
                             className={`inline-flex items-center h-[30px] px-3 rounded-sm border text-xs font-medium leading-none whitespace-nowrap ${activeSection === sec.id
                                 ? 'bg-slate-900 border-slate-900 text-white'
                                 : 'bg-white border-slate-400 text-slate-600 hover:bg-orange-50'
@@ -854,7 +893,7 @@ const CatalogueBillSettings: React.FC = () => {
                             key={sec.id}
                             type="button"
                             aria-current={activeSection === sec.id}
-                            onClick={() => scrollToSection(sec.id)}
+                            onClick={() => handleNavClick(sec.id)}
                             className={`flex items-center gap-2.5 px-3 py-2 rounded-sm text-[13px] leading-[18px] font-medium text-left ${activeSection === sec.id
                                 ? 'bg-orange-100 text-orange-600'
                                 : 'text-slate-600 hover:bg-orange-50 hover:text-slate-900'
@@ -1144,6 +1183,14 @@ const CatalogueBillSettings: React.FC = () => {
                                         }}
                                         backgroundColor="rgba(255,255,255,0)"
                                     />
+                                    {/* Saved signature: canvas pe depend nahi karta. User ne kuch change kiya (sigDirty) to canvas hi source of truth hai */}
+                                    {settings.signatureBase64 && !sigDirty && (
+                                        <img
+                                            src={settings.signatureBase64}
+                                            alt="Saved signature"
+                                            className="absolute inset-0 w-full h-full object-contain p-2 pointer-events-none"
+                                        />
+                                    )}
                                     <div className="absolute inset-0 pointer-events-none select-none">
                                         <div className="absolute inset-0 grid place-items-center text-slate-500 opacity-20 text-[34px] font-semibold tracking-wide">
                                             SIGN HERE

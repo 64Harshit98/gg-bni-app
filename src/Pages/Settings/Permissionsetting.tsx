@@ -27,6 +27,7 @@ export const BASIC_ALLOWED_PERMISSIONS = [
     Permissions.CreateUsers,
     Permissions.ViewAccount,
     Permissions.ManageUsers,
+    Permissions.SetPermissions,
     Permissions.ViewAttendance,
     Permissions.ManageSalesSetting,
     Permissions.AllowDueBilling,
@@ -48,10 +49,11 @@ export const DEFAULT_PERMISSIONS_MAP = {
         Permissions.ViewAttendance,
         Permissions.ViewAccount,
         Permissions.ManageItems,
+        Permissions.EditItems,
         Permissions.Viewrestockcard,
         Permissions.ViewTransactions,
         Permissions.PrintQR,
-        //Permissions.ManageItemGroup,
+        Permissions.ManageItemGroup,
         Permissions.CreateSales,
         Permissions.CreateSalesReturn,
         Permissions.CreatePurchase,
@@ -94,6 +96,8 @@ const PERMISSION_DESCRIPTIONS: Partial<Record<Permissions, string>> = {
     [Permissions.CreatePurchase]: 'Record supplier bills; shows cost prices.',
     [Permissions.CreatePurchaseReturn]: 'Send goods back and raise a debit note.',
     [Permissions.ManageItems]: 'Includes prices, groups and opening stock.',
+    [Permissions.EditItems]: 'Edit or delete items from Manage items. Also shows the edit icon in Sales and Purchase.',
+    [Permissions.ViewRestockReport]: 'Items to reorder, with order quantities.',
     [Permissions.ManageItemGroup]: 'Create and manage item categories and groups.',
     [Permissions.PrintQR]: 'Print QR code labels for inventory items.',
     [Permissions.ViewAccount]: 'Access to the account/profile page.',
@@ -119,9 +123,10 @@ const PERMISSION_DESCRIPTIONS: Partial<Record<Permissions, string>> = {
     [Permissions.ManagePurchaseSetting]: 'Purchase bill fields and rules.',
     [Permissions.ManageItemSetting]: 'Which item fields are required.',
     [Permissions.ManageBillSetting]: 'Printed bill layout and footer.',
-    [Permissions.ManageCustomerPricing]: 'Set fixed discounts for each customer and supplier.',
+    [Permissions.ManageBarcodeSetting]: 'Barcode label size and print layout.',
+    [Permissions.ManageCustomerPricing]: 'Set fixed discounts for each customer and supplier. Needs Settings tab.',
     [Permissions.OverrideCustomerDiscount]: 'Change the price on a line that has a customer or supplier fixed price.',
-    [Permissions.ManageLoyaltyPoints]: 'Loyalty settings, and add or remove a customer\'s points by hand.',
+    [Permissions.ManageLoyaltyPoints]: 'Loyalty settings, and add or remove a customer\'s points by hand. Needs Settings tab.',
     [Permissions.OverrideLoyaltyPoints]: 'Change the points a bill earns (only if Loyalty settings allow it).',
 };
 
@@ -149,7 +154,8 @@ const PERMISSION_LABELS: Partial<Record<Permissions, string>> = {
     [Permissions.CreatePurchase]: 'Create purchase bills',
     [Permissions.CreatePurchaseReturn]: 'Create purchase returns',
     // Items & inventory
-    [Permissions.ManageItems]: 'Add, edit and delete items',
+    [Permissions.ManageItems]: 'Manage Inventory',
+    [Permissions.EditItems]: 'Edit and delete items',
     [Permissions.ViewCatalogue]: 'Open catalogue',
     // Reports
     [Permissions.ViewReports]: 'Open Reports & Settings tabs',
@@ -158,6 +164,7 @@ const PERMISSION_LABELS: Partial<Record<Permissions, string>> = {
     [Permissions.ViewPNLReport]: 'Profit & loss',
     [Permissions.ViewItemReport]: 'Item report',
     [Permissions.ViewItemSoldReport]: 'Items sold report',
+    [Permissions.ViewRestockReport]: 'Restock report',
     [Permissions.ViewCustomerReport]: 'Customer report',
     [Permissions.ViewExpenseReport]: 'Expense report',
     [Permissions.ViewPartyLedger]: 'Party ledger',
@@ -168,6 +175,7 @@ const PERMISSION_LABELS: Partial<Record<Permissions, string>> = {
     [Permissions.ManagePurchaseSetting]: 'Purchase settings',
     [Permissions.ManageItemSetting]: 'Item settings',
     [Permissions.ManageBillSetting]: 'Bill settings',
+    [Permissions.ManageBarcodeSetting]: 'Barcode settings',
     // Account
     [Permissions.ManageEditProfile]: 'Edit own profile',
     [Permissions.ViewAddons]: 'See add-ons',
@@ -188,6 +196,7 @@ const NESTED_PERMISSIONS: Permissions[] = [
     Permissions.ViewPNLReport,
     Permissions.ViewItemReport,
     Permissions.ViewItemSoldReport,
+    Permissions.ViewRestockReport,
     Permissions.ViewCustomerReport,
     Permissions.ViewExpenseReport,
     Permissions.ViewPartyLedger,
@@ -197,6 +206,19 @@ const NESTED_PERMISSIONS: Permissions[] = [
     Permissions.ManagePurchaseSetting,
     Permissions.ManageItemSetting,
     Permissions.ManageBillSetting,
+    Permissions.ManageBarcodeSetting,
+    Permissions.ManageCustomerPricing,   // NEW
+    Permissions.ManageLoyaltyPoints,     // NEW
+];
+// NEW: popup ka message "setting" wala dikhana hai ya "report" wala
+const SETTINGS_PAGE_PERMISSIONS: Permissions[] = [
+    Permissions.ManageSalesSetting,
+    Permissions.ManagePurchaseSetting,
+    Permissions.ManageItemSetting,
+    Permissions.ManageBillSetting,
+    Permissions.ManageBarcodeSetting,
+    Permissions.ManageCustomerPricing,
+    Permissions.ManageLoyaltyPoints,
 ];
 
 // UI-only: SELLAR group header meta. tint = [chip bg, chip text]
@@ -334,7 +356,8 @@ const permissionGroups = {
         title: 'Inventory Management',
         permissions: [
             Permissions.ManageItems,
-            //Permissions.ManageItemGroup,
+            Permissions.EditItems,
+            Permissions.ManageItemGroup,
             Permissions.ViewCatalogue,
         ],
     },
@@ -347,6 +370,7 @@ const permissionGroups = {
             Permissions.ViewPurchaseReport,
             Permissions.ViewItemReport,
             Permissions.ViewItemSoldReport,
+            Permissions.ViewRestockReport,
             Permissions.ViewCustomerReport,
             Permissions.ViewExpenseReport,
             Permissions.ViewPartyLedger,
@@ -361,6 +385,7 @@ const permissionGroups = {
             Permissions.ManagePurchaseSetting,
             Permissions.ManageItemSetting,
             Permissions.ManageBillSetting,
+            Permissions.ManageBarcodeSetting,
         ],
     },
 
@@ -631,13 +656,13 @@ interface CbProps {
     checked: boolean;
     disabled?: boolean;
     locked?: boolean;
+    dimmed?: boolean;          // NEW
     label: string;
     title?: string;
     onToggle: () => void;
 }
 
-// Custom checkbox (SELLAR .cb)
-const Cb: React.FC<CbProps> = ({ checked, disabled, locked, label, title, onToggle }) => (
+const Cb: React.FC<CbProps> = ({ checked, disabled, locked, dimmed, label, title, onToggle }) => (
     <button
         type="button"
         role="checkbox"
@@ -653,7 +678,8 @@ const Cb: React.FC<CbProps> = ({ checked, disabled, locked, label, title, onTogg
                 : checked
                     ? 'bg-[#155dfc] border-[#155dfc]'
                     : 'bg-white border-[#7a8aa3]'}
-            ${disabled && !locked ? 'opacity-40 cursor-not-allowed' : ''}`}
+             ${disabled && !locked ? 'opacity-40 cursor-not-allowed' : ''}
+            ${dimmed ? 'opacity-40 cursor-pointer' : ''}`}   // NEW
     >
         {checked && <Ico paths={ICON_CHECK} size={13} strokeWidth={3} />}
     </button>
@@ -672,6 +698,9 @@ const ManagePermissionsPage: React.FC = () => {
 
     const [isResetOpen, setIsResetOpen] = useState(false);
     const [resetRoles, setResetRoles] = useState<string[]>([]);
+
+    // NEW: jab Reports & Settings tab off ho aur user nested permission tick kare
+    const [blockedPrompt, setBlockedPrompt] = useState<{ role: string; permission: Permissions } | null>(null);
 
     const [searchQuery, setSearchQuery] = useState('');
     const [showMobileSearch, setShowMobileSearch] = useState(false);
@@ -837,6 +866,14 @@ const ManagePermissionsPage: React.FC = () => {
             }
         });
     };
+    // NEW: popup ke Confirm par master permission + jo tick karna chahte the, dono on
+    const handleEnableReportsFromPrompt = () => {
+        if (blockedPrompt) {
+            handlePermissionChange(blockedPrompt.role, Permissions.ViewReports, true);
+            handlePermissionChange(blockedPrompt.role, blockedPrompt.permission, true);
+        }
+        setBlockedPrompt(null);
+    };
 
     // Select all / Clear all for one group of one role (skips plan-locked rows)
     const handleToggleGroup = (role: string, perms: Permissions[], select: boolean) => {
@@ -944,7 +981,7 @@ const ManagePermissionsPage: React.FC = () => {
     const renderName = (permission: Permissions) => {
         const lockedByPlan = isBasicPlan && !BASIC_ALLOWED_PERMISSIONS.includes(permission);
         const tag = PERMISSION_TAGS[permission];
-                const description = PERMISSION_DESCRIPTIONS[permission];
+        const description = PERMISSION_DESCRIPTIONS[permission];
         return (
             <div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -972,10 +1009,17 @@ const ManagePermissionsPage: React.FC = () => {
             <Cb
                 checked={checked}
                 locked={lockedByPlan}
-                disabled={lockedByPlan || blockedByReports}
+                disabled={lockedByPlan}
+                dimmed={blockedByReports}
                 label={`${role}: ${PERMISSION_LABELS[permission] || permission}`}
                 title={lockedByPlan ? 'Upgrade to Pro/Enterprise to unlock' : blockedByReports ? 'Turn on "Open Reports & Settings tabs" first' : undefined}
-                onToggle={() => handlePermissionChange(role, permission, !checked)}
+                onToggle={() => {
+                    if (blockedByReports) {
+                        setBlockedPrompt({ role, permission });   // popup dikhao, tick mat karo
+                        return;
+                    }
+                    handlePermissionChange(role, permission, !checked);
+                }}
             />
         );
     };
@@ -1297,6 +1341,20 @@ const ManagePermissionsPage: React.FC = () => {
                     showConfirmButton={true}
                     onConfirm={handleResetPermissions}
                     onClose={() => setIsResetOpen(false)}
+                />
+            )}
+            {/* NEW */}
+            {blockedPrompt && (
+                <Modal
+                    message={
+                        SETTINGS_PAGE_PERMISSIONS.includes(blockedPrompt.permission)
+                            ? `${PERMISSION_LABELS[blockedPrompt.permission] || 'This setting'} needs the Settings tab. Confirm to turn on "Open Reports & Settings tabs" for ${blockedPrompt.role} too.`
+                            : `${PERMISSION_LABELS[blockedPrompt.permission] || 'This report'} needs the Reports tab. Confirm to turn on "Open Reports & Settings tabs" for ${blockedPrompt.role} too.`
+                    }
+                    type={State.ERROR}
+                    showConfirmButton={true}
+                    onConfirm={handleEnableReportsFromPrompt}
+                    onClose={() => setBlockedPrompt(null)}
                 />
             )}
 

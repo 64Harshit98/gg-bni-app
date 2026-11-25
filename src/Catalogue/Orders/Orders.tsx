@@ -202,6 +202,7 @@ const OrdersPage: React.FC = () => {
         handleCreditNote,
         handleRefund,
         customerPriceOffer,
+        customerPricingEditor,
     } = useOrderEditor({
         companyId: currentUser?.companyId,
         currentUser,
@@ -684,6 +685,7 @@ const OrdersPage: React.FC = () => {
                     handleDiscountAmountInputChange={handleDiscountAmountInputChange}
                     handleSaveChanges={handleSaveChanges}
                     customerPriceOffer={customerPriceOffer}
+                    customerPricingEditor={customerPricingEditor}
                 />
             )}
             {selectedOrderForConfirm && (

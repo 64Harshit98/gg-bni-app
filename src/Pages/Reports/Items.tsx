@@ -39,7 +39,7 @@ const ItemReportsHub = () => {
   const { items, itemsLoading } = useCatalogueData();
 
   const canViewReports = hasPermission(Permissions.ViewItemReport);
-  const canManage = hasPermission(Permissions.ManageItems);
+      const canManage = hasPermission(Permissions.ManageItems);
 
   const { avgMargin, issueCounts } = useMemo(
     () => ({
@@ -81,7 +81,7 @@ const ItemReportsHub = () => {
     ? {
       title: 'Manage items',
       description: 'Add, edit or delete items · not a report',
-      mobileDescription: 'Add, edit or delete items',
+       mobileDescription: 'Manage your items',
       stat: 'Opens your item list',
       icon: Pencil,
       iconClass: 'bg-orange-50 text-orange-600',

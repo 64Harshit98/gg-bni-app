@@ -18,21 +18,75 @@ import {
     type LoyaltySettings,
 } from '../../lib/loyalty';
 
-/* SELLAR tokens (POS blue accent) — same values as SalesSetting.tsx */
-const ROOT_BASE =
-    "bg-[#eef2ff] font-['Poppins',system-ui,-apple-system,'Segoe_UI',sans-serif] text-sm leading-[22px] text-[#0f172b] antialiased";
-const CARD_SHADOW = 'shadow-[0_1px_2px_rgba(21,48,140,.05),0_2px_6px_rgba(21,48,140,.06)]';
-const FLOAT_SHADOW = 'shadow-[0_10px_28px_rgba(21,48,140,.14),0_2px_6px_rgba(21,48,140,.08)]';
-const FOCUS_RING =
-    'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#155dfc]';
-const FIELD =
-    'flex h-10 items-center gap-2 border border-[#7a8aa3] bg-white px-3 rounded-sm focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-[#155dfc]';
+/* SELLAR tokens — blue (POS) / orange (Catalogue) theme.
+   Tailwind ko full class strings chahiye, isliye koi bhi class .replace() se mat banao. */
+interface ThemeStyles {
+    page: string;
+    primaryBg: string;
+    primaryHover: string;
+    soft: string;
+    softInk: string;
+    outline: string;        // focus-visible:outline-[...]
+    withinOutline: string;  // focus-within:outline-[...]
+    peerChecked: string;    // peer-checked:bg-[...]
+    peerOutline: string;    // peer-focus-visible:outline-[...]
+    link: string;
+    border: string;
+    barBorder: string;      // md:border-[...]
+    hoverBg: string;
+    sunken: string;
+    cardShadow: string;
+    floatShadow: string;
+    barShadow: string;
+}
+
+const THEMES: Record<'blue' | 'orange', ThemeStyles> = {
+    blue: {
+        page: 'bg-[#eef2ff]',
+        primaryBg: 'bg-[#155dfc]',
+        primaryHover: 'hover:bg-[#1447e6]',
+        soft: 'bg-[#e6eeff]',
+        softInk: 'text-[#155dfc]',
+        outline: 'focus-visible:outline-[#155dfc]',
+        withinOutline: 'focus-within:outline-[#155dfc]',
+        peerChecked: 'peer-checked:bg-[#155dfc]',
+        peerOutline: 'peer-focus-visible:outline-[#155dfc]',
+        link: 'text-[#155dfc]',
+        border: 'border-[#dfe6fb]',
+        barBorder: 'md:border-[#dfe6fb]',
+        hoverBg: 'hover:bg-[#f5f7ff]',
+        sunken: 'bg-[#f5f7ff]',
+        cardShadow: 'shadow-[0_1px_2px_rgba(21,48,140,.05),0_2px_6px_rgba(21,48,140,.06)]',
+        floatShadow: 'shadow-[0_10px_28px_rgba(21,48,140,.14),0_2px_6px_rgba(21,48,140,.08)]',
+        barShadow: 'md:shadow-[0_-6px_16px_rgba(21,48,140,.06)]',
+    },
+    orange: {
+        page: 'bg-[#fff5ec]',
+        primaryBg: 'bg-[#c2410c]',
+        primaryHover: 'hover:bg-[#9a3412]',
+        soft: 'bg-[#ffedd5]',
+        softInk: 'text-[#9a3412]',
+        outline: 'focus-visible:outline-[#ea580c]',
+        withinOutline: 'focus-within:outline-[#ea580c]',
+        peerChecked: 'peer-checked:bg-[#c2410c]',
+        peerOutline: 'peer-focus-visible:outline-[#ea580c]',
+        link: 'text-[#c2410c]',
+        border: 'border-[#f6e1d0]',
+        barBorder: 'md:border-[#f6e1d0]',
+        hoverBg: 'hover:bg-[#fff8f2]',
+        sunken: 'bg-[#fff8f2]',
+        cardShadow: 'shadow-[0_1px_2px_rgba(194,65,12,.05),0_2px_6px_rgba(194,65,12,.06)]',
+        floatShadow: 'shadow-[0_10px_28px_rgba(194,65,12,.14),0_2px_6px_rgba(194,65,12,.08)]',
+        barShadow: 'md:shadow-[0_-6px_16px_rgba(194,65,12,.06)]',
+    },
+};
+
+const FONT =
+    "font-['Poppins',system-ui,-apple-system,'Segoe_UI',sans-serif] text-sm leading-[22px] text-[#0f172b] antialiased";
+const FOCUS_BASE = 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2';
 const FIELD_INPUT =
     'min-w-0 flex-1 border-0 bg-transparent text-sm tabular-nums text-[#0f172b] outline-none placeholder:text-[#5b6b86]';
 const FIELD_LABEL = 'mb-1 block text-xs font-medium text-[#45556c]';
-const BTN_PRIMARY = `inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-sm border border-transparent px-4 text-sm font-medium leading-5 transition-colors bg-[#155dfc] text-white hover:bg-[#1447e6] disabled:cursor-not-allowed disabled:opacity-[.45] ${FOCUS_RING}`;
-const PREVIEW =
-    'mt-2 inline-flex flex-wrap items-center gap-1.5 bg-[#f5f7ff] px-3 py-2 text-xs leading-[18px] text-[#45556c] rounded-sm [&_b]:font-semibold [&_b]:tabular-nums [&_b]:text-[#0f172b]';
 
 type Tint = 'blue' | 'green' | 'amber' | 'magenta';
 const TINTS: Record<Tint, string> = {
@@ -44,12 +98,12 @@ const TINTS: Record<Tint, string> = {
 
 const ico = (Icon: React.ComponentType<{ size?: number; strokeWidth?: number }>) => <Icon size={16} strokeWidth={1.75} />;
 
-const Section: React.FC<{ title: string; subtitle: string; icon: React.ReactNode; tint?: Tint; children: React.ReactNode }> = ({
-    title, subtitle, icon, tint = 'blue', children,
-}) => (
-    <section className={`min-w-0 overflow-hidden border border-[#dfe6fb] bg-white rounded-sm ${CARD_SHADOW}`}>
-        <div className="flex items-center gap-3 border-b border-[#dfe6fb] px-3.5 py-3 lg:px-[18px] lg:py-3.5">
-            <span className={`inline-grid h-8 w-8 flex-none place-items-center rounded-sm ${TINTS[tint]}`}>{icon}</span>
+const Section: React.FC<{
+    title: string; subtitle: string; icon: React.ReactNode; tint?: Tint; t: ThemeStyles; children: React.ReactNode;
+}> = ({ title, subtitle, icon, tint, t, children }) => (
+    <section className={`min-w-0 overflow-hidden border ${t.border} bg-white rounded-sm ${t.cardShadow}`}>
+        <div className={`flex items-center gap-3 border-b ${t.border} px-3.5 py-3 lg:px-[18px] lg:py-3.5`}>
+            <span className={`inline-grid h-8 w-8 flex-none place-items-center rounded-sm ${tint ? TINTS[tint] : `${t.soft} ${t.softInk}`}`}>{icon}</span>
             <div className="min-w-0">
                 <b className="block text-[15px] font-semibold leading-[22px] lg:text-base">{title}</b>
                 <small className="block text-xs font-normal leading-[18px] text-[#5b6b86]">{subtitle}</small>
@@ -66,12 +120,13 @@ const Opt: React.FC<{
     checked?: boolean;
     onChange?: (checked: boolean) => void;
     disabled?: boolean;
+    t: ThemeStyles;
     children?: React.ReactNode;
-}> = ({ id, label, description, checked, onChange, disabled = false, children }) => {
+}> = ({ id, label, description, checked, onChange, disabled = false, t, children }) => {
     const hasSwitch = Boolean(id && onChange);
     return (
         <div
-            className={`grid items-center gap-x-4 gap-y-1.5 border-b border-[#dfe6fb] px-3.5 py-3 last:border-b-0 lg:px-[18px] lg:py-3.5 ${
+            className={`grid items-center gap-x-4 gap-y-1.5 border-b ${t.border} px-3.5 py-3 last:border-b-0 lg:px-[18px] lg:py-3.5 ${
                 hasSwitch ? 'grid-cols-[minmax(0,1fr)_auto]' : 'grid-cols-[minmax(0,1fr)]'
             } ${disabled ? 'pointer-events-none opacity-[.45]' : ''}`}
         >
@@ -92,7 +147,7 @@ const Opt: React.FC<{
                     />
                     <span
                         aria-hidden="true"
-                        className="relative block h-[22px] w-10 rounded-full bg-[#7a8aa3] transition-colors after:absolute after:left-[3px] after:top-[3px] after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow-[0_1px_2px_rgba(0,0,0,.2)] after:transition-transform after:content-[''] peer-checked:bg-[#155dfc] peer-checked:after:translate-x-[18px] peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[#155dfc]"
+                        className={`relative block h-[22px] w-10 rounded-full bg-[#7a8aa3] transition-colors after:absolute after:left-[3px] after:top-[3px] after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow-[0_1px_2px_rgba(0,0,0,.2)] after:transition-transform after:content-[''] ${t.peerChecked} peer-checked:after:translate-x-[18px] peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 ${t.peerOutline}`}
                     />
                 </label>
             )}
@@ -119,13 +174,14 @@ const NumberField: React.FC<{
     label: string;
     value: string;
     onChange: (v: string) => void;
+    t: ThemeStyles;
     prefix?: string;
     suffix?: string;
     placeholder?: string;
-}> = ({ id, label, value, onChange, prefix, suffix, placeholder }) => (
+}> = ({ id, label, value, onChange, t, prefix, suffix, placeholder }) => (
     <div className="min-w-0">
         <label htmlFor={id} className={FIELD_LABEL}>{label}</label>
-        <div className={FIELD}>
+        <div className={`flex h-10 items-center gap-2 border border-[#7a8aa3] bg-white px-3 rounded-sm focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 ${t.withinOutline}`}>
             {prefix && <span className="text-[#5b6b86]">{prefix}</span>}
             <input
                 id={id}
@@ -159,7 +215,13 @@ const validate = (s: LoyaltySettings): string | null => {
     return null;
 };
 
-const LoyaltySettingPage: React.FC = () => {
+interface LoyaltySettingPageProps {
+    theme?: 'blue' | 'orange';
+}
+
+const LoyaltySettingPage: React.FC<LoyaltySettingPageProps> = ({ theme = 'blue' }) => {
+    const t = THEMES[theme];
+    const isCatalogue = theme === 'orange';
     const { currentUser } = useAuth();
     const companyId = currentUser?.companyId;
 
@@ -238,7 +300,7 @@ const LoyaltySettingPage: React.FC = () => {
 
     if (!settings || !parsed) {
         return (
-            <div className={ROOT_BASE}>
+            <div className={`${FONT} ${t.page}`}>
                 <div className="flex min-h-screen flex-col items-center justify-center text-[#45556c]">
                     <Spinner />
                     <p className="mt-4">Loading settings...</p>
@@ -253,11 +315,13 @@ const LoyaltySettingPage: React.FC = () => {
     const exampleEarn = earnReady ? calcEarnPoints(exampleBill, { ...parsed, enabled: true }) : 0;
     const redeemReady = parsed.pointValue > 0;
 
+    const previewClass = `mt-2 inline-flex flex-wrap items-center gap-1.5 ${t.sunken} px-3 py-2 text-xs leading-[18px] text-[#45556c] rounded-sm [&_b]:font-semibold [&_b]:tabular-nums [&_b]:text-[#0f172b]`;
+
     return (
-        <div className={`${ROOT_BASE} flex min-h-screen w-full flex-col`}>
+        <div className={`${FONT} ${t.page} flex min-h-screen w-full flex-col`}>
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
-            <div className="sticky top-0 z-30 border-b border-[#dfe6fb] bg-white">
+            <div className={`sticky top-0 z-30 border-b ${t.border} bg-white`}>
                 <div className="flex h-14 items-center gap-3 px-2 md:h-auto md:px-6 md:py-3.5">
                     <div className="flex-shrink-0"><BackButton /></div>
                     <div className="min-w-0 flex-1">
@@ -267,8 +331,8 @@ const LoyaltySettingPage: React.FC = () => {
                         </h1>
                     </div>
                     <Link
-                        to={ROUTES.LOYALTY_POINTS}
-                        className={`inline-flex h-9 items-center gap-2 rounded-sm border border-[#7a8aa3] bg-white px-3 text-sm font-medium text-[#0f172b] hover:bg-[#f5f7ff] ${FOCUS_RING}`}
+                        to={isCatalogue ? `${ROUTES.CHOME}/${ROUTES.CATA_LOYALTY_POINTS}` : ROUTES.LOYALTY_POINTS}
+                        className={`inline-flex h-9 items-center gap-2 rounded-sm border border-[#7a8aa3] bg-white px-3 text-sm font-medium text-[#0f172b] ${t.hoverBg} ${FOCUS_BASE} ${t.outline}`}
                     >
                         <Users size={16} strokeWidth={1.75} />
                         <span className="hidden sm:inline">Customer points</span>
@@ -278,8 +342,9 @@ const LoyaltySettingPage: React.FC = () => {
 
             <main className="min-h-0 w-full flex-grow box-border px-3 pb-44 pt-3 sm:px-4 sm:pt-4 md:pb-6 lg:px-6 lg:pt-6">
                 <div className="mx-auto grid max-w-[760px] gap-4">
-                    <Section title="Loyalty programme" subtitle="Reward customers with points on every bill" icon={ico(Star)}>
+                    <Section t={t} title="Loyalty programme" subtitle="Reward customers with points on every bill" icon={ico(Star)}>
                         <Opt
+                            t={t}
                             id="loyalty-enabled"
                             label="Turn on loyalty points"
                             description="Customers with a 10-digit mobile number earn points on their bills. Walk-in bills without a number don't earn points."
@@ -288,31 +353,37 @@ const LoyaltySettingPage: React.FC = () => {
                         />
                     </Section>
 
-                    <Section title="Earning" subtitle="How many points a bill gives" icon={ico(Award)} tint="green">
-                        <Opt label="Points per spend" disabled={off}>
+                    <Section t={t} title="Earning" subtitle="How many points a bill gives" icon={ico(Award)} tint="green">
+                        <Opt t={t} label="Points per spend" disabled={off}>
                             <div className="grid grid-cols-2 gap-3 sm:max-w-[420px]">
-                                <NumberField id="earn-points" label="Give" suffix="pts" value={nums.earnPoints} onChange={setNum('earnPoints')} />
-                                <NumberField id="earn-per" label="For every" prefix="₹" value={nums.earnPerAmount} onChange={setNum('earnPerAmount')} />
+                                <NumberField t={t} id="earn-points" label="Give" suffix="pts" value={nums.earnPoints} onChange={setNum('earnPoints')} />
+                                <NumberField t={t} id="earn-per" label="For every" prefix="₹" value={nums.earnPerAmount} onChange={setNum('earnPerAmount')} />
                             </div>
-                            <div className={PREVIEW}>
+                            <div className={previewClass}>
                                 {earnReady
                                     ? <>A <b>{rupees(exampleBill)}</b> bill earns <b>{exampleEarn} pts</b>. Points are rounded down.</>
                                     : <>Enter the points and the spend amount to see an example.</>}
                             </div>
                         </Opt>
-                        <Opt label="Minimum bill to earn" description="Bills below this amount don't earn points. Leave empty for no minimum." disabled={off}>
+                        <Opt t={t} label="Minimum bill to earn" description="Bills below this amount don't earn points. Leave empty for no minimum." disabled={off}>
                             <div className="sm:max-w-[200px]">
-                                <NumberField id="earn-min" label="Minimum bill" prefix="₹" value={nums.minBillForEarn} onChange={setNum('minBillForEarn')} placeholder="No minimum" />
+                                <NumberField t={t} id="earn-min" label="Minimum bill" prefix="₹" value={nums.minBillForEarn} onChange={setNum('minBillForEarn')} placeholder="No minimum" />
                             </div>
                         </Opt>
                         <Opt
+                            t={t}
                             id="allow-override"
                             label="Allow authorised staff to change points on a bill"
                             description={
                                 <>
                                     Cashiers always see the points as read-only. When this is on, only roles with the{' '}
                                     <b className="font-semibold text-[#45556c]">Change points on a bill</b> permission can edit them.{' '}
-                                    <Link to={ROUTES.PERMSETTING} className="font-medium text-[#155dfc] hover:underline">Manage permissions</Link>
+                                    <Link
+                                        to={isCatalogue ? `${ROUTES.CHOME}/${ROUTES.CATA_PERMISSION_SETTING}` : ROUTES.PERMSETTING}
+                                        className={`font-medium ${t.link} hover:underline`}
+                                    >
+                                        Manage permissions
+                                    </Link>
                                 </>
                             }
                             checked={settings.allowBillOverride}
@@ -321,8 +392,9 @@ const LoyaltySettingPage: React.FC = () => {
                         />
                     </Section>
 
-                    <Section title="Redeeming" subtitle="Customers pay part of a bill with points" icon={ico(Gift)} tint="amber">
+                    <Section t={t} title="Redeeming" subtitle="Customers pay part of a bill with points" icon={ico(Gift)} tint="amber">
                         <Opt
+                            t={t}
                             id="redeem-enabled"
                             label="Allow paying with points"
                             description="Shows a Use points option in the payment screen. Any staff member can apply it."
@@ -330,13 +402,13 @@ const LoyaltySettingPage: React.FC = () => {
                             onChange={(v) => set('redeemEnabled', v)}
                             disabled={off}
                         />
-                        <Opt label="Value and limits" disabled={off || !settings.redeemEnabled}>
+                        <Opt t={t} label="Value and limits" disabled={off || !settings.redeemEnabled}>
                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                                <NumberField id="point-value" label="1 point is worth" prefix="₹" value={nums.pointValue} onChange={setNum('pointValue')} />
-                                <NumberField id="min-redeem" label="Minimum points to use" suffix="pts" value={nums.minPointsToRedeem} onChange={setNum('minPointsToRedeem')} placeholder="No minimum" />
-                                <NumberField id="max-pct" label="Max share of a bill" suffix="%" value={nums.maxRedeemPercent} onChange={setNum('maxRedeemPercent')} placeholder="No limit" />
+                                <NumberField t={t} id="point-value" label="1 point is worth" prefix="₹" value={nums.pointValue} onChange={setNum('pointValue')} />
+                                <NumberField t={t} id="min-redeem" label="Minimum points to use" suffix="pts" value={nums.minPointsToRedeem} onChange={setNum('minPointsToRedeem')} placeholder="No minimum" />
+                                <NumberField t={t} id="max-pct" label="Max share of a bill" suffix="%" value={nums.maxRedeemPercent} onChange={setNum('maxRedeemPercent')} placeholder="No limit" />
                             </div>
-                            <div className={PREVIEW}>
+                            <div className={previewClass}>
                                 {redeemReady ? (
                                     <>
                                         <b>100 pts</b> = <b>{rupees(pointsToRupees(100, parsed))}</b>. On a <b>₹1,000</b> bill, points can pay up to{' '}
@@ -347,8 +419,9 @@ const LoyaltySettingPage: React.FC = () => {
                         </Opt>
                     </Section>
 
-                    <Section title="Other" subtitle="Online orders and printing" icon={ico(Printer)} tint="magenta">
+                    <Section t={t} title="Other" subtitle="Online orders and printing" icon={ico(Printer)} tint="magenta">
                         <Opt
+                            t={t}
                             id="online-orders"
                             label="Use points on online orders"
                             description="Orders earn points when you mark them Completed, and points can be used when you take payment."
@@ -357,6 +430,7 @@ const LoyaltySettingPage: React.FC = () => {
                             disabled={off}
                         />
                         <Opt
+                            t={t}
                             id="print-on-bill"
                             label="Print points on the bill"
                             description="Shows points earned, used and the customer's balance at the bottom of the bill."
@@ -373,10 +447,15 @@ const LoyaltySettingPage: React.FC = () => {
                 </div>
             </main>
 
-            <div className="pointer-events-none fixed inset-x-0 bottom-16 z-40 px-3 pb-2 md:pointer-events-auto md:sticky md:inset-x-auto md:bottom-0 md:border-t md:border-[#dfe6fb] md:bg-white md:p-0 md:shadow-[0_-6px_16px_rgba(21,48,140,.06)]">
-                <div className={`pointer-events-auto mx-auto flex max-w-[640px] items-center justify-between gap-3 border border-[#dfe6fb] bg-white py-2.5 pl-4 pr-2.5 rounded-sm ${FLOAT_SHADOW} md:mx-0 md:max-w-none md:rounded-none md:border-0 md:bg-transparent md:px-6 md:py-3 md:shadow-none`}>
+            <div className={`pointer-events-none fixed inset-x-0 bottom-16 z-40 px-3 pb-2 md:pointer-events-auto md:sticky md:inset-x-auto md:bottom-0 md:border-t ${t.barBorder} md:bg-white md:p-0 ${t.barShadow}`}>
+                <div className={`pointer-events-auto mx-auto flex max-w-[640px] items-center justify-between gap-3 border ${t.border} bg-white py-2.5 pl-4 pr-2.5 rounded-sm ${t.floatShadow} md:mx-0 md:max-w-none md:rounded-none md:border-0 md:bg-transparent md:px-6 md:py-3 md:shadow-none`}>
                     <span className="min-w-0 text-xs leading-[18px] text-[#5b6b86]">Changes save only when you press Save.</span>
-                    <button type="button" onClick={handleSave} disabled={isSaving} className={`${BTN_PRIMARY} min-w-[140px]`}>
+                    <button
+                        type="button"
+                        onClick={handleSave}
+                        disabled={isSaving}
+                        className={`inline-flex h-10 min-w-[140px] items-center justify-center gap-2 whitespace-nowrap rounded-sm border border-transparent px-4 text-sm font-medium leading-5 text-white transition-colors disabled:cursor-not-allowed disabled:opacity-[.45] ${t.primaryBg} ${t.primaryHover} ${FOCUS_BASE} ${t.outline}`}
+                    >
                         {isSaving ? <Spinner /> : (<><FiCheck size={16} />Save settings</>)}
                     </button>
                 </div>

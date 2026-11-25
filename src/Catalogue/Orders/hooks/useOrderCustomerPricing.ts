@@ -13,7 +13,7 @@ const EMPTY: OrderItem[] = [];
 export const markManualPrice = <T extends object>(line: T): T =>
     ({ ...withoutCustomerPrice(line), customerPriceSkip: MANUAL_PRICE_SKIP }) as T;
 // Customer prices only make sense while the order is still being prepared
-const EDITABLE_STATUSES = ['Upcoming', 'Confirmed', 'Packed'];
+export const EDITABLE_STATUSES = ['Upcoming', 'Confirmed', 'Packed'];
 
 const round2 = (n: number) => Number(Number(n).toFixed(2));
 const unitOf = (l: OrderItem) =>
@@ -29,9 +29,10 @@ interface Params {
 
 /**
  * Customer-wise fixed discount inside the catalogue order editor. While the order is
- * still being prepared, the customer's agreed price replaces the item's own price
- * (including items added in the editor); the banner's Undo puts the normal prices
- * back. A price typed by hand is never overwritten (see markManualPrice).
+ * still being prepared, the banner offers the customer's agreed price; it is applied
+ * ONLY when the owner taps Apply (including for items added in the editor), and the
+ * banner's Undo puts the normal prices back. A price typed by hand is never
+ * overwritten (see markManualPrice).
  */
 export const useOrderCustomerPricing = ({
     enabled, companyId, editingOrder, setEditingOrder, salesSettings,
@@ -108,7 +109,7 @@ export const useOrderCustomerPricing = ({
 
     return usePartyPricing<OrderItem>({
         enabled: enabled && !!editingOrder && EDITABLE_STATUSES.includes(editingOrder.status),
-        auto: true,                   // settings text: "their discount replaces the item's own discount"
+        auto: false,                  // owner must tap Apply in the banner; nothing changes on its own
         companyId,
         collectionName: CUSTOMER_PRICING_COLLECTION,
         partyName: customerName,

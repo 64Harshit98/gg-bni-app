@@ -88,6 +88,22 @@ const PosItemSettingWrapper = (props: any) => (
 const CatalogueItemSettingWrapper = (props: any) => (
     <ItemSetting {...props} theme="orange" />
 );
+
+const PosLoyaltySettingWrapper = (props: any) => (
+    <LoyaltySettingPage {...props} theme="blue" />
+);
+
+const CatalogueLoyaltySettingWrapper = (props: any) => (
+    <LoyaltySettingPage {...props} theme="orange" />
+);
+
+const PosLoyaltyReportWrapper = (props: any) => (
+    <LoyaltyReport {...props} theme="blue" />
+);
+
+const CatalogueLoyaltyReportWrapper = (props: any) => (
+    <LoyaltyReport {...props} theme="orange" />
+);
 const PosItemAddWrapper = (props: any) => (
     <ItemAdd
         {...props}
@@ -186,36 +202,36 @@ export const AppRegistry: AppModule[] = [
             { path: ROUTES.PRINTQR, component: PrintQR, permission: Permissions.PrintQR },
             { path: ROUTES.ITEM_ADD, component: PosItemAddWrapper, permission: Permissions.ManageItems },
             { path: ROUTES.ITEM_GROUP, component: PosItemGroupWrapper, permission: Permissions.ManageItemGroup },
-            { path: ROUTES.MANAGE_ITEMS, component: ManageItems, permission: Permissions.ManageItemGroup },
+            { path: ROUTES.MANAGE_ITEMS, component: ManageItems, permission: Permissions.ManageItems },
             { path: ROUTES.USER_ADD, component: UserAddRedirect, permission: Permissions.CreateUsers },
             { path: ROUTES.REPORTS.substring(1), component: Reports, permission: Permissions.ViewReports },
             { path: ROUTES.ITEM_REPORT, component: ItemReport, permission: Permissions.ViewItemReport },
             { path: ROUTES.SALES_REPORT, component: SalesReport, permission: Permissions.ViewSalesReport },
             { path: ROUTES.PURCHASE_REPORT, component: PurchaseReport, permission: Permissions.ViewPurchaseReport },
             { path: ROUTES.PNL_REPORT, component: PnlReport, permission: Permissions.ViewPNLReport },
-            { path: ROUTES.PERMSETTING, component: Permissionsetting, permission: null },
-            { path: ROUTES.SALESETTING, component: SalesSettingsPage, permission: null },
-            { path: ROUTES.PURCHASESETTING, component: PurchaseSettingsPage, permission: null },
+            { path: ROUTES.PERMSETTING, component: Permissionsetting, permission: Permissions.SetPermissions },
+            { path: ROUTES.SALESETTING, component: SalesSettingsPage, permission: Permissions.ManageSalesSetting },
+            { path: ROUTES.PURCHASESETTING, component: PurchaseSettingsPage, permission: Permissions.ManagePurchaseSetting },
             { path: ROUTES.CUSTOMER_PRICING, component: CustomerPricingPage, permission: Permissions.ManageCustomerPricing },
-            { path: ROUTES.LOYALTYSETTING, component: LoyaltySettingPage, permission: Permissions.ManageLoyaltyPoints },
-            { path: ROUTES.LOYALTY_POINTS, component: LoyaltyReport, permission: Permissions.ManageLoyaltyPoints },
+            { path: ROUTES.LOYALTYSETTING, component: PosLoyaltySettingWrapper, permission: Permissions.ManageLoyaltyPoints },
+            { path: ROUTES.LOYALTY_POINTS, component: PosLoyaltyReportWrapper, permission: Permissions.ManageLoyaltyPoints },
             { path: ROUTES.USERSETTING, component: UserSetting, permission: Permissions.ManageUsers },
-            { path: ROUTES.ITEMSETTING, component: PosItemSettingWrapper, permission: null },
-            { path: ROUTES.BILLSETTING, component: BillSettings, permission: null },
+            { path: ROUTES.ITEMSETTING, component: PosItemSettingWrapper, permission: Permissions.ManageItemSetting },
+            { path: ROUTES.BILLSETTING, component: BillSettings, permission: Permissions.ManageBillSetting },
             { path: ROUTES.SUPPORT_PAGE, component: SupportPage, permission: null },
-            { path: ROUTES.ADDITIONAL_FEATURES, component: AdditionalServices, permission: Permissions.ViewItemReport },
-            { path: ROUTES.BARCODE_SETTING, component: BarcodeSettings, permission: null },
+            { path: ROUTES.ADDITIONAL_FEATURES, component: AdditionalServices, permission: Permissions.ViewAddons },
+            { path: ROUTES.BARCODE_SETTING, component: BarcodeSettings, permission: Permissions.ManageBarcodeSetting },
 
             { path: ROUTES.ITEM_REPORTS, component: ItemReports, permission: Permissions.ViewItemReport },
-            { path: ROUTES.RESTOCK_REPORT, component: RestockReportPage, permission: Permissions.ViewItemReport },
-            { path: ROUTES.TAX_REPORT, component: TaxReport, permission: Permissions.ViewItemReport },
-            { path: ROUTES.CUSTOMER_REPORT, component: CustomerReport, permission: Permissions.ViewItemReport },
-            { path: ROUTES.PARTY_LEDGER, component: PartyLedger, permission: Permissions.ViewPurchaseReport },
-            { path: ROUTES.GALLA_HISAAB_TOOL, component: GallaHisaabTool, permission: Permissions.ViewPurchaseReport },
-            { path: ROUTES.ITEM_SOLD_REPORT, component: ItemSoldReport, permission: Permissions.ViewItemReport },
-            { path: ROUTES.USER_REPORT, component: UserReport, permission: Permissions.ViewItemReport },
-            { path: ROUTES.EXPENSE_REPORT, component: ExpenseReport, permission: Permissions.ViewReports },
-            { path: ROUTES.STOCK_TRANSFER, component: StockTransferReport, permission: Permissions.ViewReports },
+            { path: ROUTES.RESTOCK_REPORT, component: RestockReportPage, permission: Permissions.ViewRestockReport },
+            { path: ROUTES.TAX_REPORT, component: TaxReport, permission: Permissions.ViewTaxReport },
+            { path: ROUTES.CUSTOMER_REPORT, component: CustomerReport, permission: Permissions.ViewCustomerReport },
+            { path: ROUTES.PARTY_LEDGER, component: PartyLedger, permission: Permissions.ViewPartyLedger },
+            { path: ROUTES.GALLA_HISAAB_TOOL, component: GallaHisaabTool, permission: Permissions.ViewSalesReport },
+            { path: ROUTES.ITEM_SOLD_REPORT, component: ItemSoldReport, permission: Permissions.ViewItemSoldReport },
+            { path: ROUTES.USER_REPORT, component: UserReport, permission: Permissions.ViewSalesReport },
+            { path: ROUTES.EXPENSE_REPORT, component: ExpenseReport, permission: Permissions.ViewExpenseReport },
+            { path: ROUTES.STOCK_TRANSFER, component: StockTransferReport, permission: Permissions.ViewStockTransferReport },
         ],
     },
     {
@@ -228,7 +244,7 @@ export const AppRegistry: AppModule[] = [
             { path: ROUTES.CATALOGUE_ACCOUNTS, component: CatalogueAccounts, permission: Cata_Permissions.ViewCatalogueAccounts },
             { path: ROUTES.ORDERDETAILS, component: OrderDetails, permission: Cata_Permissions.ViewCatalogueOrders },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`, component: RequestPage, permission: Cata_Permissions.ViewCatalogueRequests },
-            { path: `${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`, component: CatalogueItemGroupWrapper, permission: Cata_Permissions.ManageItems },
+            { path: `${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`, component: CatalogueItemGroupWrapper, permission: Cata_Permissions.ManageItemGroup },
             { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_REPORTS}`, component: CatalogueReports, permission: Cata_Permissions.ViewReports },
             { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_ITEMS}`, component: CatlogueItems, permission: Cata_Permissions.ViewItemReport },
             { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_PARTY_LEDGER}`, component: CataloguePartyLedger, permission: Cata_Permissions.ViewPartyLedger },
@@ -242,11 +258,13 @@ export const AppRegistry: AppModule[] = [
             { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_TAX_REPORT}`, component: CatalogueTaxReport, permission: Cata_Permissions.ViewTaxReport },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_EDIT}`, component: CatalogueEditProfile, permission: Cata_Permissions.ManageEditProfile },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_STORE_PAGE}`, component: StoreBuilder, permission: Cata_Permissions.ManageStorePage },
-            { path: `${ROUTES.CHOME}/${ROUTES.CATA_PRODUCT_PAGE}/:itemId`, component: ProductPageBuilder, permission: Cata_Permissions.ViewEditButton },
-            { path: `${ROUTES.CHOME}/${ROUTES.CATA_MASTERS}`, component: CatalogueMasters, permission: Cata_Permissions.ManageMasters },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATA_PRODUCT_PAGE}/:itemId`, component: ProductPageBuilder, permission: Cata_Permissions.EditItems },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATA_MASTERS}`, component: CatalogueMasters, permission: Cata_Permissions.ViewReports },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_SALE_SETTING}`, component: CatalogueSalesSettings, permission: Cata_Permissions.ManageSalesSettings },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_BILL_SETTING}`, component: CatalogueBillSetting, permission: Cata_Permissions.ManageBillSettings },
-            { path: `${ROUTES.CHOME}/${ROUTES.CATA_CUSTOMER_PRICING}`, component: CustomerPricingPage, permission: Cata_Permissions.ManageSalesSettings },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATA_CUSTOMER_PRICING}`, component: CustomerPricingPage, permission: Cata_Permissions.ManageCustomerPricing },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATA_LOYALTY_SETTING}`, component: CatalogueLoyaltySettingWrapper, permission: Cata_Permissions.ManageLoyaltyPoints },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATA_LOYALTY_POINTS}`, component: CatalogueLoyaltyReportWrapper, permission: Cata_Permissions.ManageLoyaltyPoints },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_ITEM_SETTING}`, component: CatalogueItemSettingWrapper, permission: Cata_Permissions.ManageItemSettings },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_USER_SETTING}`, component: CatalogueUserSetting, permission: Cata_Permissions.ManageUserSettings },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_PERMISSION_SETTING}`, component: CataloguePermissionSetting, permission: Cata_Permissions.ManagePermissions },
@@ -257,8 +275,8 @@ export const AppRegistry: AppModule[] = [
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_SUPPORT}`, component: Catasupport, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_ADDITIONAL_SERVICES}`, component: CatalogueAdditionalServices, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_EXPENSE_REPORT}`, component: CatalogueExpenseReport, permission: Cata_Permissions.ViewExpenseReport },
-            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_STOCK_TRANSFER}`, component: CatalogueStockTransferReport, permission: Cata_Permissions.ViewReports },
-            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_RESTOCK_REPORT}`, component: CatalogueRestockReport, permission: Cata_Permissions.ViewItemReport },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_STOCK_TRANSFER}`, component: CatalogueStockTransferReport, permission: Cata_Permissions.ViewStockTransferReport },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_RESTOCK_REPORT}`, component: CatalogueRestockReport, permission: Cata_Permissions.ViewRestockReport },
         ],
     }
 ];

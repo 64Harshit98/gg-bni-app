@@ -22,6 +22,12 @@ import {
   returnModeClass,
 } from '../journal.ui';
 
+// Firebase UID jaisi random string (20+ chars, no spaces) ko salesman ka naam nahi maante
+const isRealSalesmanName = (name?: string | null) => {
+  const n = (name || '').trim();
+  return !!n && !/^[A-Za-z0-9_-]{20,}$/.test(n);
+};
+
 const ITEM_GRID = 'grid grid-cols-[minmax(0,1fr)_32px_80px_88px] gap-x-3';
 const GUTTER = 'px-4 xl:px-5';
 // Rows are numbered on desktop; returned rows line up under the item names
@@ -152,7 +158,7 @@ export const BillDetail: React.FC<BillDetailProps> = ({
           </h2>
           <p className="text-xs leading-4 text-[#45556c]">
             {formatDayTime(invoice.createdAt)}
-            {showBilledBy && invoice.salesmanName ? ` · Billed by ${invoice.salesmanName.slice(0, 15)}` : ''}
+            {showBilledBy && isRealSalesmanName(invoice.salesmanName) ? ` · Billed by ${invoice.salesmanName!.slice(0, 15)}` : ''}
           </p>
         </div>
 

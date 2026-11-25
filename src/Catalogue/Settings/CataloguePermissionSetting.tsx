@@ -29,10 +29,12 @@ export const getDefaultCataPermissions = (role: string): Cata_Permissions[] => {
                 Cata_Permissions.ViewCatalogueSalesbarchart,
                 Cata_Permissions.ViewReports,
                 Cata_Permissions.ManageItems,
+                Cata_Permissions.EditItems,
+                Cata_Permissions.ManageItemGroup,
                 Cata_Permissions.ViewEditButton,
                 Cata_Permissions.ViewShop,
                 Cata_Permissions.ViewShopItems,
-                                Cata_Permissions.ViewOrdersReturn,
+                Cata_Permissions.ViewOrdersReturn,
                 Cata_Permissions.ViewNotification,
                 Cata_Permissions.ManageStorePage,
             ];
@@ -65,7 +67,7 @@ const cataPermissionGroups = {
             Cata_Permissions.ViewNotification, // moved out of "ungrouped"
         ].filter(Boolean),
     },
-        orders: {
+    orders: {
         title: 'Orders, Shop & Requests',
         permissions: [
             Cata_Permissions.ViewCatalogueOrders,
@@ -88,6 +90,7 @@ const cataPermissionGroups = {
             Cata_Permissions.ViewPNLReport,
             Cata_Permissions.ViewExpenseReport,
             Cata_Permissions.ViewStockTransferReport,
+            Cata_Permissions.ViewRestockReport,   // NEW
             //Cata_Permissions.ViewUserReport,
             //Cata_Permissions.ViewTaxReport,
         ].filter(Boolean),
@@ -106,6 +109,8 @@ const cataPermissionGroups = {
         title: 'Item & Master Management',
         permissions: [
             Cata_Permissions.ManageItems,
+            Cata_Permissions.EditItems,
+            Cata_Permissions.ManageItemGroup,
             Cata_Permissions.ManageItemSettings,
             Cata_Permissions.ManageMasters,
         ].filter(Boolean),
@@ -115,6 +120,9 @@ const cataPermissionGroups = {
         permissions: [
             Cata_Permissions.ManageSalesSettings,
             Cata_Permissions.ManageBillSettings,
+            Cata_Permissions.ManageCustomerPricing,
+            Cata_Permissions.ManageLoyaltyPoints,
+            Cata_Permissions.ManageOrderLimit,
         ].filter(Boolean),
     },
     userAccess: {
@@ -143,11 +151,11 @@ const CATA_PERMISSION_DESCRIPTIONS: Partial<Record<Cata_Permissions, string>> = 
     [Cata_Permissions.ViewCatalogueRequests]: 'View incoming catalogue requests.',
     [Cata_Permissions.ViewShop]: 'View the shop section of the catalogue.',
     [Cata_Permissions.ViewShopItems]: 'View items listed in the shop.',
-        [Cata_Permissions.ViewEditButton]: 'Allow editing of existing catalogue orders or entries.',
+    [Cata_Permissions.ViewEditButton]: 'Allow editing of existing catalogue orders or entries.',
     [Cata_Permissions.ManageStorePage]: 'Open and edit the Store page customers see first.',
 
     // Reports & Insights
-    [Cata_Permissions.ViewReports]: 'Access the reports section and its settings.',
+    [Cata_Permissions.ViewReports]: 'Needed for every report and setting below.',
     [Cata_Permissions.ViewItemReport]: 'View item-wise stock and performance reports.',
     [Cata_Permissions.ViewSalesReport]: 'View overall sales performance reports.',
     [Cata_Permissions.ViewItemSoldReport]: 'View reports on items sold over a period.',
@@ -156,7 +164,8 @@ const CATA_PERMISSION_DESCRIPTIONS: Partial<Record<Cata_Permissions, string>> = 
     [Cata_Permissions.ViewExpenseReport]: 'View reports on business expenses.',
     [Cata_Permissions.ViewUserReport]: 'View reports on user/staff activity.',
     [Cata_Permissions.ViewTaxReport]: 'View tax collected and payable reports.',
-       [Cata_Permissions.ViewStockTransferReport]: 'Moves between godowns.',
+    [Cata_Permissions.ViewStockTransferReport]: 'Moves between godowns.',
+    [Cata_Permissions.ViewRestockReport]: 'Items to reorder, with order quantities.',
 
     // Accounts & Finance
     [Cata_Permissions.ViewCatalogueAccounts]: 'View company account details linked to the catalogue.',
@@ -164,13 +173,17 @@ const CATA_PERMISSION_DESCRIPTIONS: Partial<Record<Cata_Permissions, string>> = 
 
     // Item & Master Management
     [Cata_Permissions.ManageItems]: 'Add, edit, or remove items in the catalogue.',
-    [Cata_Permissions.ManageItemSettings]: 'Configure item-related settings like pricing rules and units.',
-    [Cata_Permissions.ManageMasters]: 'Manage master data such as categories, units, and brands.',
+    [Cata_Permissions.EditItems]: 'Edit or delete items from Manage items. Also edit on product cards and inside order edit.',
+    [Cata_Permissions.ManageItemGroup]: 'Open Item groups, create and manage item groups and add-ons.',
+    [Cata_Permissions.ManageItemSettings]: 'Configure item-related settings like pricing rules and units. Needs Settings tab.',
+    [Cata_Permissions.ManageMasters]: 'Manage master data such as categories, units, and brands. Needs Settings tab.',
 
     // Sales & Billing Settings
-    [Cata_Permissions.ManageSalesSettings]: 'Configure sales-related settings and defaults.',
-    [Cata_Permissions.ManageBillSettings]: 'Configure billing format and invoice settings.',
-
+    [Cata_Permissions.ManageSalesSettings]: 'Configure sales-related settings and defaults. Needs Settings tab.',
+    [Cata_Permissions.ManageBillSettings]: 'Configure billing format and invoice settings. Needs Settings tab.',
+    [Cata_Permissions.ManageCustomerPricing]: 'Set fixed discounts for each customer and supplier. Needs Settings tab.',
+    [Cata_Permissions.ManageLoyaltyPoints]: 'Loyalty settings, and add or remove a customer\'s points by hand. Needs Settings tab.',
+    [Cata_Permissions.ManageOrderLimit]: 'Set minimum and maximum order limits for the catalogue. Needs Settings tab.',
     // User, Profile & Access
     [Cata_Permissions.ManageEditProfile]: 'Edit personal or company profile details.',
     [Cata_Permissions.ManageUserSettings]: 'Manage staff accounts and their basic settings.',
@@ -191,7 +204,7 @@ const CATA_PERMISSION_LABELS: Partial<Record<Cata_Permissions, string>> = {
     [Cata_Permissions.ViewCatalogueRequests]: 'Customer requests',
     [Cata_Permissions.ViewShop]: 'View catalogue',
     [Cata_Permissions.ViewShopItems]: 'View catalogue items',
-        [Cata_Permissions.ViewEditButton]: 'Edit orders',
+    [Cata_Permissions.ViewEditButton]: 'Edit orders',
     [Cata_Permissions.ManageStorePage]: 'Store page',
     // Reports & insights
     [Cata_Permissions.ViewReports]: 'Open Reports & Settings tabs',
@@ -202,16 +215,22 @@ const CATA_PERMISSION_LABELS: Partial<Record<Cata_Permissions, string>> = {
     [Cata_Permissions.ViewPNLReport]: 'Profit & loss',
     [Cata_Permissions.ViewExpenseReport]: 'Expense report',
     [Cata_Permissions.ViewStockTransferReport]: 'Stock transfer report',
+    [Cata_Permissions.ViewRestockReport]: 'Restock report',
     // Accounts & finance
     [Cata_Permissions.ViewCatalogueAccounts]: 'Accounts',
     [Cata_Permissions.ViewPartyLedger]: 'Party ledger',
     // Item & master management
-    [Cata_Permissions.ManageItems]: 'Add, edit and delete items',
+    [Cata_Permissions.ManageItems]: 'Manage Inventory',
+    [Cata_Permissions.EditItems]: 'Edit and delete items',
+    [Cata_Permissions.ManageItemGroup]: 'Item groups',
     [Cata_Permissions.ManageItemSettings]: 'Item settings',
     [Cata_Permissions.ManageMasters]: 'Masters',
     // Sales & billing settings
     [Cata_Permissions.ManageSalesSettings]: 'Sales settings',
     [Cata_Permissions.ManageBillSettings]: 'Bill settings',
+    [Cata_Permissions.ManageCustomerPricing]: 'Manage party pricing',
+    [Cata_Permissions.ManageLoyaltyPoints]: 'Manage loyalty points',
+    [Cata_Permissions.ManageOrderLimit]: 'Manage order limit',
     // User, profile & access
     [Cata_Permissions.ManageEditProfile]: 'Edit profile',
 };
@@ -221,6 +240,7 @@ const HIDDEN_CATA_PERMISSIONS = new Set<Cata_Permissions>([
     Cata_Permissions.ViewUserReport,
     Cata_Permissions.ManageUserSettings,
     Cata_Permissions.ManagePermissions,
+    Cata_Permissions.ManageMasters,   // ab ViewReports se hi page khulta hai
 ]);
 
 const getUngroupedPermissions = (allPermissions: Cata_Permissions[]): Cata_Permissions[] => {
@@ -238,15 +258,38 @@ const PERMISSION_TAGS: Partial<Record<Cata_Permissions, string>> = {
     [Cata_Permissions.ViewPNLReport]: 'Shows profit',
 };
 
-// // Rows drawn indented under "Open Reports & Settings tabs" (indent only, no logic attached)
-// const NESTED_PERMISSIONS: Cata_Permissions[] = [
-//     Cata_Permissions.ViewItemReport,
-//     Cata_Permissions.ViewSalesReport,
-//     Cata_Permissions.ViewItemSoldReport,
-//     Cata_Permissions.ViewCustomerReport,
-//     Cata_Permissions.ViewPNLReport,
-//     Cata_Permissions.ViewExpenseReport,
-// ];
+// Rows that live inside the Reports & Settings tabs (locked until ViewReports is on)
+const NESTED_PERMISSIONS: Cata_Permissions[] = [
+    // Reports
+    Cata_Permissions.ViewItemReport,
+    Cata_Permissions.ViewSalesReport,
+    Cata_Permissions.ViewItemSoldReport,
+    Cata_Permissions.ViewCustomerReport,
+    Cata_Permissions.ViewPNLReport,
+    Cata_Permissions.ViewExpenseReport,
+    Cata_Permissions.ViewStockTransferReport,
+    Cata_Permissions.ViewRestockReport,
+    Cata_Permissions.ViewPartyLedger,
+    // Settings
+    Cata_Permissions.ManageItemSettings,
+    Cata_Permissions.ManageSalesSettings,
+    Cata_Permissions.ManageBillSettings,
+    Cata_Permissions.ManageMasters,
+    Cata_Permissions.ManageCustomerPricing,   // NEW
+    Cata_Permissions.ManageLoyaltyPoints,     // NEW
+    Cata_Permissions.ManageOrderLimit,        // NEW
+];
+
+// Popup me "Settings tab" wala message dikhana hai ya "Reports tab" wala
+const SETTINGS_PAGE_PERMISSIONS: Cata_Permissions[] = [
+    Cata_Permissions.ManageItemSettings,
+    Cata_Permissions.ManageSalesSettings,
+    Cata_Permissions.ManageBillSettings,
+    Cata_Permissions.ManageMasters,
+    Cata_Permissions.ManageCustomerPricing,   // NEW
+    Cata_Permissions.ManageLoyaltyPoints,     // NEW
+    Cata_Permissions.ManageOrderLimit,        // NEW
+];
 
 type GroupMeta = { title: string; navLabel: string; subtitle: string; tint: [string, string]; icon: string[] };
 
@@ -382,21 +425,24 @@ const CARD_CLASS =
 
 interface CbProps {
     checked: boolean;
+    dimmed?: boolean;          // NEW
     label: string;
+    title?: string;            // NEW
     onToggle: () => void;
 }
 
-// Custom checkbox (SELLAR .cb, Catalogue orange)
-const Cb: React.FC<CbProps> = ({ checked, label, onToggle }) => (
+const Cb: React.FC<CbProps> = ({ checked, dimmed, label, title, onToggle }) => (
     <button
         type="button"
         role="checkbox"
         aria-checked={checked}
         aria-label={label}
         onClick={onToggle}
+        title={title}          // NEW
         className={`w-5 h-5 shrink-0 p-0 inline-grid place-items-center rounded-sm border-[1.5px] text-white transition-colors
             focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ea580c]
-            ${checked ? 'bg-[#c2410c] border-[#c2410c]' : 'bg-white border-[#7a8aa3]'}`}
+            ${checked ? 'bg-[#c2410c] border-[#c2410c]' : 'bg-white border-[#7a8aa3]'}
+            ${dimmed ? 'opacity-40 cursor-pointer' : ''}`}   // NEW
     >
         {checked && <Ico paths={ICON_CHECK} size={13} strokeWidth={3} />}
     </button>
@@ -416,6 +462,9 @@ const CataloguePermissionSetting: React.FC = () => {
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
     const [isResetOpen, setIsResetOpen] = useState(false);
     const [resetRoles, setResetRoles] = useState<string[]>([]);
+
+    // NEW: Reports & Settings tab off ho aur user nested permission tick kare
+    const [blockedPrompt, setBlockedPrompt] = useState<{ role: string; permission: Cata_Permissions } | null>(null);
 
     const [searchQuery, setSearchQuery] = useState('');
     const [showMobileSearch, setShowMobileSearch] = useState(false);
@@ -552,17 +601,28 @@ const CataloguePermissionSetting: React.FC = () => {
 
         setRolePermissions(prev => ({ ...prev, [role]: newCataloguePerms }));
     };
+    // NEW: popup Confirm par ViewReports + jo tick karna chahte the, dono ek saath on
+    const handleEnableReportsFromPrompt = () => {
+        if (blockedPrompt) {
+            const { role, permission } = blockedPrompt;
+            setRolePermissions(prev => ({
+                ...prev,
+                [role]: [...new Set([...(prev[role] || []), Cata_Permissions.ViewReports, permission])],
+            }));
+        }
+        setBlockedPrompt(null);
+    };
 
     // Select all / Clear all for one group of one role
     const handleToggleGroup = (role: string, perms: Cata_Permissions[], select: boolean) => {
         setRolePermissions(prev => {
             const current = prev[role] || [];
-            return {
-                ...prev,
-                [role]: select
-                    ? [...new Set([...current, ...perms])]
-                    : current.filter(p => !perms.includes(p)),
-            };
+            if (select) {
+                const masterOn = perms.includes(Cata_Permissions.ViewReports) || current.includes(Cata_Permissions.ViewReports);
+                const toAdd = perms.filter(p => !(NESTED_PERMISSIONS.includes(p) && !masterOn));
+                return { ...prev, [role]: [...new Set([...current, ...toAdd])] };
+            }
+            return { ...prev, [role]: current.filter(p => !perms.includes(p)) };
         });
     };
 
@@ -712,11 +772,21 @@ const CataloguePermissionSetting: React.FC = () => {
 
     const renderCb = (role: string, permission: Cata_Permissions) => {
         const checked = has(role, permission);
+        const blockedByReports =
+            NESTED_PERMISSIONS.includes(permission) && !has(role, Cata_Permissions.ViewReports) && !checked;
         return (
             <Cb
                 checked={checked}
+                dimmed={blockedByReports}
                 label={`${role}: ${CATA_PERMISSION_LABELS[permission] || permission}`}
-                onToggle={() => handlePermissionChange(role, permission, !checked)}
+                title={blockedByReports ? 'Turn on "Open Reports & Settings tabs" first' : undefined}
+                onToggle={() => {
+                    if (blockedByReports) {
+                        setBlockedPrompt({ role, permission });   // popup dikhao, tick mat karo
+                        return;
+                    }
+                    handlePermissionChange(role, permission, !checked);
+                }}
             />
         );
     };
@@ -1027,6 +1097,21 @@ const CataloguePermissionSetting: React.FC = () => {
                     showConfirmButton={true}
                     onConfirm={handleResetPermissions}
                     onClose={() => setIsResetOpen(false)}
+                    theme="catalogue"
+                />
+            )}
+            {/* NEW */}
+            {blockedPrompt && (
+                <Modal
+                    message={
+                        SETTINGS_PAGE_PERMISSIONS.includes(blockedPrompt.permission)
+                            ? `${CATA_PERMISSION_LABELS[blockedPrompt.permission] || 'This setting'} is inside the Settings tab. Turn on "Open Reports & Settings tabs" for ${blockedPrompt.role} as well?`
+                            : `${CATA_PERMISSION_LABELS[blockedPrompt.permission] || 'This report'} is inside the Reports tab. Turn on "Open Reports & Settings tabs" for ${blockedPrompt.role} as well?`
+                    }
+                    type={State.ERROR}
+                    showConfirmButton={true}
+                    onConfirm={handleEnableReportsFromPrompt}
+                    onClose={() => setBlockedPrompt(null)}
                     theme="catalogue"
                 />
             )}

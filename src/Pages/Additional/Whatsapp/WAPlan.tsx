@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { Stepper } from '../../../Components/Stepper';
 import { ROUTES } from '../../../constants/routes.constants';
 import BackButton from '../../../Components/BackButton';
+import { useAuth } from '../../../context/auth-context';
+import { ROLES } from '../../../enums';
+import Unauthorized from '../../../Pages/Unauthorized'; // path/naam grep se confirm karo
 // --- DATA: WhatsApp Plans ---
 const WHATSAPP_PLANS = [
     {
@@ -56,9 +59,12 @@ const WHATSAPP_PLANS = [
 
 const WhatsAppSubscriptionPage: React.FC = () => {
     const navigate = useNavigate();
+    const { currentUser, loading: authLoading } = useAuth();
+    const isOwner = currentUser?.role === ROLES.OWNER;
     const [expandedPlanId, setExpandedPlanId] = useState<string | null>(null);
 
     const handleSelectPlan = (plan: typeof WHATSAPP_PLANS[0]) => {
+        if (!isOwner) return;
         navigate('/whatsapp-details', { state: { selectedPlan: plan } });
     };
 
@@ -72,6 +78,10 @@ const WhatsAppSubscriptionPage: React.FC = () => {
         }
         // Step 3 is current page, do nothing
     };
+        if (authLoading) return null;
+
+    if (!isOwner) return <Unauthorized />;
+
     return (
         <div className="min-h-screen bg-gray-100 font-sans">
 

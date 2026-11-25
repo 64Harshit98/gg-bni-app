@@ -185,7 +185,7 @@ const MyShop: React.FC = () => {
     const highlightTrigger = location.state?.trigger;
     const { groupId } = useParams<{ groupId: string }>();
     const { currentUser, loading: authLoading, hasCataloguePermission } = useAuth();
-    const canEditItems = hasCataloguePermission(Cata_Permissions.ViewEditButton);
+        const canEditItems = hasCataloguePermission(Cata_Permissions.EditItems);
     const companyId = currentUser?.companyId;
     const { businessName: companyName, loading: _nameLoading } = useBusinessName(companyId);
     const dbOperations = useDatabase();
@@ -823,7 +823,7 @@ const MyShop: React.FC = () => {
 
             <div className="grid gap-4 px-4 md:px-6">
                 {/* --- Live all products in this category --- */}
-                <ShowWrapper requiredPermission={Cata_Permissions.ViewEditButton}>
+                                <ShowWrapper requiredPermission={Cata_Permissions.EditItems}>
                     <div className="flex items-center gap-3 rounded-sm border border-sf-line bg-white p-4 shadow-sf-card md:gap-4 md:px-5">
                         <span className={cx('size-2.5 shrink-0 rounded-full', isAllLive ? 'bg-green-600' : 'bg-slate-400')} aria-hidden />
                         <div className="min-w-0 flex-1">
@@ -956,7 +956,7 @@ const MyShop: React.FC = () => {
                                         </p>
 
                                         <div className="mt-auto flex flex-wrap items-center gap-2 pt-2.5" onClick={(e) => e.stopPropagation()}>
-                                            <ShowWrapper requiredPermission={Cata_Permissions.ViewEditButton}>
+                                                                                        <ShowWrapper requiredPermission={Cata_Permissions.EditItems}>
                                                 <button type="button" onClick={() => handleOpenEditDrawer(item)} aria-label={`Edit ${item.name}`} className={cx(btnClass('secondary', 'sm'), 'min-w-0 flex-1')}>
                                                     <Pencil className="size-4" /><span className="max-sm:sr-only">Edit</span>
                                                 </button>

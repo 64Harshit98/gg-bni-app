@@ -52,7 +52,20 @@ export function useCatalogueReportsOverview() {
     const expenseList = [...catExpenses.records, ...posExpenses.records].filter((e) => inLast30(e.date));
 
     const salesTotal = salesList.reduce((s, b) => s + b.totalAmount, 0);
-    const cost = salesList.map(toPnlBill).reduce((s, b) => s + b.cost, 0);
+    const purchasePrices = new Map<string, number>();
+items.forEach((i: any) => {
+  if (i.id) purchasePrices.set(i.id, Number(i.purchasePrice) || 0);
+});
+const cost = salesList
+  .map((s) => ({
+    ...s,
+    items: (s.items || []).map((item: any) => ({
+      ...item,
+      purchasePrice: item.id ? purchasePrices.get(item.id) || 0 : 0,
+    })),
+  }))
+  .map((s) => toPnlBill(s as any))
+  .reduce((sum, b) => sum + b.cost, 0);
     const expenseTotal = expenseList.reduce((s, e) => s + e.amount, 0);
     const net = salesTotal - cost - expenseTotal;
 
@@ -86,7 +99,7 @@ export function useCatalogueReportsOverview() {
     customers: !allOrders.isLoading,
     parties: !allOrders.isLoading && !openingBalances.isLoading,
     expenses: !catExpenses.isLoading && !posExpenses.isLoading,
-    profit: !sales.isLoading && !catExpenses.isLoading && !posExpenses.isLoading,
+    profit: !sales.isLoading && !catExpenses.isLoading && !posExpenses.isLoading && !itemsLoading,
     transfers: !stockTransfers.loading,
     items: !itemsLoading,
     restock: !itemsLoading, // update if the restock calc needs more data (e.g. sales)

@@ -32,20 +32,20 @@ import { useFormatNumber } from '../../../lib/formatNumber';
 /* SELLAR design tokens (as Tailwind classes) — UI only                */
 /* ------------------------------------------------------------------ */
 const CARD =
-  'bg-white border border-[#dfe6fb] rounded-sm shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]';
+  'min-w-0 max-w-full bg-white border border-[#dfe6fb] rounded-sm shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]';
 const SEC_HEAD = 'flex flex-wrap items-center gap-2.5 px-4 py-3 border-b border-[#dfe6fb]';
 const SEC_TITLE = 'text-[15px] font-semibold text-[#0f172b]';
 const TINT = 'inline-grid h-8 w-8 flex-none place-items-center rounded-lg';
 const FIELD =
-  'flex h-10 items-center gap-2 rounded-sm border border-[#7a8aa3] bg-white px-3 text-[#5b6b86] focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-[#155dfc]';
+  'flex h-10 min-w-0 items-center gap-2 rounded-sm border border-[#7a8aa3] bg-white px-3 text-[#5b6b86] focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-[#155dfc]';
 const FIELD_INPUT =
-  'min-w-0 flex-1 border-0 bg-transparent text-sm text-[#0f172b] outline-none placeholder:text-[#5b6b86]';
+  'w-full min-w-0 flex-1 border-0 bg-transparent text-sm text-[#0f172b] outline-none placeholder:text-[#5b6b86]';
 const SCAN_BTN =
   'inline-grid h-9 w-9 flex-none place-items-center rounded-sm border border-[#7a8aa3] bg-white text-[#0f172b] hover:bg-[#f5f7ff]';
 const OVERLINE = 'block text-[10px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]';
 const CELL_FIELD =
-  'rounded-sm border border-[#dfe6fb] bg-white px-3 py-2 focus-within:border-[#155dfc] focus-within:ring-1 focus-within:ring-[#155dfc]';
-const CELL_INPUT = 'w-full border-0 bg-transparent p-0 text-[13px] font-semibold text-[#0f172b] outline-none placeholder:font-normal placeholder:text-[#5b6b86]';
+  'min-w-0 rounded-sm border border-[#dfe6fb] bg-white px-3 py-2 focus-within:border-[#155dfc] focus-within:ring-1 focus-within:ring-[#155dfc]';
+const CELL_INPUT = 'w-full min-w-0 max-w-full border-0 bg-transparent p-0 text-[13px] font-semibold text-[#0f172b] outline-none placeholder:font-normal placeholder:text-[#5b6b86]';
 const DROPDOWN =
   'absolute left-0 top-full z-20 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-[#dfe6fb] bg-white shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)]';
 const DROPDOWN_ROW = 'cursor-pointer border-b border-[#dfe6fb] px-3 py-2.5 last:border-0 hover:bg-[#f5f7ff]';
@@ -66,7 +66,7 @@ const IcoSearch = () => (<Ico size={16}><circle cx="11" cy="11" r="7" /><path d=
 
 /** Read-only bill facts grid (SELLAR "facts"). */
 const Facts: React.FC<{ items: { label: string; value: React.ReactNode; tone?: string }[] }> = ({ items }) => (
-  <div className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-sm border border-[#dfe6fb] bg-[#dfe6fb] md:grid-cols-4">
+  <div className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-sm border border-[#dfe6fb] bg-[#dfe6fb] md:grid-cols-4 [&>*]:min-w-0">
     {items.map((f) => (
       <div key={f.label} className="min-w-0 bg-white px-3 py-2">
         <span className="block text-[10px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]">{f.label}</span>
@@ -302,8 +302,7 @@ const SalesReturnPage: React.FC = () => {
   );
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-[#eef2ff] text-[#0f172b]">
-      {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
+<div className="flex h-full min-h-0 w-full max-w-full flex-col overflow-hidden bg-[#eef2ff] text-[#0f172b]">      {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
       <BarcodeScanner isOpen={scannerPurpose !== null} onClose={() => setScannerPurpose(null)} onScanSuccess={handleBarcodeScanned} />
 
       {returnSuccess && (
@@ -366,8 +365,8 @@ const SalesReturnPage: React.FC = () => {
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden xl:flex-row">
 
         {/* --- LEFT PANEL --- */}
-        <div className="relative min-h-0 min-w-0 flex-1 overflow-y-auto bg-[#eef2ff]">
-          <div className="flex flex-col gap-3 p-3 pb-32 md:gap-3.5 md:p-5 md:pb-5">
+        <div className="relative min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-[#eef2ff]">
+          <div className="flex min-w-0 max-w-full flex-col gap-3 p-3 pb-32 md:gap-3.5 md:p-5 md:pb-5">
 
             {/* Original sale — search */}
             <div className={CARD}>
@@ -381,8 +380,8 @@ const SalesReturnPage: React.FC = () => {
               <div className="p-3 md:px-4">
                 <div className="relative" ref={salesDropdownRef}>
                   <label htmlFor="search-sale" className="sr-only">Search Original Sale</label>
-                  <div className="flex gap-2">
-                    <div className={`${FIELD} flex-1`}>
+                  <div className="flex min-w-0 gap-2">
+                    <div className={`${FIELD} min-w-0 flex-1`}>
                       <IcoSearch />
                       <input
                         id="search-sale"
@@ -399,7 +398,7 @@ const SalesReturnPage: React.FC = () => {
                     {selectedSale && (
                       <button
                         onClick={handleClear}
-                        className="h-10 whitespace-nowrap rounded-sm px-3 text-sm font-medium text-[#45556c] hover:bg-[#f5f7ff] hover:text-[#0f172b]"
+                        className="h-10 flex-none whitespace-nowrap rounded-sm px-3 text-sm font-medium text-[#45556c] hover:bg-[#f5f7ff] hover:text-[#0f172b]"
                       >
                         Clear
                       </button>
@@ -435,8 +434,8 @@ const SalesReturnPage: React.FC = () => {
                 )}
 
                 {selectedSale && (
-                  <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-3">
-                    <div className={CELL_FIELD}>
+                  <div className="mt-3 grid min-w-0 grid-cols-2 gap-2 md:grid-cols-3">
+                    <div className={`${CELL_FIELD} min-w-0`}>
                       <label className={OVERLINE}>Return date</label>
                       <input type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} className={CELL_INPUT} />
                     </div>
@@ -484,8 +483,8 @@ const SalesReturnPage: React.FC = () => {
                   <div className={SEC_HEAD}>
                     <span className={`${TINT} bg-[#e6eeff] text-[#155dfc]`}><IcoReturn /></span>
                     <b className={SEC_TITLE}>Select return items</b>
-                    <div className="flex w-full items-center gap-2 md:ml-auto md:w-auto">
-                      <div className={`${FIELD} h-9 flex-1 md:w-60 md:flex-none`}>
+                    <div className="flex w-full min-w-0 items-center gap-2 md:ml-auto md:w-auto">
+                      <div className={`${FIELD} h-9 min-w-0 flex-1 md:w-60 md:flex-none`}>
                         <IcoSearch />
                         <input
                           type="text"
@@ -731,7 +730,7 @@ const SalesReturnPage: React.FC = () => {
           )}
         </div>
 
-        <div className="pointer-events-none fixed bottom-0 left-0 right-0 flex justify-center bg-transparent p-4 pb-18 md:hidden">
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 flex justify-center bg-transparent p-4 pb-20 md:hidden">
           {selectedSale && (<CustomButton onClick={handleProcessReturn} variant={Variant.Payment} className="pointer-events-auto w-full py-3 text-lg font-semibold shadow-md">Process Transaction</CustomButton>)}
         </div>
       </div>

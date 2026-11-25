@@ -14,7 +14,7 @@ import { getSlabForQty } from '../../../constants/models';
 import { useCatalogueData } from '../../../context/CatalogueDataContext';
 import type { Order } from '../orders.types';
 import { computeOrderTotals, computeLineTax, isTaxEnabled as computeIsTaxEnabled, resolveUnitPrice } from '../orders.calculations';
-import { markManualPrice, useOrderCustomerPricing } from './useOrderCustomerPricing';
+import { EDITABLE_STATUSES, markManualPrice, useOrderCustomerPricing } from './useOrderCustomerPricing';
 import { useOptionalLoyaltySettings } from '../../../context/SettingsContext';
 import { syncOrderEarnedPoints } from '../orderLoyalty';
 
@@ -124,13 +124,30 @@ export const useOrderEditor = ({
     const { items: catalogueItems } = useCatalogueData();
 
     // Customer-wise fixed discount: applied in the edit modal while the order is open, Undo restores
-    const customerPricing = useOrderCustomerPricing({
+        const customerPricing = useOrderCustomerPricing({
         enabled: !!salesSettings?.enableCustomerPricing,
         companyId,
         editingOrder,
         setEditingOrder,
         salesSettings,
     });
+
+    // Props for CustomerPricingEditorModal (same editor Sales opens). null = hide the button.
+    const pricingPhone = (editingOrder?.billingDetails?.phone || editingOrder?.userLoginPhone || '').replace(/\D/g, '').slice(-10);
+    const customerPricingEditor =
+        companyId && currentUser?.uid && editingOrder && pricingPhone &&
+        salesSettings?.enableCustomerPricing && EDITABLE_STATUSES.includes(editingOrder.status)
+            ? {
+                companyId,
+                uid: currentUser.uid as string,
+                party: {
+                    name: editingOrder.billingDetails?.name || editingOrder.userName || '',
+                    number: pricingPhone,
+                },
+                rule: customerPricing.rule,
+                reload: customerPricing.reload,
+            }
+            : null;
 
     // ─── Opens the editor for a given order, restoring saved expenses/discount/
     // transport details — moved verbatim from the card's pencil-edit button.
@@ -1153,6 +1170,7 @@ export const useOrderEditor = ({
         handleSaveChanges,
         handleCreditNote,
         handleRefund,
-        customerPriceOffer: customerPricing.offer,
+                customerPriceOffer: customerPricing.offer,
+        customerPricingEditor,
     };
 };

@@ -139,6 +139,7 @@ const PurchasePage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { currentUser, loading: authLoading, hasPermission } = useAuth();
+  const canEditItems = hasPermission(Permissions.EditItems);
   const dbOperations = useDatabase();
   const { purchaseSettings, loadingSettings: loadingPurchaseSettings } = usePurchaseSettings();
 
@@ -676,7 +677,7 @@ const PurchasePage: React.FC = () => {
   // Array.prototype.filter keeps order, so both groups keep the A-Z / price sort the user chose.
   const selectedOnTop =
     purchaseSettings?.purchaseViewType === 'card' && !!purchaseSettings?.cardSelectedOnTop;
-    const gridItemsToShow = useMemo(() => {
+  const gridItemsToShow = useMemo(() => {
     if (isTutorialActive) return SAMPLE_GRID_ITEMS;
     if (!selectedOnTop) return sortedGridItems;
     const inCart = new Set(items.map((l) => l.productId).filter(Boolean));
@@ -1771,7 +1772,7 @@ const PurchasePage: React.FC = () => {
                           aria-label={`Add one ${item.name}${isSelected ? `, ${quantity} in bill` : ''}`}
                           onClick={handleTileTap}
                           onPointerDown={(e) => {
-                            if (e.pointerType !== 'touch') return;
+                            if (e.pointerType !== 'touch' || !canEditItems) return;
                             tileHoldFired.current = false;
                             clearTimeout(tileHoldTimer.current);
                             tileHoldTimer.current = setTimeout(() => { tileHoldFired.current = true; openEdit(); }, 450);
@@ -1860,7 +1861,7 @@ const PurchasePage: React.FC = () => {
                         )}
 
                         {/* Edit (md and up; touch uses long-press) */}
-                        <button
+                        {canEditItems && <button
                           type="button"
                           aria-label={`Edit ${item.name}`}
                           onClick={openEdit}
@@ -1868,7 +1869,7 @@ const PurchasePage: React.FC = () => {
         ${isCardImageView ? 'bottom-1.5 right-1.5 w-7 h-7' : 'bottom-2 right-2 w-8 h-8'}`}
                         >
                           <FiEdit size={15} />
-                        </button>
+                        </button>}
                       </div>
                     );
                   })
@@ -2194,7 +2195,7 @@ const PurchasePage: React.FC = () => {
                   applyRounding={(val) => val}
                   State={State}
                   setModal={setModal}
-                  onOpenEditDrawer={handleOpenEditDrawer}
+                  onOpenEditDrawer={canEditItems ? handleOpenEditDrawer : undefined}
                   onItemNotFound={(cartItem) => setUnlinkedChoiceItem(cartItem as PurchaseItem)}
                   onDeleteItem={handleDeleteItem}
                   onDiscountChange={handleDiscountChange}
@@ -2220,7 +2221,7 @@ const PurchasePage: React.FC = () => {
                     </b>{' '}
                     Set it so it prints on labels and sale bills — the stock will be added either way.
                   </span>
-                  <button
+                  {canEditItems && <button
                     type="button"
                     onClick={() => {
                       const orig = availableItems.find(a => a.id === missingMrpItems[0].productId);
@@ -2229,7 +2230,7 @@ const PurchasePage: React.FC = () => {
                     className="flex-shrink-0 font-semibold underline underline-offset-2 hover:opacity-80"
                   >
                     Set MRP
-                  </button>
+                  </button>}
                 </div>
               )}
             </div>

@@ -11,7 +11,7 @@ import {
 import { ROUTES } from '../../constants/routes.constants';
 import { useAuth } from '../../context/auth-context';
 import { useCatalogueData } from '../../context/CatalogueDataContext';
-import { Permissions } from '../../enums';
+import { Cata_Permissions } from '../enum/cata_permissions.enum';
 import {
   ITEM_ISSUES,
   averageMarginPercent,
@@ -34,12 +34,13 @@ interface HubCard {
 
 const CatalogueItemReportsHub = () => {
   const navigate = useNavigate();
-  const { hasPermission } = useAuth();
+    const { hasCataloguePermission } = useAuth();
   // Items are already kept loaded app-wide, so these numbers cost no reads.
   const { items, itemsLoading } = useCatalogueData();
 
-  const canViewReports = hasPermission(Permissions.ViewItemReport);
-  const canManage = hasPermission(Permissions.ManageItems);
+    const canViewItemReport = hasCataloguePermission(Cata_Permissions.ViewItemReport);
+  const canViewSoldReport = hasCataloguePermission(Cata_Permissions.ViewItemSoldReport);
+  const canManage = hasCataloguePermission(Cata_Permissions.ManageItems);
 
   const itemReportPath = `${ROUTES.CHOME}/${ROUTES.CATALOGUE_ITEM_REPORT}`;
 
@@ -56,9 +57,9 @@ const CatalogueItemReportsHub = () => {
     [items],
   );
 
-  const reportCards: HubCard[] = canViewReports
-    ? [
-      {
+    const reportCards: HubCard[] = [
+    ...(canViewItemReport
+      ? [{
         title: 'Item report',
         description: 'Stock, MRP, cost and margin for every item',
         stat: itemsLoading
@@ -67,23 +68,25 @@ const CatalogueItemReportsHub = () => {
         icon: Tag,
         iconClass: 'bg-blue-50 text-blue-600',
         to: itemReportPath,
-      },
-      {
+      }]
+      : []),
+    ...(canViewSoldReport
+      ? [{
         title: 'Item sold report',
         description: 'What sold, how many and for how much',
         stat: 'By period, best sellers first',
         icon: ShoppingCart,
         iconClass: 'bg-green-50 text-green-600',
         to: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_SOLD_REPORT}`,
-      },
-    ]
-    : [];
+      }]
+      : []),
+  ];
 
   const manageCard: HubCard | null = canManage
     ? {
       title: 'Manage items',
-      description: 'Add, edit or delete items · not a report',
-      mobileDescription: 'Add, edit or delete items',
+            description: 'Manage your items · not a report',
+      mobileDescription: 'Manage your items',
       stat: 'Opens your item list',
       icon: Pencil,
       iconClass: 'bg-orange-50 text-orange-600',
@@ -160,7 +163,7 @@ const CatalogueItemReportsHub = () => {
       )}
 
       {/* ITEMS THAT NEED A LOOK */}
-      {canViewReports && !itemsLoading && (
+            {canViewItemReport && !itemsLoading && (
         <div className="mt-4 hidden items-center gap-3 rounded-sm border border-[#f6e1d0] bg-white px-4 py-3 shadow-card md:flex">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-orange-50 text-orange-600">
             <AlertTriangle size={16} />

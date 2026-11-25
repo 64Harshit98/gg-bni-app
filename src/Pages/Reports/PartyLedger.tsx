@@ -1155,7 +1155,9 @@ const PartyLedger: React.FC = () => {
                 key: `b-${t.id}`,
                 date: t.createdAt,
                 title: t.isOpeningBalance ? (advance ? 'Advance (you owe them)' : 'Opening balance') : t.invoiceNumber || `#${t.id.slice(0, 6).toUpperCase()}`,
-                sub: t.isOpeningBalance ? (t.note ? `Note: ${t.note}` : '') : purchase ? 'Purchase bill' : `Sale${t.items?.length ? ` · ${t.items.length} items` : ''}`,
+                sub: t.isOpeningBalance
+    ? (t.note ? `Note: ${t.note}` : '')
+    : `${purchase ? 'Purchase bill' : 'Sale'}${t.items?.length ? ` · ${t.items.length} items` : ''}`,
                 mode: '',
                 effect: advance || purchase ? -t.totalAmount : t.totalAmount,
                 isPayment: false,

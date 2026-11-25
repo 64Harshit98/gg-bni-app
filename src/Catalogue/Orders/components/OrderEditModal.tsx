@@ -10,8 +10,12 @@ import { TierPickerModal } from '../../../Components/TierPickerModal';
 import { hasMultiplePricing } from '../../../Pages/utils/pricingUtils';
 import type { Order } from '../orders.types';
 import type { OrderPriceOffer } from '../hooks/useOrderCustomerPricing';
+import CustomerPricingEditorModal from '../../../Components/CustomerPricingEditorModal';
+import type { CustomerPricingRule } from '../../../constants/models';
 import { formatAmount } from '../../../lib/format';
 import { indianStates } from '../../../Components/IndianStates';
+import { useAuth } from '../../../context/auth-context';
+import { Cata_Permissions } from '../../enum/cata_permissions.enum';
 
 interface OrderEditModalProps {
     editingOrder: Order;
@@ -58,6 +62,13 @@ interface OrderEditModalProps {
     handleDiscountAmountInputChange: (value: string) => void;
     handleSaveChanges: () => void;
     customerPriceOffer?: OrderPriceOffer | null;
+    customerPricingEditor?: {
+        companyId: string;
+        uid: string;
+        party: { name: string; number: string };
+        rule: CustomerPricingRule | null;
+        reload: () => void;
+    } | null;
 }
 
 // ─── UI-only helpers (SELLAR "Catalogue orange" — PageCatEditOrderDesktop / Mobile) ───
@@ -157,8 +168,12 @@ export const OrderEditModal: React.FC<OrderEditModalProps> = ({
     handleDiscountAmountInputChange,
     handleSaveChanges,
     customerPriceOffer,
+    customerPricingEditor,
 }) => {
     const [tierPickerItem, setTierPickerItem] = useState<Item | null>(null);
+    const [showPricingEditor, setShowPricingEditor] = useState(false);
+    const { hasCataloguePermission } = useAuth();
+    const canEditItems = hasCataloguePermission(Cata_Permissions.EditItems);
 
     // ── UI-only state ──
     const [isEditingAddress, setIsEditingAddress] = useState(false);
@@ -332,10 +347,10 @@ export const OrderEditModal: React.FC<OrderEditModalProps> = ({
                                     applyRounding={(amount) => amount}
                                     State={State}
                                     setModal={setModal}
-                                    onOpenEditDrawer={(item) => {
+                                    onOpenEditDrawer={canEditItems ? (item) => {
                                         setSelectedItemForEdit(item);
                                         setIsEditDrawerOpen(true);
-                                    }}
+                                    } : undefined}
                                     onDeleteItem={handleDeleteItem}
                                     onDiscountChange={handleDiscountChange}
                                     onDiscount2Change={handleDiscount2Change}
@@ -600,6 +615,19 @@ export const OrderEditModal: React.FC<OrderEditModalProps> = ({
                                     </button>
                                 </div>
                             )}
+
+                            {/* Same pricing editor as Sales: view / edit this customer's fixed prices */}
+                            {customerPricingEditor && (
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPricingEditor(true)}
+                                    aria-haspopup="dialog"
+                                    className="mt-2.5 w-full inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-sm border border-[#f6e1d0] bg-white text-[13px] font-medium text-[#c2410c] hover:bg-[#fff8f2]"
+                                >
+                                    <FiTag size={14} />
+                                    {customerPricingEditor.rule ? 'View / edit pricing' : 'Set customer pricing'}
+                                </button>
+                            )}
                         </div>
 
                         {/* Extras + totals — desktop only (mobile has the bottom bar) */}
@@ -788,6 +816,20 @@ export const OrderEditModal: React.FC<OrderEditModalProps> = ({
                         </button>
                     </div>
                 </PopupShell>
+            )}
+
+            {/* ───────── Customer pricing editor (shared with Sales) ───────── */}
+            {showPricingEditor && customerPricingEditor && (
+                <CustomerPricingEditorModal
+                    companyId={customerPricingEditor.companyId}
+                    uid={customerPricingEditor.uid}
+                    party={customerPricingEditor.party}
+                    rule={customerPricingEditor.rule}
+                    autoApply={false}
+                    theme="catalogue"
+                    onClose={() => setShowPricingEditor(false)}
+                    onSaved={customerPricingEditor.reload}
+                />
             )}
         </div>
     );

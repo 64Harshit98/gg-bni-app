@@ -134,6 +134,7 @@ const Sales: React.FC = () => {
     const { currentUser, loading: authLoading, hasPermission } = useAuth();
     const { provider: whatsappProvider } = useWhatsappProvider(currentUser?.companyId);
     const dbOperations = useDatabase();
+    const canEditItems = hasPermission(Permissions.EditItems);
     const { salesSettings: rawSettings, loadingSettings } = useSalesSettings();
     const { itemSettings } = useItemSettings();
     const addOnsEnabled = !!(itemSettings as any)?.enableAddOns;
@@ -194,7 +195,21 @@ const Sales: React.FC = () => {
     const clearCustomer = () => {
         setCustomerName('');
         setCustomerPhone('');
+        setCustomerDraft({ name: '', phone: '' });
         setPricingParty({ name: '', number: '' });
+    };
+
+    // Desktop inline fields: save the customer when focus leaves both fields (or on Enter)
+    const commitInlineCustomer = () => {
+        const phone = customerDraft.phone.replace(/\D/g, '');
+        const name = customerDraft.name.trim();
+        if (!name && !phone) return;
+        if (phone && phone.length !== 10) return; // wait until the number is complete
+        setCustomerName(name);
+        setCustomerPhone(phone);
+        setPricingParty({ name, number: phone });
+        setShowCustomerSuggestions(false);
+        setCustomerSuggestions([]);
     };
 
     const searchCustomer = async (term: string, field: 'name' | 'number') => {
@@ -626,7 +641,7 @@ const Sales: React.FC = () => {
 
     // Card view: optionally pull items that are already in the cart to the top.
     // Array.sort is stable, so the rest keep the A-Z / price order the user chose.
-     const gridItemsToShow = useMemo(() => {
+    const gridItemsToShow = useMemo(() => {
         if (!selectedOnTop) return sortedGridItems;
         const inCart = new Set(items.map((l: any) => l.productId || l.id));
         const picked = sortedGridItems.filter(it => inCart.has(it.id));
@@ -820,6 +835,7 @@ const Sales: React.FC = () => {
         if (savedBillData && !isEditMode) {
             setCustomerName('');
             setCustomerPhone('');
+            setCustomerDraft({ name: '', phone: '' });
             setPricingParty({ name: '', number: '' });
             setShowPricingInfo(false);
         }
@@ -1265,7 +1281,7 @@ const Sales: React.FC = () => {
         );
 
     // ── Customer bar (customer-wise pricing on): pick the customer before billing ──
-    const renderCustomerBar = (inPanel = false) => {
+    const renderCustomerBar = (inPanel = false, inlineFields = false) => {
         if (!customerPricingEnabled) return null;
         const showSampleCustomer = isTutorialActive && !isEditMode && !customerName && !customerPhone;
         const shownName = showSampleCustomer ? TUTORIAL_SAMPLE_CUSTOMER.name : isEditMode ? (invoiceToEdit?.partyName || '') : customerName;
@@ -1287,13 +1303,63 @@ const Sales: React.FC = () => {
             <TutorialStep step={5} {...tour} text="Add the customer here to apply their fixed prices. You can also add them later at payment." onNext={() => nextStep(6)}>
                 <div data-tour="5" className={inPanel ? 'flex flex-col gap-2' : 'flex-shrink-0 flex flex-col gap-2 px-4 md:px-5 py-2 bg-white border-b border-[#dfe6fb]'}>
                     {!hasCustomer && !isEditMode ? (
-                        // No customer yet: the whole row is one compact "Add customer" button
-                        <button type="button" onClick={openCustomerModal}
-                            className="flex items-center gap-2.5 w-full min-h-10 px-2.5 py-1.5 rounded-sm border border-dashed border-[#a9b8de] bg-[#f8faff] text-left hover:bg-[#eef2ff] hover:border-[#155dfc]">
-                            <span className="w-7 h-7 rounded-sm bg-[#e6eeff] text-[#155dfc] flex items-center justify-center flex-shrink-0"><FiUserPlus size={14} aria-hidden /></span>
-                            <span className="text-sm font-medium text-[#155dfc] flex-shrink-0">Add customer</span>
-                            <span className="flex-1 min-w-0 text-xs text-[#5b6b86] truncate text-right">for their fixed prices</span>
-                        </button>
+                        inlineFields ? (
+                            // Desktop: fields shown directly, no button
+                            <div
+                                className="relative grid grid-cols-2 gap-2.5"
+                                onBlur={(e) => {
+                                    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) commitInlineCustomer();
+                                }}
+                            >
+                                <div ref={customerPhoneWrapRef} className="min-w-0">
+                                    <label htmlFor="bill-customer-phone" className={`block mb-1 ${LABEL_CLS}`}>Mobile</label>
+                                    <input
+                                        id="bill-customer-phone"
+                                        type="tel"
+                                        inputMode="tel"
+                                        maxLength={10}
+                                        value={customerDraft.phone}
+                                        onChange={(e) => handleCustomerDraftChange(e.target.value.replace(/\D/g, '').slice(0, 10), 'number')}
+                                        onFocus={() => {
+                                            setActiveSuggestField('number');
+                                            if (customerDraft.phone.length >= 3) searchCustomer(customerDraft.phone, 'number');
+                                        }}
+                                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitInlineCustomer(); } }}
+                                        placeholder="9000000000"
+                                        className={POPUP_INPUT_CLS}
+                                        autoComplete="off"
+                                    />
+                                    {activeSuggestField === 'number' && renderCustomerSuggestions()}
+                                </div>
+                                <div ref={customerNameWrapRef} className="min-w-0">
+                                    <label htmlFor="bill-customer-name" className={`block mb-1 ${LABEL_CLS}`}>Name</label>
+                                    <input
+                                        id="bill-customer-name"
+                                        type="text"
+                                        value={customerDraft.name}
+                                        onChange={(e) => handleCustomerDraftChange(e.target.value, 'name')}
+                                        onFocus={() => {
+                                            setActiveSuggestField('name');
+                                            if (customerDraft.name.length >= 3) searchCustomer(customerDraft.name, 'name');
+                                        }}
+                                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitInlineCustomer(); } }}
+                                        placeholder="Customer name…"
+                                        className={POPUP_INPUT_CLS}
+                                        autoComplete="off"
+                                        spellCheck={false}
+                                    />
+                                    {activeSuggestField === 'name' && renderCustomerSuggestions()}
+                                </div>
+                            </div>
+                        ) : (
+                            // Phone / tablet: same "Add customer" button as before
+                            <button type="button" onClick={openCustomerModal}
+                                className="flex items-center gap-2.5 w-full min-h-10 px-2.5 py-1.5 rounded-sm border border-dashed border-[#a9b8de] bg-[#f8faff] text-left hover:bg-[#eef2ff] hover:border-[#155dfc]">
+                                <span className="w-7 h-7 rounded-sm bg-[#e6eeff] text-[#155dfc] flex items-center justify-center flex-shrink-0"><FiUserPlus size={14} aria-hidden /></span>
+                                <span className="text-sm font-medium text-[#155dfc] flex-shrink-0">Add customer</span>
+                                <span className="flex-1 min-w-0 text-xs text-[#5b6b86] truncate text-right">for their fixed prices</span>
+                            </button>
+                        )
                     ) : (
                         <div className="flex items-center gap-2.5">
                             <span className="w-7 h-7 rounded-sm bg-[#e6eeff] text-[#155dfc] flex items-center justify-center flex-shrink-0"><FiUser size={14} aria-hidden /></span>
@@ -1888,8 +1954,8 @@ const Sales: React.FC = () => {
     const renderBillPanel = (onCollect: () => void, onClose?: () => void) => (
         <div className="flex-1 min-h-0 flex flex-col">
             <div className={`flex-1 min-h-0 px-5 pb-5 flex flex-col gap-4 overflow-y-auto ${onClose ? 'pt-2' : 'pt-5'}`}>
-                {/* Customer above the bill: desktop panel and the phone/tablet bill sheet (both views). */}
-                {renderCustomerBar(true)}
+                {/* Customer above the bill. Desktop panel (no onClose) shows input fields; phone/tablet sheet keeps the button. */}
+                {renderCustomerBar(true, !onClose)}
                 <div className="flex items-center justify-between gap-2 -mb-2">
                     <h2 className="m-0 text-base font-semibold text-[#0f172b]">Bill · {totalQuantity} {totalQuantity === 1 ? 'item' : 'items'}</h2>
                     <div className="flex items-center gap-1">
@@ -2136,7 +2202,7 @@ const Sales: React.FC = () => {
                                                         aria-label={`Add one ${item.name}${isSelected ? `, ${quantity} in bill` : ''}`}
                                                         onClick={handleTileTap}
                                                         onPointerDown={(e) => {
-                                                            if (e.pointerType !== 'touch') return;
+                                                            if (e.pointerType !== 'touch' || !canEditItems) return;
                                                             tileHoldFired.current = false;
                                                             clearTimeout(tileHoldTimer.current);
                                                             tileHoldTimer.current = setTimeout(() => { tileHoldFired.current = true; openEdit(); }, 450);
@@ -2237,14 +2303,16 @@ const Sales: React.FC = () => {
                                                     </div>
 
                                                     {/* Edit: hamesha dikhta hai (phone par bhi) */}
-                                                    <button
-                                                        type="button"
-                                                        aria-label={`Edit ${item.name}`}
-                                                        onClick={openEdit}
-                                                        className="absolute top-2 right-2 z-[1] grid place-items-center w-[26px] h-[26px] rounded-sm bg-white text-gray-600 border border-gray-200 hover:text-blue-600 hover:border-blue-600 transition-colors"
-                                                    >
-                                                        <FiEdit size={14} />
-                                                    </button>
+                                                    {canEditItems && (
+                                                        <button
+                                                            type="button"
+                                                            aria-label={`Edit ${item.name}`}
+                                                            onClick={openEdit}
+                                                            className="absolute top-2 right-2 z-[1] grid place-items-center w-[26px] h-[26px] rounded-sm bg-white text-gray-600 border border-gray-200 hover:text-blue-600 hover:border-blue-600 transition-colors"
+                                                        >
+                                                            <FiEdit size={14} />
+                                                        </button>
+                                                    )}
                                                 </div>
                                             );
                                         }
@@ -2319,14 +2387,16 @@ const Sales: React.FC = () => {
                                                 )}
 
                                                 {/* Edit: top-right, hamesha dikhta hai (phone par bhi) */}
-                                                <button
-                                                    type="button"
-                                                    aria-label={`Edit ${item.name}`}
-                                                    onClick={openEdit}
-                                                    className="grid absolute top-1 right-1 z-[1] place-items-center w-6 h-6 rounded-sm bg-white text-gray-600 border border-gray-200 hover:text-blue-600 hover:border-blue-600 transition-colors"
-                                                >
-                                                    <FiEdit size={13} />
-                                                </button>
+                                                {canEditItems && (
+                                                    <button
+                                                        type="button"
+                                                        aria-label={`Edit ${item.name}`}
+                                                        onClick={openEdit}
+                                                        className="grid absolute top-1 right-1 z-[1] place-items-center w-6 h-6 rounded-sm bg-white text-gray-600 border border-gray-200 hover:text-blue-600 hover:border-blue-600 transition-colors"
+                                                    >
+                                                        <FiEdit size={14} />
+                                                    </button>
+                                                )}
                                             </div>
                                         );
                                     })}
@@ -2629,7 +2699,7 @@ ${colClass || ''}`}
                 onLink={handleLinkScannedBarcode}
             />
             <AddUserModal isOpen={isAddUserModalOpen} onClose={() => setIsAddUserModalOpen(false)} />
-                {renderQuickItemSheet()}
+            {renderQuickItemSheet()}
             <div className="hidden md:block">{renderHeader()}</div>
             {renderMobileHeader()}
             {renderMoreSheet()}
@@ -2712,7 +2782,7 @@ ${colClass || ''}`}
                                     applyRounding={applyRounding}
                                     State={State}
                                     setModal={setModal}
-                                    onOpenEditDrawer={handleOpenEditDrawer}
+                                    onOpenEditDrawer={canEditItems ? handleOpenEditDrawer : undefined}
                                     onNameClick={(line: any) => openAddOnEdit(line)}
                                     onDeleteItem={handleDeleteItem}
                                     onDiscountChange={handleDiscountChange}

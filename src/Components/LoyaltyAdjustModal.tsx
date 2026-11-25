@@ -7,6 +7,7 @@ import { LoyaltyBalanceError, adjustLoyaltyPoints } from '../lib/loyalty';
 
 // Add or remove a customer's loyalty points by hand. Only render this for
 // users with Permissions.ManageLoyaltyPoints — the callers wrap it in ShowWrapper.
+// Shared by POS (theme="blue") and Catalogue (theme="orange").
 
 interface LoyaltyAdjustModalProps {
     isOpen: boolean;
@@ -16,14 +17,53 @@ interface LoyaltyAdjustModalProps {
     balance: number;
     /** Called with the new balance after a successful save. */
     onSaved?: (newBalance: number) => void;
+    theme?: 'blue' | 'orange';
 }
 
-const FOCUS_RING =
-    'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#155dfc]';
-const FIELD =
-    'flex h-10 items-center gap-2 border border-[#7a8aa3] bg-white px-3 rounded-sm focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-[#155dfc]';
+// Full class strings so Tailwind can detect them (no .replace() tricks)
+interface ThemeStyles {
+    outline: string;
+    within: string;
+    hoverBg: string;
+    sunken: string;
+    border: string;
+    primaryBg: string;
+    primaryHover: string;
+    shadow: string;
+}
 
-const LoyaltyAdjustModal: React.FC<LoyaltyAdjustModalProps> = ({ isOpen, onClose, phone, name, balance, onSaved }) => {
+const THEMES: Record<'blue' | 'orange', ThemeStyles> = {
+    blue: {
+        outline: 'focus-visible:outline-[#155dfc]',
+        within: 'focus-within:outline-[#155dfc]',
+        hoverBg: 'hover:bg-[#f5f7ff]',
+        sunken: 'bg-[#f5f7ff]',
+        border: 'border-[#dfe6fb]',
+        primaryBg: 'bg-[#155dfc]',
+        primaryHover: 'hover:bg-[#1447e6]',
+        shadow: 'shadow-[0_10px_28px_rgba(21,48,140,.14),0_2px_6px_rgba(21,48,140,.08)]',
+    },
+    orange: {
+        outline: 'focus-visible:outline-[#ea580c]',
+        within: 'focus-within:outline-[#ea580c]',
+        hoverBg: 'hover:bg-[#fff8f2]',
+        sunken: 'bg-[#fff8f2]',
+        border: 'border-[#f6e1d0]',
+        primaryBg: 'bg-[#c2410c]',
+        primaryHover: 'hover:bg-[#9a3412]',
+        shadow: 'shadow-[0_10px_28px_rgba(194,65,12,.14),0_2px_6px_rgba(194,65,12,.08)]',
+    },
+};
+
+const FOCUS_BASE = 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2';
+
+const LoyaltyAdjustModal: React.FC<LoyaltyAdjustModalProps> = ({
+    isOpen, onClose, phone, name, balance, onSaved, theme = 'blue',
+}) => {
+    const t = THEMES[theme];
+    const FOCUS_RING = `${FOCUS_BASE} ${t.outline}`;
+    const FIELD = `flex h-10 items-center gap-2 border border-[#7a8aa3] bg-white px-3 rounded-sm focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 ${t.within}`;
+
     const { currentUser } = useAuth();
     const [mode, setMode] = useState<'add' | 'remove'>('add');
     const [points, setPoints] = useState('');
@@ -79,7 +119,7 @@ const LoyaltyAdjustModal: React.FC<LoyaltyAdjustModalProps> = ({ isOpen, onClose
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="loyalty-adjust-title"
-                className="grid w-full max-w-[420px] gap-4 rounded-sm bg-white p-5 font-['Poppins',system-ui,sans-serif] text-sm text-[#0f172b] shadow-[0_10px_28px_rgba(21,48,140,.14),0_2px_6px_rgba(21,48,140,.08)]"
+                className={`grid w-full max-w-[420px] gap-4 rounded-sm bg-white p-5 font-['Poppins',system-ui,sans-serif] text-sm text-[#0f172b] ${t.shadow}`}
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="flex items-start gap-3">
@@ -90,12 +130,12 @@ const LoyaltyAdjustModal: React.FC<LoyaltyAdjustModalProps> = ({ isOpen, onClose
                         <h3 id="loyalty-adjust-title" className="m-0 text-base font-semibold leading-6">Adjust points</h3>
                         <p className="m-0 truncate text-xs text-[#5b6b86]">{name ? `${name} · ` : ''}{phone} · {balance} pts now</p>
                     </div>
-                    <button type="button" aria-label="Close" onClick={onClose} className={`grid h-8 w-8 place-items-center rounded-sm text-[#45556c] hover:bg-[#f5f7ff] ${FOCUS_RING}`}>
+                    <button type="button" aria-label="Close" onClick={onClose} className={`grid h-8 w-8 place-items-center rounded-sm text-[#45556c] ${t.hoverBg} ${FOCUS_RING}`}>
                         <X size={18} />
                     </button>
                 </div>
 
-                <div role="group" aria-label="Add or remove" className="flex gap-0.5 rounded-sm border border-[#dfe6fb] bg-[#f5f7ff] p-[3px]">
+                <div role="group" aria-label="Add or remove" className={`flex gap-0.5 rounded-sm border ${t.border} ${t.sunken} p-[3px]`}>
                     {(['add', 'remove'] as const).map((m) => (
                         <button
                             key={m}
@@ -146,7 +186,7 @@ const LoyaltyAdjustModal: React.FC<LoyaltyAdjustModalProps> = ({ isOpen, onClose
                     </div>
                 </div>
 
-                <div className="flex items-center justify-between rounded-sm bg-[#f5f7ff] px-3 py-2 text-xs text-[#45556c]">
+                <div className={`flex items-center justify-between rounded-sm ${t.sunken} px-3 py-2 text-xs text-[#45556c]`}>
                     <span>New balance</span>
                     <b className={`text-sm tabular-nums ${newBalance < 0 ? 'text-[#d5000c]' : 'text-[#0f172b]'}`}>{newBalance} pts</b>
                 </div>
@@ -154,14 +194,14 @@ const LoyaltyAdjustModal: React.FC<LoyaltyAdjustModalProps> = ({ isOpen, onClose
                 {error && <p className="m-0 rounded-sm border border-[#ffd2d6] bg-[#ffeef0] px-3 py-2 text-xs font-medium text-[#d5000c]">{error}</p>}
 
                 <div className="flex justify-end gap-2">
-                    <button type="button" onClick={onClose} className={`inline-flex h-10 items-center rounded-sm border border-[#7a8aa3] bg-white px-4 text-sm font-medium hover:bg-[#f5f7ff] ${FOCUS_RING}`}>
+                    <button type="button" onClick={onClose} className={`inline-flex h-10 items-center rounded-sm border border-[#7a8aa3] bg-white px-4 text-sm font-medium ${t.hoverBg} ${FOCUS_RING}`}>
                         Cancel
                     </button>
                     <button
                         type="button"
                         onClick={handleSave}
                         disabled={saving}
-                        className={`inline-flex h-10 min-w-[120px] items-center justify-center rounded-sm bg-[#155dfc] px-4 text-sm font-medium text-white hover:bg-[#1447e6] disabled:opacity-[.45] ${FOCUS_RING}`}
+                        className={`inline-flex h-10 min-w-[120px] items-center justify-center rounded-sm px-4 text-sm font-medium text-white disabled:opacity-[.45] ${t.primaryBg} ${t.primaryHover} ${FOCUS_RING}`}
                     >
                         {saving ? 'Saving…' : 'Save'}
                     </button>

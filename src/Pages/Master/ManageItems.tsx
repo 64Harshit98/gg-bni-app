@@ -70,6 +70,7 @@ const ManageItems: React.FC = () => {
   const navigate = useNavigate();
   const { currentUser, hasPermission } = useAuth();
   const canAddItems = hasPermission(Permissions.ManageItems);
+  const canEditItems = hasPermission(Permissions.EditItems);    // edit / delete
   const canPrintLabels = hasPermission(Permissions.PrintQR);
 
   const {
@@ -333,12 +334,14 @@ const ManageItems: React.FC = () => {
             style={{ top: rowMenuPos.top, right: rowMenuPos.right }}
             className="fixed z-[70] w-40 rounded-sm border border-line bg-white p-1 shadow-float"
           >
-            <button
-              onClick={(e) => { e.stopPropagation(); openEditDrawer(item); }}
-              className="flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-sm text-slate-700 hover:bg-sunken"
-            >
-              <Pencil size={14} /> Edit
-            </button>
+            {canEditItems && (
+              <button
+                onClick={(e) => { e.stopPropagation(); openEditDrawer(item); }}
+                className="flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-sm text-slate-700 hover:bg-sunken"
+              >
+                <Pencil size={14} /> Edit
+              </button>
+            )}
             {canAddItems && (
               <button
                 onClick={(e) => { e.stopPropagation(); duplicateItem(item); }}
@@ -355,12 +358,14 @@ const ManageItems: React.FC = () => {
                 <Printer size={14} /> Print label
               </button>
             )}
-            <button
-              onClick={(e) => { e.stopPropagation(); closeRowMenu(); setItemPendingDelete(item); }}
-              className="flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-sm text-red-600 hover:bg-red-50"
-            >
-              <Trash2 size={14} /> Delete
-            </button>
+            {canEditItems && (
+              <button
+                onClick={(e) => { e.stopPropagation(); closeRowMenu(); setItemPendingDelete(item); }}
+                className="flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+              >
+                <Trash2 size={14} /> Delete
+              </button>
+            )}
           </div>
         </>
       )}
@@ -427,7 +432,7 @@ const ManageItems: React.FC = () => {
         )}
 
         {/* Page menu: destructive actions live here, behind a confirmation */}
-        <div className="relative shrink-0">
+        {canEditItems && <div className="relative shrink-0">
           <button
             onClick={() => setPageMenuOpen((o) => !o)}
             aria-label="More actions"
@@ -456,7 +461,7 @@ const ManageItems: React.FC = () => {
               </div>
             </>
           )}
-        </div>
+        </div>}
       </header>
 
       {/* -------------------- FILTERS -------------------- */}
@@ -579,13 +584,15 @@ const ManageItems: React.FC = () => {
                     </td>
                     <td className="px-3 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); openEditDrawer(item); }}
-                          aria-label="Edit item"
-                          className="rounded-sm p-1.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
-                        >
-                          <Pencil size={14} />
-                        </button>
+                        {canEditItems && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openEditDrawer(item); }}
+                            aria-label="Edit item"
+                            className="rounded-sm p-1.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                        )}
                         {renderRowMenu(item, `d-${key}`)}
                       </div>
                     </td>

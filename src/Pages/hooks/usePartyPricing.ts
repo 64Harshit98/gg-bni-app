@@ -71,7 +71,9 @@ export const usePartyPricing = <L extends { id: string; quantity?: number | stri
     const [loading, setLoading] = useState(false);
     // The party id the current `rule` was loaded for — auto-apply waits until it matches,
     // so half-typed names/numbers in the drawer don't touch prices.
-    const [resolvedFor, setResolvedFor] = useState<string | null>(null);
+        const [resolvedFor, setResolvedFor] = useState<string | null>(null);
+    // Bumped by reload() so the rule is re-read after it is edited in the pricing editor.
+    const [reloadKey, setReloadKey] = useState(0);
 
     useEffect(() => {
         setResolvedFor(null);
@@ -91,8 +93,8 @@ export const usePartyPricing = <L extends { id: string; quantity?: number | stri
                 .catch(err => { console.error('Party pricing load failed', err); if (!cancelled) setRule(null); })
                 .finally(() => { if (!cancelled) { setLoading(false); setResolvedFor(partyId); } });
         }, 350);
-        return () => { cancelled = true; clearTimeout(t); };
-    }, [enabled, companyId, collectionName, partyId]);
+                return () => { cancelled = true; clearTimeout(t); };
+    }, [enabled, companyId, collectionName, partyId, reloadKey]);
 
     const suggestFor = (line: L) =>
         rule ? (adapter.suggest ?? getCustomerPriceSuggestion)(adapter.toPriced(line), rule, rounding.enabled, rounding.interval) : null;
@@ -215,5 +217,7 @@ export const usePartyPricing = <L extends { id: string; quantity?: number | stri
         return null;
     })();
 
-    return { partyId, rule, loading, suggestions, decorate, offer, apply, applyAll, revert };
+        const reload = () => setReloadKey(k => k + 1);
+
+    return { partyId, rule, loading, suggestions, decorate, offer, apply, applyAll, revert, reload };
 };

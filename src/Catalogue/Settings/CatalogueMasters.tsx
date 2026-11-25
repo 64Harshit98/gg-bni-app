@@ -2,8 +2,8 @@ import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { ROUTES } from '../../constants/routes.constants';
 import BackButton from '../../Components/BackButton';
-//import CataShowWrapper from '../../context/CataShowWrapper';
-//import { Cata_Permissions } from '../enum/cata_permissions.enum';
+//import ShowWrapper from '../../context/ShowWrapper';
+import { Cata_Permissions } from '../enum/cata_permissions.enum';
 import { useAuth } from '../../context/auth-context';
 import { ROLES } from '../../enums';
 import ShopHoursSettingPage from '../../Pages/Settings/ShopHoursSetting';
@@ -60,6 +60,7 @@ const ICONS = {
   search: ['M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14z', 'm20 20-3.5-3.5'],
   tag: ['M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z', 'M9 15l6-6M9.5 9.5h.01M14.5 14.5h.01'],
   limit: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M8 12h8'],
+  star: ['m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9z'],
 };
 
 /* ---------- One settings entry (card on desktop, row on mobile) ---------- */
@@ -143,7 +144,7 @@ const Group = ({ title, children }: { title: string; children: React.ReactNode }
 const CatalogueMasters = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { currentUser } = useAuth();
+  const { currentUser, hasCataloguePermission } = useAuth();
   const [shopHoursOpen, setShopHoursOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false); // mobile only: toggles the search field
   const [query, setQuery] = useState('');
@@ -153,6 +154,8 @@ const CatalogueMasters = () => {
 
   const isOwner = currentUser?.role === ROLES.OWNER;
   const companyId = currentUser?.companyId;
+
+  const can = (p: Cata_Permissions) => isOwner || hasCataloguePermission(p);
 
   // CommandPalette 'Shop Timing' -> router state se modal kholo (POS Masters jaisa), phir state clear
   useEffect(() => {
@@ -174,6 +177,7 @@ const CatalogueMasters = () => {
       sales: `${base}/settings/catalogue-sales-settings`,
       bill: `${base}/settings/bill`,
       shopHours: `${base}/settings/shop-hours`,
+      loyalty: `${base}/settings/loyalty`,
     };
     const unsubs = Object.entries(paths).map(([key, path]) =>
       onSnapshot(
@@ -242,6 +246,14 @@ const CatalogueMasters = () => {
     if (i) parts.push(`${i} ${i === 1 ? 'item' : 'items'}`);
     return parts.join(' · ') || 'No limits set yet';
   })();
+  const loyaltyValue = (() => {
+    if (docs.loyalty === undefined) return undefined;
+    const l = docs.loyalty;
+    if (!l?.enabled) return 'Off';
+    const earn = `${l.earnPoints ?? 1} pt / ₹${l.earnPerAmount ?? 100}`;
+    return l.redeemEnabled === false ? earn : `${earn} · 1 pt = ₹${l.pointValue ?? 1}`;
+  })();
+
   const usersValue = userStats
     ? `${userStats.total} ${userStats.total === 1 ? 'user' : 'users'}` +
     (userStats.managers > 0 ? ` · ${userStats.managers} ${userStats.managers === 1 ? 'manager' : 'managers'}` : '')
@@ -256,14 +268,21 @@ const CatalogueMasters = () => {
     bill: 'bill setting print size logo footer terms whatsapp',
     custPricing: 'customer party pricing fixed discount special price dealer wholesale rate',
     orderLimits: 'order limit maximum max quantity qty restrict cap',
+    loyalty: 'loyalty points reward customer redeem earn',
     items: 'item items setting units categories low stock mrp',
     users: 'user users setting salesman admin staff password',
     perm: 'permission setting role access',
     shop: 'shop timing opening hours weekly off day close',
   };
 
-  const showBilling = match(K.sales) || match(K.bill) || match(K.custPricing) || match(K.orderLimits);
-  const showItems = match(K.items);
+ const showSales = can(Cata_Permissions.ManageSalesSettings) && match(K.sales);
+const showBill = can(Cata_Permissions.ManageBillSettings) && match(K.bill);
+const showPricing = can(Cata_Permissions.ManageCustomerPricing) && match(K.custPricing);
+const showLimits = can(Cata_Permissions.ManageOrderLimit) && match(K.orderLimits);
+const showLoyalty = can(Cata_Permissions.ManageLoyaltyPoints) && match(K.loyalty);
+
+const showBilling = showSales || showBill || showPricing || showLimits || showLoyalty;
+const showItems = can(Cata_Permissions.ManageItemSettings) && match(K.items);
   const showTeam = isOwner && (match(K.users) || match(K.perm));
   const showShop = isOwner && match(K.shop);
   const nothingFound = !!q && !showBilling && !showItems && !showTeam && !showShop;
@@ -332,7 +351,7 @@ const CatalogueMasters = () => {
           <>
             {showBilling && (
               <Group title="Billing">
-                {match(K.sales) && (
+                {showSales && (
                   <SettingItem
                     to={`${ROUTES.CHOME}/${ROUTES.CATA_SALE_SETTING}`}
                     tint="orange"
@@ -342,7 +361,7 @@ const CatalogueMasters = () => {
                     desc="Display, GST & rounding, discounts, order options"
                   />
                 )}
-                {match(K.bill) && (
+               {showBill && (
                   <SettingItem
                     to={`${ROUTES.CHOME}/${ROUTES.CATA_BILL_SETTING}`}
                     tint="amber"
@@ -352,7 +371,7 @@ const CatalogueMasters = () => {
                     desc="Print size, logo, footer, terms and WhatsApp bill"
                   />
                 )}
-                {match(K.custPricing) && (
+                {showPricing && (
                   <SettingItem
                     to={`${ROUTES.CHOME}/${ROUTES.CATA_CUSTOMER_PRICING}`}
                     tint="green"
@@ -361,7 +380,7 @@ const CatalogueMasters = () => {
                     desc="Fixed discount per customer — all items, by category or per item"
                   />
                 )}
-                {match(K.orderLimits) && (
+                {showLimits && (
                   <SettingItem
                     onClick={() =>
                       window.dispatchEvent(new CustomEvent<LayoutAction>(LAYOUT_ACTION_EVENT, { detail: 'order-limits' }))
@@ -372,6 +391,17 @@ const CatalogueMasters = () => {
                     value={limitsValue}
                     valueTone={limitsOn ? 'primary' : 'warn'}
                     desc="Max quantity per customer — all items, by category or per item"
+                  />
+                )}
+                {showLoyalty && (
+                  <SettingItem
+                    to={`${ROUTES.CHOME}/${ROUTES.CATA_LOYALTY_SETTING}`}
+                    tint="amber"
+                    icon={ICONS.star}
+                    title="Loyalty Points"
+                    value={loyaltyValue}
+                    valueTone={loyaltyValue === 'Off' ? 'warn' : 'primary'}
+                    desc="Points customers earn on bills, how they redeem them, and who can change them"
                   />
                 )}
               </Group>

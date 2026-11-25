@@ -8,12 +8,40 @@ import type { CustomerItemOverride, CustomerPricingRule, Item, ItemGroup } from 
 
 // Same editor as Party pricing → Edit customer, but for one fixed customer (opened from the bill).
 
-const FIELD = 'flex items-center gap-2 h-10 px-3 rounded-sm border border-[#7a8aa3] bg-white text-[#5b6b86] focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-[#155dfc]';
 const INPUT = 'flex-1 min-w-0 border-0 outline-none bg-transparent text-sm text-[#0f172b] placeholder:text-[#5b6b86]';
 const LABEL = 'block mb-1.5 text-[11px] font-semibold tracking-[.08em] uppercase text-[#5b6b86]';
-const BTN_PRIMARY = 'inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-sm bg-[#155dfc] text-white text-sm font-medium hover:bg-[#1447e6] disabled:opacity-[.45]';
-const BTN_OUTLINE = 'inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-sm border border-[#7a8aa3] bg-white text-sm font-medium text-[#0f172b] hover:bg-[#f5f7ff] disabled:opacity-[.45]';
-const ICON_BTN = 'inline-grid place-items-center w-9 h-9 rounded-sm text-[#45556c] hover:bg-[#f5f7ff]';
+
+// Full class strings on purpose (Tailwind can't see dynamically built names).
+const THEMES = {
+    default: {
+        primary: 'bg-[#155dfc] hover:bg-[#1447e6]',
+        accentText: 'text-[#155dfc]',
+        accentBorder: 'border-[#155dfc]',
+        accentSoft: 'bg-[#e6eeff]',
+        accentSoftHover: 'hover:bg-[#e6eeff]',
+        avatar: 'bg-[#dfe6fb]',
+        border: 'border-[#dfe6fb]',
+        soft: 'bg-[#f5f7ff]',
+        softHover: 'hover:bg-[#f5f7ff]',
+        inputBorder: 'border-[#7a8aa3]',
+        focus: 'focus-within:outline-[#155dfc]',
+        checkbox: 'accent-[#155dfc]',
+    },
+    catalogue: {
+        primary: 'bg-[#c2410c] hover:bg-[#9a3412]',
+        accentText: 'text-[#c2410c]',
+        accentBorder: 'border-[#c2410c]',
+        accentSoft: 'bg-[#ffedd5]',
+        accentSoftHover: 'hover:bg-[#ffedd5]',
+        avatar: 'bg-[#ffedd5]',
+        border: 'border-[#f6e1d0]',
+        soft: 'bg-[#fff8f2]',
+        softHover: 'hover:bg-[#fff8f2]',
+        inputBorder: 'border-slate-300',
+        focus: 'focus-within:outline-[#ea580c]',
+        checkbox: 'accent-[#c2410c]',
+    },
+} as const;
 const DECIMAL = /^\d*\.?\d*$/;
 const num = (v: string) => (v.trim() === '' ? NaN : Number(v));
 const money = (n: number) => `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
@@ -41,11 +69,20 @@ interface Props {
     party: { name: string; number: string };
     rule: CustomerPricingRule | null;
     onClose: () => void;
-    /** Called after a save / remove so the bill can re-read the customer's prices. */
+        /** Called after a save / remove so the bill can re-read the customer's prices. */
     onSaved: () => void;
+    /** false where the owner taps Apply by hand (Orders); only changes the help text. */
+        autoApply?: boolean;
+    /** 'catalogue' = orange Catalogue look. Default keeps the blue POS look. */
+    theme?: keyof typeof THEMES;
 }
 
-const CustomerPricingEditorModal: React.FC<Props> = ({ companyId, uid, party, rule, onClose, onSaved }) => {
+const CustomerPricingEditorModal: React.FC<Props> = ({ companyId, uid, party, rule, onClose, onSaved, autoApply = true, theme = 'default' }) => {
+    const th = THEMES[theme];
+    const FIELD = `flex items-center gap-2 h-10 px-3 rounded-sm border ${th.inputBorder} bg-white text-[#5b6b86] focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 ${th.focus}`;
+    const BTN_PRIMARY = `inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-sm ${th.primary} text-white text-sm font-medium disabled:opacity-[.45]`;
+    const BTN_OUTLINE = `inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-sm border ${th.inputBorder} bg-white text-sm font-medium text-[#0f172b] ${th.softHover} disabled:opacity-[.45]`;
+    const ICON_BTN = `inline-grid place-items-center w-9 h-9 rounded-sm text-[#45556c] ${th.softHover}`;
     const [draft, setDraft] = useState<Draft>(() => toDraft(rule));
     const [items, setItems] = useState<Item[]>([]);
     const [groups, setGroups] = useState<ItemGroup[]>([]);
@@ -171,16 +208,16 @@ const CustomerPricingEditorModal: React.FC<Props> = ({ companyId, uid, party, ru
         <div className="fixed inset-0 z-[2100] flex items-end md:items-center justify-center bg-[#020618]/45 md:p-4"
             onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
             <div role="dialog" aria-modal="true" aria-labelledby="pe-title"
-                className="w-full md:max-w-2xl max-h-[92dvh] flex flex-col bg-white rounded-t-sm md:rounded-sm border border-[#dfe6fb] shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)] text-[#0f172b]">
-                <div className="flex items-center gap-3 px-5 py-4 border-b border-[#dfe6fb]">
+                                className={`w-full md:max-w-2xl max-h-[92dvh] flex flex-col bg-white rounded-t-sm md:rounded-sm border ${th.border} shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)] text-[#0f172b]`}>
+                <div className={`flex items-center gap-3 px-5 py-4 border-b ${th.border}`}>
                     <h2 id="pe-title" className="m-0 flex-1 text-lg font-semibold">{rule ? 'Edit customer pricing' : 'Set customer pricing'}</h2>
                     <button type="button" aria-label="Close" onClick={onClose} className={ICON_BTN}><FiX size={18} aria-hidden /></button>
                 </div>
 
                 <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-4 space-y-6">
                     {/* Customer (fixed) */}
-                    <section className="flex items-center gap-3 p-3 rounded-sm bg-[#f5f7ff] border border-[#dfe6fb]">
-                        <span aria-hidden className="grid place-items-center flex-none w-10 h-10 rounded-sm bg-[#dfe6fb] text-[#155dfc] text-sm font-semibold">{initials(label)}</span>
+                                        <section className={`flex items-center gap-3 p-3 rounded-sm ${th.soft} border ${th.border}`}>
+                        <span aria-hidden className={`grid place-items-center flex-none w-10 h-10 rounded-sm ${th.avatar} ${th.accentText} text-sm font-semibold`}>{initials(label)}</span>
                         <div className="flex-1 min-w-0">
                             <div className="text-sm font-semibold truncate">{label}</div>
                             {party.name && party.number && <div className="text-xs text-[#5b6b86] truncate">{party.number}</div>}
@@ -201,7 +238,7 @@ const CustomerPricingEditorModal: React.FC<Props> = ({ companyId, uid, party, ru
                                 {[2, 5, 10, 15, 20].map(p => (
                                     <button key={p} type="button" aria-pressed={draft.defaultDiscountPct === String(p)}
                                         onClick={() => edit(d => ({ ...d, defaultDiscountPct: String(p) }))}
-                                        className={`h-8 min-w-10 px-2 rounded-sm border text-xs font-medium tabular-nums ${draft.defaultDiscountPct === String(p) ? 'border-[#155dfc] bg-[#e6eeff] text-[#155dfc]' : 'border-[#dfe6fb] text-[#45556c] hover:bg-[#f5f7ff]'}`}>
+                                                                                className={`h-8 min-w-10 px-2 rounded-sm border text-xs font-medium tabular-nums ${draft.defaultDiscountPct === String(p) ? `${th.accentBorder} ${th.accentSoft} ${th.accentText}` : `${th.border} text-[#45556c] ${th.softHover}`}`}>
                                         {p}%
                                     </button>
                                 ))}
@@ -215,7 +252,7 @@ const CustomerPricingEditorModal: React.FC<Props> = ({ companyId, uid, party, ru
                     <section>
                         <div className="flex items-center justify-between mb-1.5">
                             <span className={LABEL + ' !mb-0'}>By category</span>
-                            <button type="button" className="h-8 px-2 rounded-sm text-sm font-medium text-[#155dfc] hover:bg-[#e6eeff]"
+                                                       <button type="button" className={`h-8 px-2 rounded-sm text-sm font-medium ${th.accentText} ${th.accentSoftHover}`}
                                 onClick={() => edit(d => ({ ...d, categories: [...d.categories, { groupId: '', pct: '' }] }))}>
                                 + Add category
                             </button>
@@ -227,7 +264,7 @@ const CustomerPricingEditorModal: React.FC<Props> = ({ companyId, uid, party, ru
                                     <div className="flex items-center gap-2">
                                         <select value={c.groupId} aria-label="Category"
                                             onChange={(e) => edit(d => ({ ...d, categories: d.categories.map((x, i) => i === idx ? { ...x, groupId: e.target.value } : x) }))}
-                                            className="flex-1 min-w-0 h-10 px-2 rounded-sm border border-[#7a8aa3] bg-white text-sm text-[#0f172b]">
+                                                                                        className={`flex-1 min-w-0 h-10 px-2 rounded-sm border ${th.inputBorder} bg-white text-sm text-[#0f172b]`}>
                                             <option value="">Choose category</option>
                                             {groups.filter(g => g.id === c.groupId || !draft.categories.some(o => o.groupId === g.id))
                                                 .map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
@@ -259,7 +296,7 @@ const CustomerPricingEditorModal: React.FC<Props> = ({ companyId, uid, party, ru
                                 placeholder="Search item to add a fixed % or price…" className={INPUT} aria-label="Search item" />
                         </div>
                         {itemMatches.length > 0 && (
-                            <div className="mt-1 border border-[#dfe6fb] rounded-sm p-1 max-h-48 overflow-y-auto">
+                                                        <div className={`mt-1 border ${th.border} rounded-sm p-1 max-h-48 overflow-y-auto`}>
                                 {itemMatches.map(i => (
                                     <button key={i.id} type="button"
                                         onClick={() => {
@@ -268,7 +305,7 @@ const CustomerPricingEditorModal: React.FC<Props> = ({ companyId, uid, party, ru
                                             setItemQuery('');
                                             requestAnimationFrame(() => document.getElementById(`pe-item-${idx}`)?.focus());
                                         }}
-                                        className="w-full flex items-center gap-2 text-left px-2.5 py-2 rounded-sm hover:bg-[#e6eeff]">
+                                                                                className={`w-full flex items-center gap-2 text-left px-2.5 py-2 rounded-sm ${th.accentSoftHover}`}>
                                         <span className="flex-1 min-w-0 text-sm truncate">{i.name}</span>
                                         <span className="text-xs text-[#5b6b86] tabular-nums">MRP {Number(i.mrp) > 0 ? money(Number(i.mrp)) : '—'}</span>
                                     </button>
@@ -277,7 +314,7 @@ const CustomerPricingEditorModal: React.FC<Props> = ({ companyId, uid, party, ru
                         )}
                         <div className="mt-2 space-y-2">
                             {draft.items.map((it, idx) => (
-                                <div key={it.itemId} className="border border-[#dfe6fb] rounded-sm p-2.5">
+                                                                <div key={it.itemId} className={`border ${th.border} rounded-sm p-2.5`}>
                                     <div className="flex items-center gap-2">
                                         <span className="flex-1 min-w-0 text-sm font-medium truncate">{it.name}</span>
                                         <button type="button" aria-label={`Remove ${it.name}`} className={ICON_BTN}
@@ -286,11 +323,11 @@ const CustomerPricingEditorModal: React.FC<Props> = ({ companyId, uid, party, ru
                                         </button>
                                     </div>
                                     <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                                        <div role="group" aria-label="Discount type" className="inline-flex p-[3px] gap-0.5 bg-[#f5f7ff] border border-[#dfe6fb] rounded-sm">
+                                                                                <div role="group" aria-label="Discount type" className={`inline-flex p-[3px] gap-0.5 ${th.soft} border ${th.border} rounded-sm`}>
                                             {([['percent', '% off'], ['netPrice', 'Fixed ₹']] as const).map(([t, l]) => (
                                                 <button key={t} type="button" aria-pressed={it.type === t}
                                                     onClick={() => edit(d => ({ ...d, items: d.items.map((x, i) => i === idx ? { ...x, type: t } : x) }))}
-                                                    className={`h-7 px-3 rounded-sm text-xs font-medium ${it.type === t ? 'bg-white text-[#155dfc] shadow-sm' : 'text-[#45556c]'}`}>
+                                                                                                        className={`h-7 px-3 rounded-sm text-xs font-medium ${it.type === t ? `bg-white ${th.accentText} shadow-sm` : 'text-[#45556c]'}`}>
                                                     {l}
                                                 </button>
                                             ))}
@@ -321,17 +358,20 @@ const CustomerPricingEditorModal: React.FC<Props> = ({ companyId, uid, party, ru
                             </div>
                         </div>
                         <label className="inline-flex items-center gap-2 h-9 text-sm cursor-pointer">
-                            <input type="checkbox" checked={draft.isActive} onChange={(e) => edit(d => ({ ...d, isActive: e.target.checked }))} className="w-4 h-4 accent-[#155dfc]" />
+                            <input type="checkbox" checked={draft.isActive} onChange={(e) => edit(d => ({ ...d, isActive: e.target.checked }))} className={`w-4 h-4 ${th.checkbox}`} />
                             Active — apply on bills
                         </label>
                     </section>
 
                     <p className="m-0 text-xs text-[#5b6b86]">
-                        Priority: item rule, then category, then “all items”. Applied automatically when the customer is picked on a bill and replaces the item’s own discount.
+                                                Priority: item rule, then category, then “all items”.{' '}
+                        {autoApply
+                            ? 'Applied automatically when the customer is picked on a bill and replaces the item’s own discount.'
+                            : 'Shown as an offer on the order — prices change only when you tap Apply, and replace the item’s own discount.'}
                     </p>
                 </div>
 
-                <div className="px-5 pt-3 pb-[max(12px,env(safe-area-inset-bottom))] border-t border-[#dfe6fb]">
+                                <div className={`px-5 pt-3 pb-[max(12px,env(safe-area-inset-bottom))] border-t ${th.border}`}>
                     {error?.id === 'pe-save' && <p role="alert" className="mt-0 mb-2 text-xs text-red-700">{error.message}</p>}
                     <div className="flex items-center gap-2">
                         {rule && (

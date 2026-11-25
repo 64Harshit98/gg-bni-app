@@ -61,6 +61,7 @@ export interface InvoiceItem {
     id?: string;
     name: string;
     mrp?: number;
+    purchasePrice?: number;   // NEW: purchase bills ke items
     quantity: number;
     taxableAmount?: number;
     effectiveUnitPrice?: number;
@@ -243,16 +244,18 @@ export default function usePartyLedger() {
                     }
 
                     return {
-                        id: doc.id,
-                        invoiceNumber: data.invoiceNumber || data.billNumber,
-                        partyName: data.partyName || 'N/A',
-                        partyNumber: data.partyNumber || '',
-                        totalAmount: data.totalAmount || 0,
-                        dueAmount: data.paymentMethods?.due ?? data.dueAmount ?? 0,
-                        paymentHistory: history, // <-- Using the reconstructed history
-                        createdAt: creationMillis,
-                        type: 'purchase' as const
-                    } as LedgerTransaction;
+    id: doc.id,
+    invoiceNumber: data.invoiceNumber || data.billNumber,
+    partyName: data.partyName || 'N/A',
+    partyNumber: data.partyNumber || '',
+    totalAmount: data.totalAmount || 0,
+    dueAmount: data.paymentMethods?.due ?? data.dueAmount ?? 0,
+    paymentHistory: history, // <-- Using the reconstructed history
+    createdAt: creationMillis,
+    type: 'purchase' as const,
+    items: data.items || [],                    // NEW
+    paymentMethods: data.paymentMethods || {},  // NEW
+} as LedgerTransaction;
                 });
 
                 // Combine and sort by date descending

@@ -3,8 +3,10 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowRight, Search } from 'lucide-react';
 
 import { ROUTES } from '../../constants/routes.constants';
-import { ROLES } from '../../enums';
+import { ROLES, Permissions } from '../../enums';
 import { useAuth } from '../../context/auth-context';
+import { AppRegistry } from '../../routes/AppRegistry';
+import { Cata_Permissions } from '../../Catalogue/enum/cata_permissions.enum';
 
 /**
  * Some destinations are NOT pages — they open a modal that lives in the layout
@@ -22,6 +24,7 @@ export interface Destination {
   action?: LayoutAction; // opens a layout-level modal instead of navigating
   state?: Record<string, unknown>; // router state passed on navigate (e.g. open a modal on the target page)
   ownerOnly?: boolean; // hide for non-owner roles
+  permission?: Permissions | Cata_Permissions | null; // overrides the route's own permission
 }
 
 // If TypeScript says a ROUTES key doesn't exist, just delete that line.
@@ -45,7 +48,7 @@ export const DESTINATIONS: Destination[] = [
   { label: 'Item Group', hint: 'Manage item groups', to: ROUTES.ITEM_GROUP, keywords: 'category' },
   { label: 'Manage Items', hint: 'Edit or delete items', to: ROUTES.MANAGE_ITEMS, keywords: 'products stock' },
   // Opens the same AddUserModal as the layout's quick action (not the USER_ADD page)
-  { label: 'Add User', hint: 'Invite a team member', action: 'add-user', keywords: 'staff employee' },
+  { label: 'Add User', hint: 'Invite a team member', action: 'add-user', keywords: 'staff employee', permission: Permissions.CreateUsers },
 
   // --- Reports ---
   { label: 'Reports', hint: 'Sales, tax & inventory reports', to: ROUTES.REPORTS },
@@ -137,7 +140,9 @@ export const CATALOGUE_DESTINATIONS: Destination[] = [
   { label: 'Sales Settings', hint: 'Sales preferences', to: `${C}/${ROUTES.CATA_SALE_SETTING}` },
   { label: 'Bill Settings', hint: 'Invoice format', to: `${C}/${ROUTES.CATA_BILL_SETTING}` },
   { label: 'Party Pricing', hint: 'Fixed discount per customer', to: `${C}/${ROUTES.CATA_CUSTOMER_PRICING}`, keywords: 'customer party discount special price dealer wholesale rate' },
-  { label: 'Order Limits', hint: 'Max quantity per item a customer can order', action: 'order-limits', keywords: 'maximum max quantity qty limit restrict cap' },
+    { label: 'Order Limits', hint: 'Max quantity per item a customer can order', action: 'order-limits', keywords: 'maximum max quantity qty limit restrict cap', permission: Cata_Permissions.ManageOrderLimit },
+  { label: 'Loyalty Settings', hint: 'Earn and redeem rules for customer points', to: `${C}/${ROUTES.CATA_LOYALTY_SETTING}`, keywords: 'loyalty points reward redeem earn' },
+  { label: 'Customer Points', hint: 'Loyalty balances and history', to: `${C}/${ROUTES.CATA_LOYALTY_POINTS}`, keywords: 'loyalty points reward balance customer' },
   { label: 'Item Settings', hint: 'Item preferences', to: `${C}/${ROUTES.CATA_ITEM_SETTING}` },
   { label: 'User Settings', hint: 'Manage users', to: `${C}/${ROUTES.CATA_USER_SETTING}` },
   { label: 'Permission Settings', hint: 'Roles & permissions', to: `${C}/${ROUTES.CATA_PERMISSION_SETTING}`, ownerOnly: true },
@@ -154,6 +159,8 @@ interface CommandPaletteProps {
 }
 
 const abs = (p: string) => (p.startsWith('/') ? p : `/${p}`);
+// '/sales' and 'sales' should match: compare paths without slashes
+const normalizePath = (p: string) => p.replace(/^\/+|\/+$/g, '').toLowerCase();
 
 // Catalogue area = anything under CHOME, plus Orders & Accounts pages of catalogue
 const isCataloguePath = (pathname: string) => {
@@ -168,15 +175,30 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const [query, setQuery] = useState('');
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const { currentUser } = useAuth();
+  const { currentUser, hasPermission, hasCataloguePermission } = useAuth();
   const isOwner = currentUser?.role === ROLES.OWNER;
 
   // Path decides the list: Catalogue pages -> CATALOGUE_DESTINATIONS, else POS.
   // (The old `destinations` prop passed by the Catalogue header is intentionally ignored.)
   const activeDestinations = useMemo(() => {
-    const list = isCataloguePath(pathname) ? CATALOGUE_DESTINATIONS : DESTINATIONS;
-    return list.filter((d) => !d.ownerOnly || isOwner);
-  }, [pathname, isOwner]);
+    const isCata = isCataloguePath(pathname);
+    const list = isCata ? CATALOGUE_DESTINATIONS : DESTINATIONS;
+
+    // route path -> permission, taken from the same registry the route guard uses
+    const routes = AppRegistry.find((m) => m.id === (isCata ? 'catalogue' : 'pos'))?.routes ?? [];
+    const permByPath = new Map(
+      routes.filter((r) => r.path).map((r) => [normalizePath(r.path!), r.permission]),
+    );
+
+    const canOpen = (d: Destination) => {
+      if (d.ownerOnly && !isOwner) return false;
+      const perm = d.permission !== undefined ? d.permission : d.to ? permByPath.get(normalizePath(d.to)) : null;
+      if (!perm) return true; // no permission needed (or route not in registry)
+      return isCata ? hasCataloguePermission(perm as Cata_Permissions) : hasPermission(perm as Permissions);
+    };
+
+    return list.filter(canOpen);
+  }, [pathname, isOwner, hasPermission, hasCataloguePermission]);
 
   useEffect(() => {
     if (!open) setQuery('');

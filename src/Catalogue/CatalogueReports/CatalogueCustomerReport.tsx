@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import XLSX from 'xlsx-js-style';
@@ -17,12 +17,15 @@ import {
   IndianRupee,
   Scale,
   Search,
+  Star,
   TrendingUp,
   Users,
   X,
 } from 'lucide-react';
 import { collection, onSnapshot, query, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
+import { useLoyaltySettings } from '../../context/SettingsContext';
+import { normalizeLoyaltyPhone, pointsToRupees } from '../../lib/loyalty';
 import { Modal } from '../../constants/Modal';
 import { customerBelongsTo, customerSourceFields, type CustomerSourceFields } from '../../constants/customerSource';
 import { State } from '../../enums';
@@ -56,7 +59,8 @@ import DetailPanel, {
 } from '../../Pages/Reports/SalesReportComponents/DetailPanel';
 
 type RowFilter = 'all' | 'dues' | 'noname';
-type SortKey = 'name' | 'bills' | 'sales' | 'lastVisit' | 'due' | 'creditNote';
+type SortKey = 'name' | 'bills' | 'sales' | 'lastVisit' | 'due' | 'creditNote' | 'loyalty';
+type LoyaltyInfo = { balance: number; earned: number; redeemed: number };
 
 interface BillLine {
   id: string;
@@ -161,6 +165,51 @@ const CatalogueCustomerReport: React.FC = () => {
     setAliases,
   } = useCustomerReport();
   const companyId = currentUser?.companyId;
+  const { loyaltySettings } = useLoyaltySettings();
+  const showLoyalty = !!loyaltySettings?.enabled;
+
+  // Loyalty balance per 10-digit phone, kept live.
+  const [loyaltyMap, setLoyaltyMap] = useState<Record<string, LoyaltyInfo>>({});
+  useEffect(() => {
+    if (!companyId || !showLoyalty) {
+      setLoyaltyMap({});
+      return;
+    }
+    const unsubscribe = onSnapshot(
+      collection(db, 'companies', companyId, 'loyaltyAccounts'),
+      (snap) => {
+        const map: Record<string, LoyaltyInfo> = {};
+        snap.docs.forEach((d) => {
+          const x = d.data();
+          map[normalizeLoyaltyPhone(x.phone || d.id)] = {
+            balance: Number(x.balance) || 0,
+            earned: Number(x.lifetimeEarned) || 0,
+            redeemed: Number(x.lifetimeRedeemed) || 0,
+          };
+        });
+        setLoyaltyMap(map);
+      },
+      (err) => console.error('Failed to load loyalty points', err),
+    );
+    return unsubscribe;
+  }, [companyId, showLoyalty]);
+
+  // Merged customer = sum of all linked numbers.
+  const loyaltyOf = useCallback(
+    (r: CustomerRow) => {
+      const out = { balance: 0, earned: 0, redeemed: 0, found: false };
+      for (const p of r.phones.length ? r.phones : [r.phone]) {
+        const a = loyaltyMap[normalizeLoyaltyPhone(p)];
+        if (!a) continue;
+        out.found = true;
+        out.balance += a.balance;
+        out.earned += a.earned;
+        out.redeemed += a.redeemed;
+      }
+      return out;
+    },
+    [loyaltyMap],
+  );
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
@@ -469,10 +518,11 @@ const CatalogueCustomerReport: React.FC = () => {
     const dir = sortConfig.direction === 'asc' ? 1 : -1;
     list.sort((a, b) => {
       if (sortConfig.key === 'name') return displayName(a).localeCompare(displayName(b)) * dir;
+      if (sortConfig.key === 'loyalty') return (loyaltyOf(a).balance - loyaltyOf(b).balance) * dir;
       return (a[sortConfig.key] - b[sortConfig.key]) * dir;
     });
     return list;
-  }, [rows, rowFilter, sortConfig]);
+  }, [rows, rowFilter, sortConfig, loyaltyOf]);
 
   const listTotals = useMemo(
     () => ({
@@ -480,8 +530,9 @@ const CatalogueCustomerReport: React.FC = () => {
       sales: listRows.reduce((s, r) => s + r.sales, 0),
       due: listRows.reduce((s, r) => s + r.due, 0),
       credit: listRows.reduce((s, r) => s + r.creditNote, 0),
+      loyalty: listRows.reduce((s, r) => s + loyaltyOf(r).balance, 0),
     }),
-    [listRows],
+    [listRows, loyaltyOf],
   );
 
   // Shape the export code below uses.
@@ -494,6 +545,7 @@ const CatalogueCustomerReport: React.FC = () => {
     totalSales: r.sales,
     totalDue: r.due,
     creditNote: r.creditNote,
+    loyaltyPoints: loyaltyOf(r).balance,
   }));
   const exportSummary = {
     totalCustomers: listRows.length,
@@ -540,6 +592,7 @@ const CatalogueCustomerReport: React.FC = () => {
         { header: 'Sales (₹)', width: 28 },
         { header: 'Due (₹)', width: 26 },
         { header: 'Credit Note (₹)', width: 26 },
+        ...(showLoyalty ? [{ header: 'Loyalty Pts', width: 14 }] : []),
       ];
       const colCount = COLS.length;
 
@@ -566,6 +619,7 @@ const CatalogueCustomerReport: React.FC = () => {
         aoa[r][4] = Math.round(row.totalSales);
         aoa[r][5] = Math.round(Math.max(0, row.totalDue));
         aoa[r][6] = Math.round(row.creditNote || 0);
+        if (showLoyalty) aoa[r][7] = row.loyaltyPoints;
       });
 
       const footerRow = dataStartRow + customerRows.length;
@@ -575,6 +629,7 @@ const CatalogueCustomerReport: React.FC = () => {
       aoa[footerRow][4] = Math.round(exportSummary.totalSales);
       aoa[footerRow][5] = Math.round(exportSummary.totalDue);
       aoa[footerRow][6] = Math.round(customerRows.reduce((sum, c) => sum + (c.creditNote || 0), 0));
+      if (showLoyalty) aoa[footerRow][7] = listTotals.loyalty;
 
       const worksheet = XLSX.utils.aoa_to_sheet(aoa);
       worksheet['!cols'] = COLS.map((c) => ({ wch: c.width }));
@@ -621,8 +676,7 @@ const CatalogueCustomerReport: React.FC = () => {
         for (let ci = 0; ci < colCount; ci++) {
           const addr = XLSX.utils.encode_cell({ r, c: ci });
           const isCurrency = currencyCols.has(ci);
-          const isNumeric = ci === 3 || isCurrency;
-          style(addr, s({ sz: 9, color: { rgb: '1E293B' } }, rowBg, { horizontal: isNumeric ? 'center' : 'left', vertical: 'center', ...(ci === 2 ? { wrapText: true } : {}) }, bblr));
+          const isNumeric = ci === 3 || isCurrency || (showLoyalty && ci === 7); style(addr, s({ sz: 9, color: { rgb: '1E293B' } }, rowBg, { horizontal: isNumeric ? 'center' : 'left', vertical: 'center', ...(ci === 2 ? { wrapText: true } : {}) }, bblr));
           if (worksheet[addr] && isCurrency) {
             worksheet[addr].t = 'n';
             worksheet[addr].z = '₹#,##0.00';
@@ -958,14 +1012,14 @@ const CatalogueCustomerReport: React.FC = () => {
       pdf.setTextColor(107, 114, 128);
       pdf.text(`${customerRows.length} ${customerWord(customerRows.length)}`, brandRight, tableTitleY, { align: 'right' });
 
-      // Customer | Phone | Bills | Sales | Due | Credit  (total = contentW = 182mm)
-      const COLW = [42, 32, 20, 32, 28, 28];
+      // Customer | Phone | Bills | Sales | Due | Credit [| Loyalty]  (total = contentW = 182mm)
+      const COLW = showLoyalty ? [36, 30, 15, 29, 26, 24, 22] : [42, 32, 20, 32, 28, 28];
       const numStart = 2;
 
       autoTable(pdf, {
         startY: tableTitleY + 4,
         margin: { top: 26, bottom: 22, left: M, right: M },
-        head: [['Customer', 'Phone', 'Bills', 'Sales (Rs.)', 'Due (Rs.)', 'Credit (Rs.)']],
+        head: [['Customer', 'Phone', 'Bills', 'Sales (Rs.)', 'Due (Rs.)', 'Credit (Rs.)', ...(showLoyalty ? ['Loyalty'] : [])]],
         body: customerRows.map((c) => [
           { content: c.customerName, styles: { fontStyle: 'bold' } },
           c.customerNumber || 'N/A',
@@ -976,6 +1030,7 @@ const CatalogueCustomerReport: React.FC = () => {
             styles: { textColor: c.totalDue > 0 ? ([161, 98, 7] as RGB) : ([17, 24, 39] as RGB) },
           },
           fmt2(c.creditNote || 0),
+          ...(showLoyalty ? [String(c.loyaltyPoints)] : []),
         ]),
         foot: [[
           'Total',
@@ -984,6 +1039,7 @@ const CatalogueCustomerReport: React.FC = () => {
           fmt2(exportSummary.totalSales),
           fmt2(exportSummary.totalDue),
           fmt2(totalCredit),
+          ...(showLoyalty ? [String(listTotals.loyalty)] : []),
         ]],
         showFoot: 'lastPage',
         theme: 'plain',
@@ -1002,6 +1058,17 @@ const CatalogueCustomerReport: React.FC = () => {
         ),
         didParseCell: (data) => {
           data.cell.styles.valign = 'middle';
+
+          // Header: padding kam + text ek line me (font shrink agar zaroorat ho)
+          if (data.section === 'head') {
+            data.cell.styles.cellPadding = { top: 3.4, bottom: 3.4, left: 2, right: 2 };
+            const base = Number(data.cell.styles.fontSize) || 9.5;
+            pdf.setFont('helvetica', 'bold');
+            pdf.setFontSize(base);
+            const w = Math.max(...data.cell.text.map((t) => pdf.getTextWidth(t)));
+            const avail = COLW[data.column.index] - 4;
+            if (w > avail) data.cell.styles.fontSize = Math.max((base * avail) / w, 6);
+          }
 
           // Header and Total row: numeric columns right-aligned, same as body
           if (data.section !== 'body' && data.column.index >= numStart) {
@@ -1227,6 +1294,26 @@ const CatalogueCustomerReport: React.FC = () => {
           />
         </DetailSection>
 
+        {showLoyalty && (() => {
+          const l = loyaltyOf(row);
+          if (!l.found) return null;
+          return (
+            <DetailSection title="Loyalty points">
+              <DetailRows
+                rows={[
+                  {
+                    label: 'Balance',
+                    value: `${l.balance} pts · ${formatCurrency(pointsToRupees(l.balance, loyaltySettings))}`,
+                    strong: true,
+                  },
+                  { label: 'Earned (lifetime)', value: `${l.earned} pts` },
+                  { label: 'Used (lifetime)', value: `${l.redeemed} pts` },
+                ]}
+              />
+            </DetailSection>
+          );
+        })()}
+
         <DetailSection title={`Bills · ${row.recentBills.length}`}>
           {row.recentBills.length === 0 ? (
             <p className="rounded-sm bg-[#fff8f2] px-3 py-2.5 text-sm text-slate-500">No bills in this period.</p>
@@ -1359,16 +1446,16 @@ const CatalogueCustomerReport: React.FC = () => {
               {displayName(mergingRow)} · {formatPhone(mergingRow.phone)}. Bills of both numbers show as one customer.
             </p>
             <div className="mt-4 text-xs font-medium text-slate-600">
-  <span className="mb-1 block">Other phone number</span>
-  <MergePhoneInput
-    theme="orange"
-    value={mergeTarget}
-    onChange={setMergeTarget}
-    options={rows
-      .filter((r) => r.phone && !mergingRow.phones.includes(r.phone))
-      .map((r) => ({ phone: r.phone, name: r.name || 'No name' }))}
-  />
-</div>
+              <span className="mb-1 block">Other phone number</span>
+              <MergePhoneInput
+                theme="orange"
+                value={mergeTarget}
+                onChange={setMergeTarget}
+                options={rows
+                  .filter((r) => r.phone && !mergingRow.phones.includes(r.phone))
+                  .map((r) => ({ phone: r.phone, name: r.name || 'No name' }))}
+              />
+            </div>
             <label className="mt-3 flex items-center gap-2 text-xs text-slate-600">
               <input
                 type="checkbox"
@@ -1661,6 +1748,7 @@ const CatalogueCustomerReport: React.FC = () => {
               <option value="due">Most due</option>
               <option value="lastVisit">Recent visit</option>
               <option value="bills">Most bills</option>
+              {showLoyalty && <option value="loyalty">Most points</option>}
               <option value="name">Name A–Z</option>
             </select>
             <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
@@ -1680,13 +1768,14 @@ const CatalogueCustomerReport: React.FC = () => {
                   {renderSortHeader('Last visit', 'lastVisit')}
                   {renderSortHeader('Total due', 'due', 'right')}
                   {renderSortHeader('Credit note', 'creditNote', 'right')}
+                  {showLoyalty && renderSortHeader('Loyalty pts', 'loyalty', 'right')}
                   <th className="w-10" />
                 </tr>
               </thead>
               <tbody>
                 {listRows.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="px-4 py-10 text-center text-sm text-slate-500">
+                    <td colSpan={showLoyalty ? 9 : 8} className="px-4 py-10 text-center text-sm text-slate-500">
                       No customers in this period. They appear here once an order has their name or phone.
                     </td>
                   </tr>
@@ -1735,6 +1824,18 @@ const CatalogueCustomerReport: React.FC = () => {
                       <td className="whitespace-nowrap px-4 py-3 text-right text-slate-700">
                         {formatCurrency(row.creditNote)}
                       </td>
+                      {showLoyalty && (
+                        <td className="whitespace-nowrap px-4 py-3 text-right">
+                          {loyaltyOf(row).found ? (
+                            <span className="inline-flex items-center gap-1 font-semibold text-slate-900">
+                              <Star size={12} className="text-orange-600" />
+                              {loyaltyOf(row).balance}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+                      )}
                       <td className="px-3 py-3 text-right">
                         <ChevronRight size={16} className="inline text-slate-400" />
                       </td>
@@ -1754,6 +1855,7 @@ const CatalogueCustomerReport: React.FC = () => {
                       {formatCurrency(listTotals.due)}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-right">{formatCurrency(listTotals.credit)}</td>
+                    {showLoyalty && <td className="whitespace-nowrap px-4 py-3 text-right">{listTotals.loyalty}</td>}
                     <td />
                   </tr>
                 </tfoot>
@@ -1796,6 +1898,12 @@ const CatalogueCustomerReport: React.FC = () => {
                   <p className={`text-xs ${row.due > 0 ? 'font-medium text-yellow-700' : 'text-slate-500'}`}>
                     {row.due > 0 ? `Due ${formatCurrency(row.due)}` : 'No due'}
                   </p>
+                  {showLoyalty && loyaltyOf(row).found && (
+                    <p className="mt-0.5 inline-flex items-center gap-1 text-xs text-slate-500">
+                      <Star size={10} className="text-orange-600" />
+                      {loyaltyOf(row).balance} pts
+                    </p>
+                  )}
                 </div>
               </div>
             </li>

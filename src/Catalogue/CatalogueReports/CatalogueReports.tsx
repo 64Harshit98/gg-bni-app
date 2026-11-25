@@ -19,6 +19,8 @@ import {
 import { ROUTES } from '../../constants/routes.constants';
 import BackButton from '../../Components/BackButton';
 import { useCatalogueReportsOverview } from './useCatalogueReportsOverview';
+//import { useAuth } from '../../context/auth-context';
+import { Cata_Permissions } from '../enum/cata_permissions.enum';
 
 interface ReportCard {
   title: string;
@@ -26,7 +28,8 @@ interface ReportCard {
   icon: LucideIcon;
   iconClass: string;
   /** Route to open; omit for a "Soon" card. */
-  to?: string;
+    to?: string;
+  permission?: Cata_Permissions;
   stat?: string;
 }
 
@@ -40,6 +43,7 @@ const Reports = () => {
   const isDefaultReportsView =
     location.pathname === `${ROUTES.CHOME}/${ROUTES.CATALOGUE_REPORTS}` || location.pathname === `${ROUTES.REPORTS}/`;
 
+    //const { hasCataloguePermission } = useAuth();
   const { stats, ready } = useCatalogueReportsOverview();
   const [query, setQuery] = useState('');
 
@@ -55,7 +59,8 @@ const Reports = () => {
           description: 'Orders, top customers, daily sales',
           icon: FileText,
           iconClass: 'bg-blue-50 text-blue-600',
-          to: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_SALES}`,
+                    to: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_SALES}`,
+          permission: Cata_Permissions.ViewSalesReport,
           stat: statIf(ready.sales, `${formatRupees(stats.sales.total)} · 30 days`),
         },
         {
@@ -63,7 +68,8 @@ const Reports = () => {
           description: 'Top customers, visits, udhaar',
           icon: Users,
           iconClass: 'bg-pink-50 text-pink-600',
-          to: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_CUSTOMER_REPORT}`,
+                    to: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_CUSTOMER_REPORT}`,
+          permission: Cata_Permissions.ViewCustomerReport,
           stat: statIf(ready.customers, `${plural(stats.customers, 'customer')} · 30 days`)
         },
         {
@@ -71,7 +77,8 @@ const Reports = () => {
           description: "Every party's balance and entries",
           icon: BookOpen,
           iconClass: 'bg-orange-50 text-orange-700',
-          to: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_PARTY_LEDGER}`,
+                    to: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_PARTY_LEDGER}`,
+          permission: Cata_Permissions.ViewPartyLedger,
           stat: statIf(ready.parties, `${formatRupees(stats.dueToYou)} due to you`),
         },
       ],
@@ -84,7 +91,8 @@ const Reports = () => {
           description: 'Best sellers, slow movers, stock value',
           icon: Tag,
           iconClass: 'bg-blue-50 text-blue-600',
-          to: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_ITEMS}`,
+                   to: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_ITEMS}`,
+          permission: Cata_Permissions.ViewItemReport,
           stat: statIf(ready.items, plural(stats.items, 'item')),
         },
         {
@@ -92,7 +100,8 @@ const Reports = () => {
           description: 'Moves between your stores',
           icon: Truck,
           iconClass: 'bg-pink-50 text-pink-600',
-          to: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_STOCK_TRANSFER}`,
+                    to: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_STOCK_TRANSFER}`,
+          permission: Cata_Permissions.ViewStockTransferReport,
           stat: statIf(ready.transfers, `${plural(stats.transfersThisMonth, 'transfer')} this month`),
         },
                {
@@ -100,7 +109,8 @@ const Reports = () => {
   description: 'What to reorder, and how much',
   icon: History,
   iconClass: 'bg-orange-50 text-orange-600',
-  to: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_RESTOCK_REPORT}`,
+   to: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_RESTOCK_REPORT}`,
+  permission: Cata_Permissions.ViewRestockReport,
   stat: statIf(ready.restock, `${plural(stats.restockItems, 'item')} to reorder`),
 },
       ],
@@ -113,7 +123,8 @@ const Reports = () => {
           description: 'Profit after cost and expenses',
           icon: TrendingUp,
           iconClass: 'bg-green-50 text-green-600',
-          to: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_PNL_REPORT}`,
+                    to: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_PNL_REPORT}`,
+          permission: Cata_Permissions.ViewPNLReport,
           stat: statIf(ready.profit, `${formatRupees(stats.profit.net)} net profit`),
         },
         {
@@ -121,7 +132,8 @@ const Reports = () => {
           description: 'Rent, salary and other spending',
           icon: Wallet,
           iconClass: 'bg-red-50 text-red-600',
-          to: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_EXPENSE_REPORT}`,
+                    to: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_EXPENSE_REPORT}`,
+          permission: Cata_Permissions.ViewExpenseReport,
           stat: statIf(
             ready.expenses,
             `${formatRupees(stats.expenses.total)} · ${plural(stats.expenses.entries, 'entry', 'entries')}`,

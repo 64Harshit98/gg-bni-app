@@ -310,8 +310,19 @@ const ADD_ITEM_CSS = `
 .ai-alert{padding:10px 14px;border-radius:4px;font-size:13px;font-weight:500;display:flex;align-items:center;justify-content:space-between;gap:8px}
 .ai-alert--danger{background:var(--danger-soft);color:var(--danger)}
 .ai-alert--success{background:var(--success-soft);color:var(--success)}
-.ai-alert span{flex:1;text-align:center}
-.ai-alert button{border:0;background:none;color:inherit;cursor:pointer;display:grid;place-items:center;padding:0}
+.ai-alert--danger .ai-btn--secondary{color:var(--danger);border-color:var(--danger)}
+.ai-alert--danger .ai-btn--secondary:hover:not([disabled]){background:var(--surface)}
+.ai-alert > span{flex:1;text-align:center}
+.ai-alert > button:not(.ai-btn){border:0;background:none;color:inherit;cursor:pointer;display:grid;place-items:center;padding:0}
+@media(min-width:768px){
+  .ai-alert{margin-top:-8px;margin-bottom:-6px}
+}
+@media(max-width:767px){
+  .ai-alert--danger{position:relative;flex-wrap:wrap;padding:8px 36px 8px 12px;gap:6px}
+  .ai-alert--danger > span{flex:1 1 100%;text-align:left}
+  .ai-alert--danger > div{width:100%}
+  .ai-alert--danger > div > button:not(.ai-btn){position:absolute;top:8px;right:10px;border:0;background:none;color:inherit;cursor:pointer;display:grid;place-items:center;padding:0}
+}
 
 /* right panel (desktop >=1280 only) */
 .ai-prev{display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
@@ -745,11 +756,53 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       if (snap.exists()) {
         nextSeq = (snap.data().currentSequence || 1000) + 1;
       }
-      setItemBarcode(String(nextSeq));
-      setFetchedAutoBarcode(String(nextSeq));
+      const freeBarcode = await findNextFreeBarcode(nextSeq); // skips taken ones
+      setItemBarcode(freeBarcode);
+      setFetchedAutoBarcode(freeBarcode);
     } catch (e) {
       console.error("Failed to fetch next barcode", e);
     }
+  };
+  // true if an active (non-deleted) item already uses this barcode
+  const isBarcodeTaken = async (code: string): Promise<boolean> => {
+    if (!currentUser?.companyId) return false;
+    // 1) quick local check (item barcodes + pricing-option barcodes)
+    if (findBarcodeConflict(allItems, undefined, [{ barcode: code }])) return true;
+    // 2) server check, in case the local list is stale
+    try {
+      const q = query(
+        collection(db, 'companies', currentUser.companyId, 'items'),
+        where('barcode', '==', code),
+        limit(1)
+      );
+      const snap = await getDocs(q);
+      if (snap.empty) return false;
+      const d = snap.docs[0].data();
+      return !d.isDeleted && !d.deleted;
+    } catch {
+      return false;
+    }
+  };
+
+  // walks upward from startFrom until it finds a barcode nobody uses
+  const findNextFreeBarcode = async (startFrom: number): Promise<string> => {
+    let n = startFrom;
+    for (let i = 0; i < 500; i++) {
+      const candidate = String(n);
+      if (!(await isBarcodeTaken(candidate))) return candidate;
+      n++;
+    }
+    return String(Date.now()); // last-resort fallback
+  };
+
+  // suggestion for a barcode that is taken: 2177 -> 2178, ABC -> ABC-1
+  const suggestNextBarcode = async (taken: string): Promise<string> => {
+    if (/^\d+$/.test(taken)) return findNextFreeBarcode(Number(taken) + 1);
+    for (let i = 1; i <= 500; i++) {
+      const candidate = `${taken}-${i}`;
+      if (!(await isBarcodeTaken(candidate))) return candidate;
+    }
+    return `${taken}-${Date.now()}`;
   };
 
   useEffect(() => { setLoading(catalogueGroupsLoading); }, [catalogueGroupsLoading]);
@@ -1132,7 +1185,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     if (mrpValue > 0 && purchaseValue > 0) finalPurchaseDiscount = 0;
 
     // --- FIX: Fallback to auto-generated barcode if input is empty ---
-    const finalBarcode = itemBarcode.trim() || fetchedAutoBarcode;
+    let finalBarcode = itemBarcode.trim() || fetchedAutoBarcode;
 
     // --- STRICT BLOCK: Absolutely no empty strings allowed ---
     if (!finalBarcode) {
@@ -1145,6 +1198,26 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     if (barcodeFormatError) {
       setModal({ message: barcodeFormatError, type: State.ERROR });
       return;
+    }
+
+    // NEW: if this barcode is already used, move to the next free one
+    if (await isBarcodeTaken(finalBarcode)) {
+      const taken = finalBarcode;
+      const wasAuto = !itemBarcode.trim() || taken === fetchedAutoBarcode;
+      const next = await suggestNextBarcode(taken);
+      setItemBarcode(next);
+      if (wasAuto) {
+        // auto-generated: silently switch and keep saving
+        setFetchedAutoBarcode(next);
+        finalBarcode = next;
+      } else {
+        // typed/scanned by the user: don't change it behind their back
+        setModal({
+          message: `Barcode ${taken} already exists. The next available barcode ${next} has been filled in. Tap Save again to use it.`,
+          type: State.ERROR,
+        });
+        return;
+      }
     }
 
     // Item barcode and pricing-option barcodes must not clash with any existing item's barcodes
@@ -1238,7 +1311,10 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         await runTransaction(db, async (transaction) => {
           const counterDoc = await transaction.get(counterRef);
           const currentDBSeq = counterDoc.exists() ? (counterDoc.data().currentSequence || 1000) : 1000;
-          transaction.set(counterRef, { currentSequence: currentDBSeq + 1 }, { merge: true });
+          const used = parseInt(finalBarcode, 10);
+          // jump the counter to the barcode actually used (it may have skipped taken numbers)
+          const newSeq = Number.isFinite(used) ? Math.max(currentDBSeq + 1, used) : currentDBSeq + 1;
+          transaction.set(counterRef, { currentSequence: newSeq }, { merge: true });
         });
       }
 
@@ -1329,7 +1405,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         if (val === null || val === undefined) return "";
         if (typeof val === 'object' && 'hyperlink' in val) return (val.hyperlink || val.text || "").toString().trim();
         if (typeof val === 'object' && 'richText' in val) return val.richText.map((rt: any) => rt.text).join('').trim();
-                return val.toString().trim();
+        return val.toString().trim();
       };
       // The Item Report export ends with a "TOTAL (443 items)" row. It is not an item, so never import it.
       const isTotalsRow = (name: string) => /^total\s*\(\s*[\d,]+\s*items?\s*\)$/i.test(name.trim());
@@ -1359,7 +1435,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       // Details of every failed row (Excel row number, item name, barcode, reason)
       const failedRows: { row: number; name: string; barcode: string; reason: string }[] = [];
 
-           for (let r = dataStartRow; r <= worksheet.rowCount; r++) {
+      for (let r = dataStartRow; r <= worksheet.rowCount; r++) {
         const name = safeGetVal(worksheet.getRow(r), 1);
         if (name && !name.toLowerCase().includes('full product name') && !isTotalsRow(name)) totalItems++;
       }
@@ -1393,10 +1469,11 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         nextSeqNumber = lastSeq + 1;
       }
       let barcodesUsed = 0;
+      const startSeqNumber = nextSeqNumber;
 
       for (let rowNum = dataStartRow; rowNum <= worksheet.rowCount; rowNum++) {
         const row = worksheet.getRow(rowNum);
-                const rawName = safeGetVal(row, 1);
+        const rawName = safeGetVal(row, 1);
         if (!rawName || rawName.toLowerCase().includes('full product name') || isTotalsRow(rawName)) continue;
 
         await new Promise(resolve => setTimeout(resolve, 0));
@@ -1578,6 +1655,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
           let usedAutoBarcode = false;
 
           if (!existingItem && !finalRowBarcode) {
+            while (itemMapByBarcode.has(String(nextSeqNumber))) nextSeqNumber++; // skip taken
             finalRowBarcode = String(nextSeqNumber);
             nextSeqNumber++;
             usedAutoBarcode = true;
@@ -1656,8 +1734,9 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         processedCount++;
       }
 
-      if (barcodesUsed > 0) {
-        await reserveSequenceBlock(barcodesUsed);
+      const consumed = nextSeqNumber - startSeqNumber; // includes skipped numbers
+      if (consumed > 0) {
+        await reserveSequenceBlock(consumed);
       }
 
       await fetchGroups();
@@ -2167,11 +2246,13 @@ const ItemAdd: React.FC<ItemAddProps> = ({
 
           {importFailures.length > 0 && (
             <div className="ai-alert ai-alert--danger">
-              <span>{importFailures.length} rows could not be imported</span>
-              <button type="button" onClick={handleDownloadFailedRows} className="ai-btn ai-btn--secondary ai-btn--sm">
-                <AiIcon name="download" sm />Download failed rows
-              </button>
-              <button type="button" onClick={() => setImportFailures([])} aria-label="Dismiss"><AiIcon name="x" sm /></button>
+              <span style={{ textAlign: 'left' }}>{importFailures.length} rows could not be imported</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 'none' }}>
+                <button type="button" onClick={handleDownloadFailedRows} className="ai-btn ai-btn--secondary ai-btn--sm">
+                  <AiIcon name="download" sm />Download failed rows
+                </button>
+                <button type="button" onClick={() => setImportFailures([])} aria-label="Dismiss"><AiIcon name="x" sm /></button>
+              </div>
             </div>
           )}
 

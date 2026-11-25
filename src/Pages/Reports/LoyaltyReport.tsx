@@ -13,13 +13,48 @@ import { normalizeLoyaltyPhone, pointsToRupees, type LoyaltyAccount } from '../.
 
 // Customer points: every loyalty balance, its history, and manual add/remove.
 // The route is gated by Permissions.ManageLoyaltyPoints.
+// Shared by POS (theme="blue") and Catalogue (theme="orange").
 
-const ROOT_BASE =
-    "bg-[#eef2ff] font-['Poppins',system-ui,-apple-system,'Segoe_UI',sans-serif] text-sm leading-[22px] text-[#0f172b] antialiased";
-const CARD_SHADOW = 'shadow-[0_1px_2px_rgba(21,48,140,.05),0_2px_6px_rgba(21,48,140,.06)]';
-const FOCUS_RING =
-    'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#155dfc]';
-const BTN_SECONDARY = `inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-sm border border-[#7a8aa3] bg-white px-3 text-[13px] font-medium text-[#0f172b] hover:bg-[#f5f7ff] ${FOCUS_RING}`;
+interface ThemeStyles {
+    page: string;
+    border: string;
+    divide: string;
+    hoverBg: string;
+    sunken: string;
+    link: string;
+    outline: string;
+    within: string;
+    shadow: string;
+}
+
+const THEMES: Record<'blue' | 'orange', ThemeStyles> = {
+    blue: {
+        page: 'bg-[#eef2ff]',
+        border: 'border-[#dfe6fb]',
+        divide: 'divide-[#dfe6fb]',
+        hoverBg: 'hover:bg-[#f5f7ff]',
+        sunken: 'bg-[#f9faff]',
+        link: 'text-[#155dfc]',
+        outline: 'focus-visible:outline-[#155dfc]',
+        within: 'focus-within:outline-[#155dfc]',
+        shadow: 'shadow-[0_1px_2px_rgba(21,48,140,.05),0_2px_6px_rgba(21,48,140,.06)]',
+    },
+    orange: {
+        page: 'bg-[#fff5ec]',
+        border: 'border-[#f6e1d0]',
+        divide: 'divide-[#f6e1d0]',
+        hoverBg: 'hover:bg-[#fff8f2]',
+        sunken: 'bg-[#fff8f2]',
+        link: 'text-[#c2410c]',
+        outline: 'focus-visible:outline-[#ea580c]',
+        within: 'focus-within:outline-[#ea580c]',
+        shadow: 'shadow-[0_1px_2px_rgba(194,65,12,.05),0_2px_6px_rgba(194,65,12,.06)]',
+    },
+};
+
+const FONT =
+    "font-['Poppins',system-ui,-apple-system,'Segoe_UI',sans-serif] text-sm leading-[22px] text-[#0f172b] antialiased";
+const FOCUS_BASE = 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2';
 
 interface LedgerRow {
     id: string;
@@ -38,7 +73,7 @@ const TYPE_LABEL: Record<string, string> = { earn: 'Earned', redeem: 'Used', adj
 const fmtDate = (d: Date | null) =>
     d ? d.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
 
-const History: React.FC<{ companyId: string; phone: string; refreshKey: number }> = ({ companyId, phone, refreshKey }) => {
+const History: React.FC<{ companyId: string; phone: string; refreshKey: number; t: ThemeStyles }> = ({ companyId, phone, refreshKey, t }) => {
     const [rows, setRows] = useState<LedgerRow[] | null>(null);
 
     useEffect(() => {
@@ -76,7 +111,7 @@ const History: React.FC<{ companyId: string; phone: string; refreshKey: number }
     if (rows.length === 0) return <div className="px-4 py-3 text-xs text-[#5b6b86]">No history yet.</div>;
 
     return (
-        <ul className="m-0 list-none divide-y divide-[#dfe6fb] p-0">
+        <ul className={`m-0 list-none divide-y ${t.divide} p-0`}>
             {rows.slice(0, 100).map((r) => (
                 <li key={r.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 px-4 py-2.5">
                     <div className="min-w-0">
@@ -102,7 +137,17 @@ const History: React.FC<{ companyId: string; phone: string; refreshKey: number }
     );
 };
 
-const LoyaltyReport: React.FC = () => {
+interface LoyaltyReportProps {
+    theme?: 'blue' | 'orange';
+}
+
+const LoyaltyReport: React.FC<LoyaltyReportProps> = ({ theme = 'blue' }) => {
+    const t = THEMES[theme];
+    const isCatalogue = theme === 'orange';
+    // NOTE: ye component body me hai (JSX ke andar nahi)
+    const settingsPath = isCatalogue ? `${ROUTES.CHOME}/${ROUTES.CATA_LOYALTY_SETTING}` : ROUTES.LOYALTYSETTING;
+    const BTN_SECONDARY = `inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-sm border border-[#7a8aa3] bg-white px-3 text-[13px] font-medium text-[#0f172b] ${t.hoverBg} ${FOCUS_BASE} ${t.outline}`;
+
     const { currentUser } = useAuth();
     const companyId = currentUser?.companyId;
     const { loyaltySettings } = useLoyaltySettings();
@@ -151,15 +196,15 @@ const LoyaltyReport: React.FC = () => {
     ), [accounts]);
 
     return (
-        <div className={`${ROOT_BASE} flex min-h-screen w-full flex-col`}>
-            <div className="sticky top-0 z-30 border-b border-[#dfe6fb] bg-white">
+        <div className={`${FONT} ${t.page} flex min-h-screen w-full flex-col`}>
+            <div className={`sticky top-0 z-30 border-b ${t.border} bg-white`}>
                 <div className="flex h-14 items-center gap-3 px-2 md:h-auto md:px-6 md:py-3.5">
                     <div className="flex-shrink-0"><BackButton /></div>
                     <div className="min-w-0 flex-1">
                         <div className="hidden text-xs leading-[18px] text-[#5b6b86] md:block">Customers /</div>
                         <h1 className="m-0 text-lg font-semibold leading-6 md:text-[22px] md:leading-[30px]">Customer points</h1>
                     </div>
-                    <Link to={ROUTES.LOYALTYSETTING} className={BTN_SECONDARY}>
+                    <Link to={settingsPath} className={BTN_SECONDARY}>
                         <Settings size={15} strokeWidth={1.75} />
                         <span className="hidden sm:inline">Loyalty settings</span>
                     </Link>
@@ -170,25 +215,25 @@ const LoyaltyReport: React.FC = () => {
                 {!loyaltySettings?.enabled && (
                     <div className="flex flex-wrap items-center gap-2 rounded-sm border border-[#ffe2a8] bg-[#fff8e8] px-3.5 py-2.5 text-[13px] text-[#7a3d00]">
                         Loyalty points are turned off — bills aren't earning or using points.
-                        <Link to={ROUTES.LOYALTYSETTING} className="font-medium text-[#155dfc] hover:underline">Turn on</Link>
+                        <Link to={settingsPath} className={`font-medium ${t.link} hover:underline`}>Turn on</Link>
                     </div>
                 )}
 
                 <div className="grid grid-cols-2 gap-3">
-                    <div className={`rounded-sm border border-[#dfe6fb] bg-white p-3.5 ${CARD_SHADOW}`}>
+                    <div className={`rounded-sm border ${t.border} bg-white p-3.5 ${t.shadow}`}>
                         <div className="flex items-center gap-2 text-xs text-[#5b6b86]"><Star size={14} strokeWidth={1.75} className="text-[#bb4d00]" />Points outstanding</div>
                         <b className="mt-1 block text-xl font-semibold tabular-nums">{totals.balance.toLocaleString('en-IN')}</b>
                         {loyaltySettings && (
                             <span className="text-xs text-[#5b6b86]">Worth ₹{pointsToRupees(totals.balance, loyaltySettings).toLocaleString('en-IN')}</span>
                         )}
                     </div>
-                    <div className={`rounded-sm border border-[#dfe6fb] bg-white p-3.5 ${CARD_SHADOW}`}>
+                    <div className={`rounded-sm border ${t.border} bg-white p-3.5 ${t.shadow}`}>
                         <div className="text-xs text-[#5b6b86]">Customers with points</div>
                         <b className="mt-1 block text-xl font-semibold tabular-nums">{totals.customers.toLocaleString('en-IN')}</b>
                     </div>
                 </div>
 
-                <label className="flex h-10 items-center gap-2 rounded-sm border border-[#7a8aa3] bg-white px-3 text-[#5b6b86] focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-[#155dfc]">
+                <label className={`flex h-10 items-center gap-2 rounded-sm border border-[#7a8aa3] bg-white px-3 text-[#5b6b86] focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 ${t.within}`}>
                     <Search size={16} strokeWidth={1.75} className="flex-none" />
                     <input
                         value={search}
@@ -199,11 +244,11 @@ const LoyaltyReport: React.FC = () => {
                     />
                 </label>
 
-                <section className={`overflow-hidden rounded-sm border border-[#dfe6fb] bg-white ${CARD_SHADOW}`}>
+                <section className={`overflow-hidden rounded-sm border ${t.border} bg-white ${t.shadow}`}>
                     {accounts === null ? (
                         <div className="flex items-center justify-center gap-3 p-8 text-[#45556c]"><Spinner />Loading…</div>
                     ) : (
-                        <ul className="m-0 list-none divide-y divide-[#dfe6fb] p-0">
+                        <ul className={`m-0 list-none divide-y ${t.divide} p-0`}>
                             {showNewCustomer && (
                                 <li className="flex items-center gap-3 px-4 py-3">
                                     <div className="min-w-0 flex-1">
@@ -229,7 +274,7 @@ const LoyaltyReport: React.FC = () => {
                                                 type="button"
                                                 aria-expanded={open}
                                                 onClick={() => setExpanded(open ? null : a.phone)}
-                                                className={`flex min-w-0 flex-1 items-center gap-2 rounded-sm px-1 py-1 text-left hover:bg-[#f5f7ff] ${FOCUS_RING}`}
+                                                className={`flex min-w-0 flex-1 items-center gap-2 rounded-sm px-1 py-1 text-left ${t.hoverBg} ${FOCUS_BASE} ${t.outline}`}
                                             >
                                                 {open ? <ChevronDown size={16} className="flex-none text-[#5b6b86]" /> : <ChevronRight size={16} className="flex-none text-[#5b6b86]" />}
                                                 <span className="min-w-0 flex-1">
@@ -251,8 +296,8 @@ const LoyaltyReport: React.FC = () => {
                                             </button>
                                         </div>
                                         {open && companyId && (
-                                            <div className="border-t border-[#dfe6fb] bg-[#f9faff]">
-                                                <History companyId={companyId} phone={a.phone} refreshKey={refreshKey} />
+                                            <div className={`border-t ${t.border} ${t.sunken}`}>
+                                                <History companyId={companyId} phone={a.phone} refreshKey={refreshKey} t={t} />
                                             </div>
                                         )}
                                     </li>
@@ -264,6 +309,7 @@ const LoyaltyReport: React.FC = () => {
             </main>
 
             <LoyaltyAdjustModal
+                theme={theme}
                 isOpen={!!adjusting}
                 onClose={() => setAdjusting(null)}
                 phone={adjusting?.phone || ''}

@@ -514,24 +514,24 @@ const OrdersReturnPage: React.FC = () => {
   /** Balance row: "Credit due ₹x" with the existing action <select> when exchange leaves a positive balance */
   const renderBalance = (big?: boolean) => (
     <div className={`rounded-sm px-3.5 py-3 ${balancePanel}`}>
-    <div className="flex items-center justify-between gap-3">
-      {/* Credit / refund choice only when money was actually paid and some goes back */}
-      {isExchange && vBalance > 0 && vRefundable > 0 ? (
-        <select
-          value={isTutorialActive ? 'Credit Note' : exchangeBalanceAction}
-          onChange={(e) => !isTutorialActive && setExchangeBalanceAction(e.target.value as any)}
-          className="h-[34px] cursor-pointer rounded-sm border border-[#7a8aa3] bg-white px-2 text-[13px] font-medium text-[#0f172b] outline-none focus:border-[#ea580c]"
-        >
-          <option value="Credit Note">Credit Due</option>
-          <option value="Cash Refund">Cash Refund</option>
-        </select>
-      ) : (
-        <span className={`text-sm font-medium ${balanceTone}`}>{vBalanceLabel}</span>
-      )}
-      <b className={`${big ? 'text-[26px] leading-8' : 'text-[22px] leading-7'} font-semibold tracking-tight tabular-nums ${balanceTone}`}>
-        ₹{fmt(Math.abs(vShown), 2)}
-      </b>
-    </div>
+      <div className="flex items-center justify-between gap-3">
+        {/* Credit / refund choice only when money was actually paid and some goes back */}
+        {isExchange && vBalance > 0 && vRefundable > 0 ? (
+          <select
+            value={isTutorialActive ? 'Credit Note' : exchangeBalanceAction}
+            onChange={(e) => !isTutorialActive && setExchangeBalanceAction(e.target.value as any)}
+            className="h-[34px] cursor-pointer rounded-sm border border-[#7a8aa3] bg-white px-2 text-[13px] font-medium text-[#0f172b] outline-none focus:border-[#ea580c]"
+          >
+            <option value="Credit Note">Credit Due</option>
+            <option value="Cash Refund">Cash Refund</option>
+          </select>
+        ) : (
+          <span className={`text-sm font-medium ${balanceTone}`}>{vBalanceLabel}</span>
+        )}
+        <b className={`${big ? 'text-[26px] leading-8' : 'text-[22px] leading-7'} font-semibold tracking-tight tabular-nums ${balanceTone}`}>
+          ₹{fmt(Math.abs(vShown), 2)}
+        </b>
+      </div>
       {vRefundable > 0 && vDueReduction > 0 && (
         <p className="mt-1 text-xs text-[#45556c]">
           ₹{fmt(vDueReduction, 2)} first clears what’s still owed — only the amount paid over the new total goes back.
@@ -642,7 +642,7 @@ const OrdersReturnPage: React.FC = () => {
                   <div className="relative" ref={salesDropdownRef}>
                     <label htmlFor="search-sale" className="sr-only">Search original sale</label>
                     <div className="flex min-w-0 gap-2">
-  <div className={`${fieldBase} min-w-0 flex-1`}>
+                      <div className={`${fieldBase} min-w-0 flex-1`}>
                         <Ico d={ICON.search} size={16} />
                         <input
                           id="search-sale"
@@ -808,9 +808,6 @@ const OrdersReturnPage: React.FC = () => {
                               autoComplete="off"
                             />
                           </div>
-                          <button onClick={() => setScannerPurpose('item')} className={scanSm} aria-label="Scan item">
-                            <IconScanCircle width={18} height={18} />
-                          </button>
                         </div>
                       }
                     >
@@ -901,7 +898,7 @@ const OrdersReturnPage: React.FC = () => {
                         title="Exchange items"
                         right={
                           <div className="flex items-center gap-2">
-                            <div className="min-w-0 flex-1 sm:w-72 sm:flex-none">
+                            <div className="min-w-0 flex-1 sm:w-72 sm:flex-none [&_input]:!h-[34px] [&_input]:!py-0 [&_input]:!text-sm">
                               <SearchableItemInput
                                 label=""
                                 placeholder="Search inventory..."

@@ -178,6 +178,7 @@ const PurchasePage: React.FC = () => {
     pageIsLoading,
     error,
     invoiceNumber, setInvoiceNumber,
+    isInvoiceNumberManuallyEdited,
     invoiceDate, setInvoiceDate,
     billTaxType, setBillTaxType,
     itemGroupMap,
@@ -746,6 +747,7 @@ const PurchasePage: React.FC = () => {
     setAvailableItems,
     invoiceNumber,
     setInvoiceNumber,
+    isInvoiceNumberManuallyEdited,
     invoiceDate,
     billTaxType,
     editModeData,
@@ -1116,7 +1118,10 @@ const PurchasePage: React.FC = () => {
           <input
             type="text"
             value={invoiceNumber}
-            onChange={(e) => setInvoiceNumber(e.target.value)}
+            onChange={(e) => {
+              isInvoiceNumberManuallyEdited.current = true;
+              setInvoiceNumber(e.target.value);
+            }}
             className={`${META_INPUT} w-24`}
           />
         </label>
@@ -1147,7 +1152,15 @@ const PurchasePage: React.FC = () => {
           <div className="grid grid-cols-2 gap-2">
             <label className={`${META_CHIP} min-w-0`}>
               <span className={META_LABEL}>Bill no.</span>
-              <input type="text" value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} className={`${META_INPUT} w-full`} />
+              <input
+                type="text"
+                value={invoiceNumber}
+                onChange={(e) => {
+                  isInvoiceNumberManuallyEdited.current = true;
+                  setInvoiceNumber(e.target.value);
+                }}
+                className={`${META_INPUT} w-full`}
+              />
             </label>
             <label className={`${META_CHIP} min-w-0`}>
               <span className={META_LABEL}>Date</span>

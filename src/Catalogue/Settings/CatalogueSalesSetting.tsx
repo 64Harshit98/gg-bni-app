@@ -83,7 +83,7 @@ export const getDefaultCatalogueSalesSettings = (companyId: string): CatalogueSa
   gstScheme: 'none',
   taxType: 'inclusive',
   lockTaxToggle: false,
-  enableRounding: true,
+  enableRounding: false,
   roundingInterval: 1,
   enforceExactMRP: false,
   hidePrice: false,
@@ -671,8 +671,6 @@ const CatalogueSalesSettings: React.FC = () => {
                             gstScheme: prev.gstScheme,
                             taxType: prev.taxType,
                             lockTaxToggle: prev.lockTaxToggle,
-                            enableRounding: prev.enableRounding,
-                            roundingInterval: prev.roundingInterval,
                           }
                           : defaults
                       )

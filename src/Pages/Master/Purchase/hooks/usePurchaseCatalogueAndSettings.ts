@@ -4,7 +4,7 @@ import { db } from '../../../../lib/Firebase';
 import type { Item } from '../../../../constants/models';
 import { useCatalogueData } from '../../../../context/CatalogueDataContext';
 import type { Purchase, PurchaseItem, TaxOption } from '../purchase.types';
-
+import { peekNextPurchaseNumber, nextNumberFromCounter } from '../../../../UseComponents/InvoiceCounter';
 interface UsePurchaseCatalogueAndSettingsParams {
     currentUser: any;
     authLoading: boolean;
@@ -135,17 +135,36 @@ export const usePurchaseCatalogueAndSettings = ({
                 // Note: If you use a dynamic prefix for purchases, you can fetch it from purchaseSettings here
                 const prefix = purchaseSettings?.voucherPrefix || 'PUR';
 
-                if (docSnap.exists()) {
-                    const nextNum = docSnap.data().currentNumber || 1;
-                    setInvoiceNumber(`${prefix}-${nextNum}`);
-                } else {
-                    setInvoiceNumber(`${prefix}-1`);
-                }
+                                const nextNum = nextNumberFromCounter(docSnap.exists() ? docSnap.data() : null);
+                setInvoiceNumber(`${prefix}-${nextNum}`);
             });
         }
 
-        return () => unsubscribeCounter();
+               return () => unsubscribeCounter();
     }, [currentUser?.companyId, dbOperations, purchaseIdToEdit, purchaseSettings?.voucherPrefix]);
+
+    // After the tab/app was idle the live listener can be stale (dropped connection,
+    // another tab saved). Re-read the real next number whenever the user comes back,
+    // unless they typed their own number.
+    useEffect(() => {
+        const companyId = currentUser?.companyId;
+        if (!companyId || purchaseIdToEdit) return;
+
+        const refreshNumber = () => {
+            if (document.visibilityState !== 'visible') return;
+            if (isInvoiceNumberManuallyEdited.current) return;
+            peekNextPurchaseNumber(companyId)
+                .then((n) => { if (!isInvoiceNumberManuallyEdited.current) setInvoiceNumber(n); })
+                .catch((e) => console.error('Failed to refresh invoice number', e));
+        };
+
+        document.addEventListener('visibilitychange', refreshNumber);
+        window.addEventListener('focus', refreshNumber);
+        return () => {
+            document.removeEventListener('visibilitychange', refreshNumber);
+            window.removeEventListener('focus', refreshNumber);
+        };
+    }, [currentUser?.companyId, purchaseIdToEdit]);
 
     // --- Edit-mode purchase hydration — waits on the shared items list
     // (needed to resolve each line's masterItem for tax-rate/unit fallback)

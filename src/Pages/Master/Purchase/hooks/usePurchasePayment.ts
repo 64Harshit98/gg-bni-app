@@ -55,10 +55,8 @@ const sanitizeForFirestore = <T>(value: T): T => {
     }
     return value;
 };
-// Firestore document IDs can't contain '/' (and a few other characters are
-// unsafe) — an invoice number like "PUR/2024/001" would otherwise throw when
-// used directly as a doc ID for the uniqueness-registry check below.
-const toRegistryKey = (invoiceNumber: string) => encodeURIComponent(invoiceNumber);
+// Year is part of the key, so PUR-1 of last year never blocks PUR-1 of this year.
+const toRegistryKey = (invoiceNumber: string) => encodeURIComponent(`${getFinancialYear()}_${invoiceNumber}`);
 
 // Called after a save fails with INVOICE_NUMBER_TAKEN — walks the counter
 // forward past whichever numbers are already registered, so the next save
@@ -73,7 +71,7 @@ const advancePurchaseCounterPastDuplicates = async (companyId: string): Promise<
             transaction.get(settingsRef),
         ]);
 
-        const prefix = settingsDoc.exists() ? (settingsDoc.data().voucherPrefix || 'INV') : 'INV';
+                const prefix = settingsDoc.exists() ? (settingsDoc.data().voucherPrefix || 'PUR') : 'PUR';
         const currentFY = getFinancialYear();
         const counterData = counterDoc.exists() ? counterDoc.data() : null;
         let candidate = (counterData && counterData.financialYear === currentFY) ? (counterData.currentNumber || 1) : 1;
@@ -101,8 +99,10 @@ interface UsePurchasePaymentParams {
     setItems: React.Dispatch<React.SetStateAction<PurchaseItem[]>>;
     availableItems: Item[];
     setAvailableItems: React.Dispatch<React.SetStateAction<Item[]>>;
-    invoiceNumber: string;
+        invoiceNumber: string;
     setInvoiceNumber: (n: string) => void;
+    // true only when the user typed/changed the bill number themselves
+    isInvoiceNumberManuallyEdited: React.MutableRefObject<boolean>;
     invoiceDate: string;
     billTaxType: TaxOption;
     editModeData: Purchase | null;
@@ -149,8 +149,9 @@ export const usePurchasePayment = ({
     setItems,
     availableItems,
     setAvailableItems,
-    invoiceNumber,
+        invoiceNumber,
     setInvoiceNumber,
+    isInvoiceNumberManuallyEdited,
     invoiceDate,
     billTaxType,
     editModeData,
@@ -315,25 +316,44 @@ export const usePurchasePayment = ({
                     transaction.get(settingsRef),
                 ]);
 
-                const prefix = settingsDoc.exists() ? (settingsDoc.data().voucherPrefix || 'INV') : 'INV';
+                                const prefix = settingsDoc.exists() ? (settingsDoc.data().voucherPrefix || 'PUR') : 'PUR';
                 const currentFY = getFinancialYear();
                 let nextNumber = 1;
                 if (counterDoc.exists()) {
                     const counterData = counterDoc.data();
                     nextNumber = counterData.financialYear === currentFY ? (counterData.currentNumber || 1) : 1;
                 }
-                const suggestedNumber = `${prefix}-${nextNumber}`;
-                const usedSuggestedNumber = typedInvoiceNumber === suggestedNumber;
-                finalInvoiceNumber = typedInvoiceNumber || suggestedNumber;
+                                // If the user did NOT type the number themselves, never trust the number on
+                // screen (it can be stale after idle time). Take the next free number from
+                // the database, skipping any already-used ones.
+                // If the user DID type it, use exactly that and fail if it's taken.
+                const manuallyTyped = isInvoiceNumberManuallyEdited.current && !!typedInvoiceNumber;
+                let counterNext: number | null = null;
+                let registryRef = doc(db, 'companies', companyId, 'purchaseInvoiceRegistry', 'placeholder');
+
+                if (manuallyTyped) {
+                    finalInvoiceNumber = typedInvoiceNumber;
+                    registryRef = doc(db, 'companies', companyId, 'purchaseInvoiceRegistry', toRegistryKey(finalInvoiceNumber));
+                    const registrySnap = await transaction.get(registryRef);
+                    if (registrySnap.exists()) {
+                        throw new Error(`INVOICE_NUMBER_TAKEN:${finalInvoiceNumber}`);
+                    }
+                    // Typed number happens to be the suggested one -> move the counter on
+                    if (typedInvoiceNumber === `${prefix}-${nextNumber}`) counterNext = nextNumber + 1;
+                } else {
+                    let candidate = nextNumber;
+                    for (let i = 0; i < 500; i++) {
+                        finalInvoiceNumber = `${prefix}-${candidate}`;
+                        registryRef = doc(db, 'companies', companyId, 'purchaseInvoiceRegistry', toRegistryKey(finalInvoiceNumber));
+                        const snap = await transaction.get(registryRef);
+                        if (!snap.exists()) break;
+                        candidate++;
+                    }
+                    counterNext = candidate + 1;
+                }
 
                 if (!finalInvoiceNumber) {
                     throw new Error('EMPTY_INVOICE_NUMBER');
-                }
-
-                const registryRef = doc(db, 'companies', companyId, 'purchaseInvoiceRegistry', toRegistryKey(finalInvoiceNumber));
-                const registrySnap = await transaction.get(registryRef);
-                if (registrySnap.exists()) {
-                    throw new Error(`INVOICE_NUMBER_TAKEN:${finalInvoiceNumber}`);
                 }
 
                 // Supplier price book (last rate per item) — a record of what was paid,
@@ -397,8 +417,8 @@ export const usePurchasePayment = ({
                     }
                 }
 
-                if (usedSuggestedNumber) {
-                    transaction.set(counterRef, { currentNumber: nextNumber + 1, financialYear: currentFY }, { merge: false });
+                                if (counterNext !== null) {
+                    transaction.set(counterRef, { currentNumber: counterNext, financialYear: currentFY }, { merge: false });
                 }
 
                 // Group by (productId, destination) — the same cart line can itself
@@ -477,6 +497,7 @@ export const usePurchasePayment = ({
                     });
                 });
             });
+                        isInvoiceNumberManuallyEdited.current = false;
             clearPurchaseReportCache(companyId);
             clearStockTransferCache(companyId);
             setAvailableItems(prev => prev.map(item => {
@@ -518,7 +539,7 @@ export const usePurchasePayment = ({
             rememberScanAliases(companyId, savedItemsCopy
                 .filter(i => i.scannedName)
                 .map(i => ({ billName: i.scannedName, itemId: i.productId })));
-            localStorage.removeItem('purchase_cart_draft');
+                        localStorage.removeItem(`purchase_cart_draft_${currentUser?.companyId}`);
 
             if (!purchaseSettings?.copyVoucherAfterSaving) {
                 setItems([]);
@@ -537,8 +558,9 @@ export const usePurchasePayment = ({
             console.error('Error saving purchase:', err?.code, err?.message);
             if (typeof err?.message === 'string' && err.message.startsWith('INVOICE_NUMBER_TAKEN:')) {
                 const takenNumber = err.message.split(':')[1];
-                try {
+                                try {
                     const nextNum = await advancePurchaseCounterPastDuplicates(companyId);
+                    isInvoiceNumberManuallyEdited.current = false;
                     setInvoiceNumber(nextNum);
                 } catch (advanceErr) {
                     console.error("Failed to advance purchase counter:", advanceErr);

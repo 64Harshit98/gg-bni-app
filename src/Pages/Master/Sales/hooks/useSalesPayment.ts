@@ -14,7 +14,7 @@ import { addOnStockOf } from '../../../../constants/models';
 import type { User } from '../../../../Role/permission';
 import { State } from '../../../../enums';
 import { ROUTES } from '../../../../constants/routes.constants';
-import { peekNextInvoiceNumber } from '../../../../UseComponents/InvoiceCounter';
+import { peekNextInvoiceNumber, getFinancialYear, nextNumberFromCounter } from '../../../../UseComponents/InvoiceCounter';
 import type { PaymentCompletionData } from '../../../../Components/PaymentDrawer';
 import { calculateFinalizedSaleItems, toCurrency } from '../sales.calculations';
 import { discountBaseOf } from '../sales.discountBase';
@@ -41,10 +41,8 @@ import {
     type SaleLoyalty,
 } from '../../../../lib/loyalty';
 
-// Firestore document IDs can't contain '/' (and a few other characters are
-// unsafe) — an invoice number like "INV/2024/001" would otherwise throw when
-// used directly as a doc ID for the uniqueness-registry check below.
-const toRegistryKey = (invoiceNumber: string) => encodeURIComponent(invoiceNumber);
+// Year is part of the key, so INV-1 of last year never blocks INV-1 of this year.
+const toRegistryKey = (invoiceNumber: string) => encodeURIComponent(`${getFinancialYear()}_${invoiceNumber}`);
 
 // Called after a save fails with INVOICE_NUMBER_TAKEN for an auto-generated
 // number — walks the counter forward past whichever numbers are already
@@ -60,7 +58,7 @@ const advanceInvoiceCounterPastDuplicates = async (companyId: string): Promise<s
         ]);
 
         const prefix = settingsDoc.exists() ? (settingsDoc.data().voucherPrefix || 'INV') : 'INV';
-        let candidate = counterDoc.exists() ? (counterDoc.data().currentNumber || 1) : 1;
+                let candidate = nextNumberFromCounter(counterDoc.exists() ? counterDoc.data() : null);
 
         const MAX_ATTEMPTS = 500;
         for (let i = 0; i < MAX_ATTEMPTS; i++) {
@@ -70,7 +68,7 @@ const advanceInvoiceCounterPastDuplicates = async (companyId: string): Promise<s
             candidate++;
         }
 
-        transaction.set(counterRef, { currentNumber: candidate }, { merge: true });
+                transaction.set(counterRef, { currentNumber: candidate, financialYear: getFinancialYear() }, { merge: true });
         return `${prefix}-${candidate}`;
     });
 };
@@ -243,9 +241,9 @@ export const useSalesPayment = ({
     };
 
     const handleSavePayment = async (completionData: PaymentCompletionData) => {
-        if (isSaving) return; // Exit if already saving
-        setIsSaving(true);
+                if (isSaving) return; // Exit if already saving
         if (!currentUser?.companyId) return;
+        setIsSaving(true);
 
         if (salesSettings?.requireCustomerName && !completionData.partyName?.trim()) {
             setModal({ message: "Customer Name is required.", type: State.ERROR });
@@ -487,24 +485,40 @@ return {
                     transaction.get(settingsRef)
                 ]);
 
-                const prefix = settingsDoc.exists() ? (settingsDoc.data().voucherPrefix || 'INV') : 'INV';
-                const nextNumber = counterDoc.exists() ? (counterDoc.data().currentNumber || 1) : 1;
-                const finalInvNo = (isInvoiceNumberManuallyEdited.current ? invoiceNumber : `${prefix}-${nextNumber}`).trim();
+                                const prefix = settingsDoc.exists() ? (settingsDoc.data().voucherPrefix || 'INV') : 'INV';
+                                const nextNumber = nextNumberFromCounter(counterDoc.exists() ? counterDoc.data() : null);
+
+                // Typed by the user -> use exactly that, fail if taken.
+                // Not typed -> never trust the screen: take the next FREE number
+                // from the database, skipping numbers already used.
+                const manuallyTyped = isInvoiceNumberManuallyEdited.current && !!invoiceNumber.trim();
+                let finalInvNo = '';
+                let counterNext: number | null = null;
+                let registryRef = doc(db, 'companies', resolvedCompanyId, 'salesInvoiceRegistry', 'placeholder');
+
+                if (manuallyTyped) {
+                    finalInvNo = invoiceNumber.trim();
+                    registryRef = doc(db, 'companies', resolvedCompanyId, 'salesInvoiceRegistry', toRegistryKey(finalInvNo));
+                    const registrySnap = await transaction.get(registryRef);
+                    if (registrySnap.exists()) {
+                        throw new Error(`INVOICE_NUMBER_TAKEN:${finalInvNo}`);
+                    }
+                    // Typed number happens to be the suggested one -> move the counter on
+                    if (finalInvNo === `${prefix}-${nextNumber}`) counterNext = nextNumber + 1;
+                } else {
+                    let candidate = nextNumber;
+                    for (let i = 0; i < 500; i++) {
+                        finalInvNo = `${prefix}-${candidate}`;
+                        registryRef = doc(db, 'companies', resolvedCompanyId, 'salesInvoiceRegistry', toRegistryKey(finalInvNo));
+                        const snap = await transaction.get(registryRef);
+                        if (!snap.exists()) break;
+                        candidate++;
+                    }
+                    counterNext = candidate + 1;
+                }
 
                 if (!finalInvNo) {
                     throw new Error('EMPTY_INVOICE_NUMBER');
-                }
-
-                // Strict, transaction-atomic uniqueness check. The registry doc's ID
-                // IS the invoice number, so two tabs racing to save the same number
-                // (auto-generated OR hand-typed) can never both win: Firestore
-                // serializes transactions that read+write the same document, and
-                // whichever one commits second sees the registry entry the first one
-                // just created and aborts here — instead of silently duplicating it.
-                const registryRef = doc(db, 'companies', resolvedCompanyId, 'salesInvoiceRegistry', toRegistryKey(finalInvNo));
-                const registrySnap = await transaction.get(registryRef);
-                if (registrySnap.exists()) {
-                    throw new Error(`INVOICE_NUMBER_TAKEN:${finalInvNo}`);
                 }
 
                 saleData.createdAt = customDate;
@@ -517,8 +531,8 @@ return {
                 transaction.set(newSaleRef, sanitizeForFirestore(saleData));
                 transaction.set(registryRef, { saleId: newSaleRef.id, createdAt: serverTimestamp() });
 
-                if (!isInvoiceNumberManuallyEdited.current) {
-                    transaction.set(counterRef, { currentNumber: nextNumber + 1 }, { merge: true });
+                                                if (counterNext !== null) {
+                    transaction.set(counterRef, { currentNumber: counterNext, financialYear: getFinancialYear() }, { merge: true });
                 }
                 return { id: newSaleRef.id, number: finalInvNo };
 
@@ -750,8 +764,9 @@ return {
                 const takenNumber = e.message.split(':')[1];
 
                 // Move the counter past the duplicate(s) so the next save works.
-                try {
+                                try {
                     const nextNum = await advanceInvoiceCounterPastDuplicates(resolvedCompanyId);
+                    isInvoiceNumberManuallyEdited.current = false;
                     setInvoiceNumber(nextNum);
                 } catch (advanceErr) {
                     console.error("Failed to advance invoice counter:", advanceErr);

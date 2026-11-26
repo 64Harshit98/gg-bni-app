@@ -35,6 +35,7 @@ const isDone = (s: string | undefined) => s === 'Completed' || s === 'Paid';
 interface OrderDoc {
     status?: string;
     totalAmount?: number;
+    paidAmount?: number;
     orderId?: string;
     userName?: string;
     userLoginPhone?: string;
@@ -120,6 +121,61 @@ export const setOrderStatusWithLoyalty = async (
 };
 
 /**
+ * Earns the order's points as soon as it is fully paid (no need to wait for
+ * Completed). Writes the same `loyalty` block as setOrderStatusWithLoyalty, so
+ * later Completed doesn't double earn and return / delete / move-back undo it.
+ * Never throws — a points hiccup must not make a saved payment look failed.
+ */
+export const earnOrderPointsIfPaid = async (
+    companyId: string,
+    orderId: string,
+    settings: LoyaltySettings | null | undefined,
+    actor: LoyaltyActor,
+): Promise<void> => {
+    if (!orderLoyaltyOn(settings)) return;
+    const orderRef = doc(db, 'companies', companyId, 'Orders', orderId);
+    try {
+        await runTransaction(db, async (txn) => {
+            const snap = await txn.get(orderRef);
+            if (!snap.exists()) return;
+            const order = snap.data() as OrderDoc;
+            if (order.status === 'Cancelled') return;
+
+            const prev = readSaleLoyalty(order);
+            if (prev && prev.earned > 0) return; // already earned
+
+            const total = Number(order.totalAmount) || 0;
+            const paid = Number(order.paidAmount) || 0;
+            if (total <= 0 || total - paid > 0.1) return; // not fully paid yet
+
+            const phone = prev?.phone || orderLoyaltyPhone(order);
+            if (!phone) return;
+
+            const redeemValue = prev?.redeemValue ?? 0;
+            const earned = calcEarnPoints(Math.max(0, total - redeemValue), settings);
+            if (earned <= 0) return;
+
+            const account = await readLoyaltyInTxn(txn, db, companyId, phone);
+            writeLoyaltyInTxn(txn, db, companyId, account, [{
+                type: 'earn',
+                points: earned,
+                refType: 'order',
+                refId: orderId,
+                invoiceNumber: order.orderId || '',
+                note: 'Online order paid',
+            }], { name: order.userName || order.billingDetails?.name || '', actor });
+
+            txn.update(orderRef, {
+                loyalty: { phone, earned, redeemed: prev?.redeemed ?? 0, redeemValue } satisfies SaleLoyalty,
+                updatedAt: serverTimestamp(),
+            });
+        });
+    } catch (err) {
+        console.error('Failed to earn loyalty points after payment', err);
+    }
+};
+
+/**
  * Pays part of an order with points. `amount` is in rupees; it's rounded
  * down to whole points. Returns the rupee value actually applied.
  * The order fields to update (paidAmount, paymentMethods, status…) are built
@@ -188,8 +244,9 @@ export const syncOrderEarnedPoints = async (
             const snap = await txn.get(orderRef);
             if (!snap.exists()) return;
             const order = snap.data() as OrderDoc;
-            if (!isDone(order.status)) return;
             const prev = readSaleLoyalty(order);
+            // Completed/Paid ho ya payment pe pehle hi earn kar chuka ho, tabhi re-work karo
+            if (!isDone(order.status) && !(prev && prev.earned > 0)) return;
             const phone = prev?.phone || orderLoyaltyPhone(order);
             if (!phone) return;
 

@@ -302,7 +302,7 @@ const SalesReturnPage: React.FC = () => {
   );
 
   return (
-<div className="flex h-full min-h-0 w-full max-w-full flex-col overflow-hidden bg-[#eef2ff] text-[#0f172b]">      {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
+    <div className="flex h-full min-h-0 w-full max-w-full flex-col overflow-hidden bg-[#eef2ff] text-[#0f172b]">      {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
       <BarcodeScanner isOpen={scannerPurpose !== null} onClose={() => setScannerPurpose(null)} onScanSuccess={handleBarcodeScanned} />
 
       {returnSuccess && (
@@ -495,9 +495,6 @@ const SalesReturnPage: React.FC = () => {
                           autoComplete="off"
                         />
                       </div>
-                      <button onClick={() => setScannerPurpose('item')} className={SCAN_BTN} aria-label="Scan item">
-                        <IconScanCircle width={18} height={18} />
-                      </button>
                     </div>
                   </div>
 
@@ -543,7 +540,7 @@ const SalesReturnPage: React.FC = () => {
                   {modeOfReturn === 'Exchange' ? (
                     <div className="p-3 md:px-4">
                       <div className="flex items-end gap-2">
-                        <div className="min-w-0 flex-grow">
+                        <div className="min-w-0 flex-grow [&_input]:!h-10 [&_input]:!py-0 [&_input]:!text-sm">
                           <SearchableItemInput
                             label="Add Exchange Item"
                             placeholder="Search inventory..."

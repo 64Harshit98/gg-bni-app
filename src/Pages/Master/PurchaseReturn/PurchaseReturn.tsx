@@ -404,9 +404,6 @@ const PurchaseReturnPage: React.FC = () => {
                           autoComplete="off"
                         />
                       </div>
-                      <button onClick={() => setScannerPurpose('item')} className={SCAN_BTN} aria-label="Scan item">
-                        <IconScanCircle width={18} height={18} />
-                      </button>
                     </div>
                   </div>
 
@@ -452,7 +449,7 @@ const PurchaseReturnPage: React.FC = () => {
                   {modeOfReturn === 'Exchange' ? (
                     <div className="p-3 md:px-4">
                       <div className="flex items-end gap-2">
-                        <div className="min-w-0 flex-grow">
+                        <div className="min-w-0 flex-grow [&_input]:!h-10 [&_input]:!py-0 [&_input]:!text-sm">
                           <SearchableItemInput
                             label="Add New Item Received"
                             placeholder="Search inventory..."

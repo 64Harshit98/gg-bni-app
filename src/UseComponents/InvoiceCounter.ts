@@ -19,6 +19,17 @@ interface CounterData {
     currentNumber: number;
     financialYear: string;
 }
+
+/**
+ * Next number from a counter doc. New financial year -> back to 1.
+ * Old counters that never stored financialYear are treated as the current year
+ * (so nothing resets by surprise the first time after this change).
+ */
+export const nextNumberFromCounter = (data: any, fy: string = getFinancialYear()): number => {
+    if (!data) return 1;
+    if (data.financialYear === undefined) return data.currentNumber || 1;
+    return data.financialYear === fy ? (data.currentNumber || 1) : 1;
+};
 /**
  * Generates the next invoice number for a specific company.
  * @param companyId The ID of the company to get the counter for.
@@ -35,14 +46,12 @@ export const peekNextInvoiceNumber = async (companyId: string): Promise<string> 
     ]);
 
     const prefix = settingsSnap.exists() ? (settingsSnap.data().voucherPrefix || 'INV') : 'INV';
-    const currentFY = getFinancialYear();
+    //const currentFY = getFinancialYear();
 
-    let nextNumber = 1;
-    if (counterSnap.exists()) {
-        const data = counterSnap.data() as CounterData;
-        // agar stored FY current FY se match nahi karti, naye saal ka counter 1 se start
-        nextNumber = data.financialYear === currentFY ? (data.currentNumber || 1) : 1;
-    }
+        // Same rule as the Sales save transaction: the counter simply holds the next
+    // number. (The save never writes financialYear, so resetting here made the box
+    // show INV-1 while the real next number was different.)
+    const nextNumber = counterSnap.exists() ? (counterSnap.data().currentNumber || 1) : 1;
 
     return `${prefix}-${nextNumber}`;
 };
@@ -84,19 +93,15 @@ export const peekNextPurchaseNumber = async (companyId: string): Promise<string>
         getDoc(counterRef)
     ]);
 
-    const prefix = settingsSnap.exists() ? (settingsSnap.data().voucherPrefix || 'INV') : 'INV';
+    const prefix = settingsSnap.exists() ? (settingsSnap.data().voucherPrefix || 'PUR') : 'PUR';
     const currentFY = getFinancialYear();
 
-    let nextNumber = 1;
-    if (counterSnap.exists()) {
-        const data = counterSnap.data() as CounterData;
-        nextNumber = data.financialYear === currentFY ? (data.currentNumber || 1) : 1;
-    }
+        const nextNumber = nextNumberFromCounter(counterSnap.exists() ? counterSnap.data() : null, currentFY);
 
     return `${prefix}-${nextNumber}`;
 };
 
-// 2. WRITE: Call this ONLY inside createNewPurchase when saving
+// 2. WRITE: Use this inside your handleSavePayment logic
 export const incrementPurchaseCounter = async (companyId: string) => {
     const counterRef = doc(db, 'companies', companyId, 'counters', 'purchaseCounter');
     const currentFY = getFinancialYear();

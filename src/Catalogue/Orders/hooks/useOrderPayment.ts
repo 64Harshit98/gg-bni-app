@@ -13,7 +13,7 @@ import { State } from '../../../enums';
 import type { Order } from '../orders.types';
 import { useOptionalLoyaltySettings } from '../../../context/SettingsContext';
 import { LoyaltyBalanceError, fetchLoyaltyAccount, pointsToRupees } from '../../../lib/loyalty';
-import { LOYALTY_ORDER_PAYMENT_KEY, maxOrderRedeemPoints, orderLoyaltyOn, orderLoyaltyPhone, redeemPointsOnOrder, syncOrderEarnedPoints } from '../orderLoyalty';
+import { LOYALTY_ORDER_PAYMENT_KEY, earnOrderPointsIfPaid, maxOrderRedeemPoints, orderLoyaltyOn, orderLoyaltyPhone, redeemPointsOnOrder, syncOrderEarnedPoints } from '../orderLoyalty';
 
 interface UseOrderPaymentParams {
     currentUser: any;
@@ -237,9 +237,16 @@ export const useOrderPayment = ({
                     uid: currentUser.uid,
                     name: currentUser.name || '',
                 });
-            } else {
+                       } else {
                 await updateDoc(orderRef, buildPaymentUpdate(amount));
             }
+
+            // Fully paid ho gaya to points abhi earn karo (Completed ka wait nahi).
+            // Split payment me har method ke baad chalta hai, par earned > 0 hone par no-op hai.
+            await earnOrderPointsIfPaid(currentUser.companyId, showPaymentModal.id, loyaltySettings, {
+                uid: currentUser.uid,
+                name: currentUser.name || '',
+            });
 
             // Remember what we just saved so the NEXT method in a split builds on it
             const savedUpdate = buildPaymentUpdate(paidNow);

@@ -10,10 +10,14 @@ export interface CouponValidationResult {
     finalAmount: number;
 }
 
-export const validateCoupon = async (code: string, planId: string): Promise<CouponValidationResult> => {
+export const validateCoupon = async (
+    code: string,
+    planId: string,
+    product?: 'subscription' | 'whatsapp'
+): Promise<CouponValidationResult> => {
     const functions = getFunctions();
     const fn = httpsCallable(functions, 'validateCoupon');
-    const result = await fn({ code, planId });
+    const result = await fn({ code, planId, product: product || 'subscription' });
     return result.data as CouponValidationResult;
 };
 

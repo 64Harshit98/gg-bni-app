@@ -38,7 +38,7 @@ const PaymentReturnPage: React.FC = () => {
                                 </svg>
                             </div>
                             <h1 className="text-lg font-bold text-gray-900">Payment successful</h1>
-                            <p className="mt-1 text-sm text-gray-500">Your subscription has been activated.</p>
+                            <p className="mt-1 text-sm text-gray-500">Your plan has been activated.</p>
                         </>
                     ) : isPending ? (
                         <>

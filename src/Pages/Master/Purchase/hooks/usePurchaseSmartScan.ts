@@ -5,6 +5,7 @@ import { useSmartScanner } from '../../../hooks/SmartScanner';
 import type { PurchaseItem } from '../purchase.types';
 import { findTierByBarcode } from '../../../../Pages/utils/pricingUtils';
 import type { PriceTier } from '../../../../constants/models';
+import type { ScanOutcome } from '../../../../UseComponents/BarcodeScanner';
 import type { ParsedItem } from '../../../utils/DocumentParser';
 import { buildItemMatcher, type ItemMatcher } from '../../../../lib/itemNameMatch';
 import { loadScanAliases, lookupScanAlias } from '../../../../lib/scanAliases';
@@ -12,6 +13,8 @@ import { discountFromPrice, newTempProductId, normalizeItemName } from '../../..
 
 interface UsePurchaseSmartScanParams {
     availableItems: Item[];
+    // Current cart — a barcode scan of an item already in it bumps its quantity.
+    items: PurchaseItem[];
     setItems: React.Dispatch<React.SetStateAction<PurchaseItem[]>>;
     // Owned by usePurchaseCart — handleBarcodeScanned re-uses the same
     // add-to-cart pricing logic rather than duplicating it, so it's threaded
@@ -104,6 +107,7 @@ export const resolveScannedItem = (
 // No Sales equivalent — this only exists on the Purchase side.
 export const usePurchaseSmartScan = ({
     availableItems,
+    items,
     setItems,
     addItemToCart,
     setModal,
@@ -219,23 +223,38 @@ export const usePurchaseSmartScan = ({
         setTimeout(() => setModal(null), newCount > 0 ? 3500 : 1500);
     };
 
-    const handleBarcodeScanned = (barcode: string) => {
-        setIsScannerOpen(false);
-
-        // Tier-level barcode first (a box/combo can have its own barcode)
-        const tierMatch = findTierByBarcode(availableItems, barcode);
-        if (tierMatch) {
-            const tierToPass = tierMatch.tier.id === '__base__' ? undefined : tierMatch.tier;
-            addItemToCart(tierMatch.item, tierToPass);
+    // Camera scan: same item (same tier) already in the cart → +1 on its latest
+    // line instead of a duplicate line.
+    const addScannedItem = (item: Item, tier?: PriceTier) => {
+        const tierId = tier?.id;
+        const matches = items.filter(i => i.productId === item.id && (i.tierId || undefined) === tierId);
+        if (matches.length === 0) {
+            addItemToCart(item, tier);
             return;
         }
+        const latestId = matches.reduce((a, b) => ((b.addedAt || 0) > (a.addedAt || 0) ? b : a)).id;
+        setItems(prev => prev.map(i => (i.id === latestId ? { ...i, quantity: (Number(i.quantity) || 0) + 1 } : i)));
+    };
 
-        const itemToAdd = availableItems.find(item => item.barcode === barcode);
-        if (itemToAdd) {
-            addItemToCart(itemToAdd);
-        } else {
-            setModal({ message: 'Item not found for this barcode.', type: State.ERROR });
+    // Scanner stays open (continuous mode); the return value feeds the list
+    // shown inside the camera view.
+    const handleBarcodeScanned = (barcode: string): ScanOutcome => {
+        const code = barcode.trim();
+
+        // Tier-level barcode first (a box/combo can have its own barcode)
+        const tierMatch = findTierByBarcode(availableItems, code);
+        if (tierMatch) {
+            const tierToPass = tierMatch.tier.id === '__base__' ? undefined : tierMatch.tier;
+            addScannedItem(tierMatch.item, tierToPass);
+            return { status: 'added', label: tierToPass ? `${tierMatch.item.name} (${tierToPass.label})` : tierMatch.item.name };
         }
+
+        const itemToAdd = availableItems.find(item => item.barcode === code);
+        if (itemToAdd) {
+            addScannedItem(itemToAdd);
+            return { status: 'added', label: itemToAdd.name };
+        }
+        return { status: 'not_found', message: `Not found: ${code}` };
     };
 
     return {

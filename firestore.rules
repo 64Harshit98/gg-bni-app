@@ -232,8 +232,8 @@ service cloud.firestore {
       allow create, update: if isCompanyMember(companyId);
     }
 
-    // adminWhatsappConfig/{companyId} and sellarWhatsappSharedConfig/global
-    // deliberately have NO rule block here — default-deny to everyone except
+    // adminWhatsappConfig/{companyId}, snaptoSubmissions/{companyId} and
+    // sellarWhatsappSharedConfig/global deliberately have NO rule block here — default-deny to everyone except
     // the master-admin bypass at the top of this file and Cloud Functions
     // (Admin SDK, which bypasses rules entirely). They hold Sellar's and
     // companies' WhatsApp credentials and must never be client-readable.

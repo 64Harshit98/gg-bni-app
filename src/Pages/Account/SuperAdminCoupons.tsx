@@ -7,7 +7,7 @@ import { PLANS } from '../../enums';
 import PageLoader from '../../Components/PageLoader';
 import type { AdminCoupon, PaidOrder } from './superAdmin/data';
 import {
-  PLAN_META, PLAN_PRICE_YEARLY, couponExpired, couponHighRisk, couponMaxShare, fmtDate, fmtMoney,
+  COUPON_PLAN_PRICES, PLAN_META, PLAN_PRICE_YEARLY, WHATSAPP_COUPON_PLANS, couponExpired, couponHighRisk, couponMaxShare, couponPlanLabel, fmtDate, fmtMoney,
   loadPaidOrders, toCoupon, toDate,
 } from './superAdmin/data';
 import { Alert, Btn, Card, Chip, Field, PageHeader, PageShell, SearchBox, SelectBox, StatCard, inputCls } from './superAdmin/ui';
@@ -145,9 +145,9 @@ const SuperAdminCoupons: React.FC = () => {
     validFrom: null, validTill: form.validTill ? new Date(form.validTill) : null, createdAt: null, createdBy: null,
   }), [form]);
 
-  const previewPlans = (draft.applicablePlans || SELLABLE).filter(p => PLAN_PRICE_YEARLY[p]);
+  const previewPlans = (draft.applicablePlans || SELLABLE).filter(p => COUPON_PLAN_PRICES[p]);
   const discountOn = (p: string) => {
-    const price = PLAN_PRICE_YEARLY[p];
+    const price = COUPON_PLAN_PRICES[p];
     const off = draft.discountType === 'percent' ? Math.round((price * draft.discountValue) / 100) : Math.round(draft.discountValue);
     return Math.max(0, Math.min(off, price - 1));
   };
@@ -279,7 +279,7 @@ const SuperAdminCoupons: React.FC = () => {
                     <div className="h-1.5 rounded-full bg-gray-200 mt-1 overflow-hidden"><div className="h-full bg-blue-600" style={{ width: `${usedPct}%` }} /></div>
                   </div>
                   <div><p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Plans</p>
-                    <p className="font-semibold">{c.applicablePlans ? c.applicablePlans.map(p => PLAN_META[p]?.label || p).join(', ') : `All ${SELLABLE.length} plans`}</p></div>
+                    <p className="font-semibold">{c.applicablePlans ? c.applicablePlans.map(couponPlanLabel).join(', ') : `All ${SELLABLE.length} subscription plans`}</p></div>
                   <div><p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Expires</p>
                     <p className={`font-semibold ${!c.validTill ? 'text-amber-600' : expired ? 'text-gray-500' : ''}`}>{c.validTill ? fmtDate(c.validTill) : 'Never'}</p></div>
                   <div><p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Last used</p>
@@ -349,12 +349,21 @@ const SuperAdminCoupons: React.FC = () => {
             </div>
 
             <div>
-              <p className="text-sm font-semibold text-gray-800 mb-1.5">Plans · none selected = all</p>
+              <p className="text-sm font-semibold text-gray-800 mb-1.5">Plans · none selected = all subscription plans</p>
               <div className="flex flex-wrap gap-2">
                 {SELLABLE.map(p => (
                   <button key={p} onClick={() => togglePlan(p)}
                     className={`px-3 py-1.5 text-sm font-semibold rounded-lg border ${form.applicablePlans.includes(p) ? 'bg-blue-50 border-blue-600 text-blue-700' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}>
                     {form.applicablePlans.includes(p) && '✓ '}{PLAN_META[p].label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-sm font-semibold text-gray-800 mt-3 mb-1.5">WhatsApp plans · only if selected</p>
+              <div className="flex flex-wrap gap-2">
+                {WHATSAPP_COUPON_PLANS.map(p => (
+                  <button key={p.id} onClick={() => togglePlan(p.id)}
+                    className={`px-3 py-1.5 text-sm font-semibold rounded-lg border ${form.applicablePlans.includes(p.id) ? 'bg-purple-50 border-purple-600 text-purple-700' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}>
+                    {form.applicablePlans.includes(p.id) && '✓ '}{p.label}
                   </button>
                 ))}
               </div>
@@ -364,8 +373,8 @@ const SuperAdminCoupons: React.FC = () => {
               <p className="text-[11px] font-bold uppercase tracking-wider text-green-800 mb-1.5">Customer sees (yearly, before GST)</p>
               {previewPlans.map(p => (
                 <div key={p} className="flex justify-between text-sm">
-                  <span>{PLAN_META[p].label}</span>
-                  <span><span className="line-through text-gray-500 mr-2">{fmtMoney(PLAN_PRICE_YEARLY[p])}</span><b>{fmtMoney(PLAN_PRICE_YEARLY[p] - discountOn(p))}</b></span>
+                  <span>{couponPlanLabel(p)}</span>
+                  <span><span className="line-through text-gray-500 mr-2">{fmtMoney(COUPON_PLAN_PRICES[p])}</span><b>{fmtMoney(COUPON_PLAN_PRICES[p] - discountOn(p))}</b></span>
                 </div>
               ))}
               <p className="text-xs text-gray-700 mt-1.5">

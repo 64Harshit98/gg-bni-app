@@ -158,7 +158,37 @@ interface PaymentOrder {
     targetDocId?: string;
     planId?: string;
     planDays?: number;
+    planQuota?: number;
     couponCode?: string | null;
+}
+
+// Fallback quotas for WhatsApp orders created before createIciciOrder began
+// stamping planQuota on the order. Must match WHATSAPP_PLANS in lib/index.js.
+const WHATSAPP_PLAN_QUOTA: Record<string, number> = {
+    sellar_10k: 10000,
+    sellar_25k: 25000,
+    sellar_50k: 50000,
+};
+
+// Marks the order's coupon as used by this company (one use per company,
+// enforced by resolveCoupon in lib/index.js) and bumps its usage count.
+function recordCouponRedemption(tx: FirebaseFirestore.Transaction, order: PaymentOrder, orderId: string): void {
+    if (!order.couponCode || !order.targetDocId) return;
+    tx.set(
+        db.doc(`couponRedemptions/${order.couponCode}_${order.targetDocId}`),
+        {
+            code: order.couponCode,
+            companyId: order.targetDocId,
+            orderId,
+            redeemedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        {merge: true}
+    );
+    tx.set(
+        db.doc(`coupons/${order.couponCode}`),
+        {redemptionCount: admin.firestore.FieldValue.increment(1)},
+        {merge: true}
+    );
 }
 
 interface ResolvedOrder {
@@ -268,6 +298,19 @@ export const paymentWebhook = onRequest(
                 const shouldActivate = advice.status === "success" && order.targetCollection === "companies";
                 const targetSnap = shouldActivate ? await tx.get(targetRef) : null;
 
+                // Sellar WhatsApp plan: read the company's current WhatsApp
+                // status now (reads must precede writes) so unused messages
+                // from a still-valid plan carry over into the new one.
+                const waQuota = order.planQuota || (order.planId ? WHATSAPP_PLAN_QUOTA[order.planId] : undefined);
+                const shouldActivateWhatsapp =
+                    advice.status === "success" &&
+                    order.targetCollection === "whatsappActivationRequests" &&
+                    !!order.planId && !!order.targetDocId && !!waQuota;
+                const waStatusRef = shouldActivateWhatsapp ?
+                    db.doc(`companies/${order.targetDocId}/whatsappStatus/current`) :
+                    null;
+                const waStatusSnap = waStatusRef ? await tx.get(waStatusRef) : null;
+
                 tx.set(idempotencyRef, {
                     merchantTxnNo: advice.merchantTxnNo,
                     paymentID: advice.paymentID,
@@ -315,41 +358,74 @@ export const paymentWebhook = onRequest(
                         {merge: true}
                     );
 
-                    if (order.couponCode) {
-                        const redemptionRef = db.doc(`couponRedemptions/${order.couponCode}_${order.targetDocId}`);
-                        const couponRef = db.doc(`coupons/${order.couponCode}`);
-                        tx.set(
-                            redemptionRef,
-                            {
-                                code: order.couponCode,
-                                companyId: order.targetDocId,
-                                orderId: orderRef.id,
-                                redeemedAt: admin.firestore.FieldValue.serverTimestamp(),
-                            },
-                            {merge: true}
-                        );
-                        tx.set(couponRef, {redemptionCount: admin.firestore.FieldValue.increment(1)}, {merge: true});
-                    }
+                    recordCouponRedemption(tx, order, orderRef.id);
                 }
 
-                // Sellar WhatsApp plan top-up — separate product from the
-                // subscription above, never touches expiryDate/pack. Field
-                // names (status/requestedPlanId) match what WAChooseProvider.tsx
-                // and the super-admin WhatsApp page already read.
-                if (
-                    advice.status === "success" &&
-                    order.targetCollection === "whatsappActivationRequests" &&
-                    order.planId
-                ) {
+                // Sellar WhatsApp plan — separate product from the
+                // subscription above, never touches expiryDate/pack. Activates
+                // the company on the shared Sellar number directly, writing the
+                // same two docs setCompanyWhatsappConfig (lib/index.js) writes
+                // for a super-admin activation, so no manual step is needed.
+                if (shouldActivateWhatsapp && waStatusRef && waQuota) {
+                    const now = new Date();
+                    const prev = (waStatusSnap && waStatusSnap.exists ? waStatusSnap.data() : {}) || {};
+                    const prevPlan = prev.sellarPlan || null;
+                    const prevExpiry = prevPlan && prevPlan.expiresAt && prevPlan.expiresAt.toDate ?
+                        prevPlan.expiresAt.toDate() :
+                        null;
+                    const prevStillValid =
+                        prev.activeTier === "sellar" &&
+                        prevPlan && prevPlan.status === "active" &&
+                        typeof prevPlan.quotaTotal === "number" &&
+                        (!prevExpiry || prevExpiry > now);
+                    const carriedOver = prevStillValid ?
+                        Math.max(0, prevPlan.quotaTotal - (prevPlan.quotaUsed || 0)) :
+                        0;
+
+                    const quotaTotal = waQuota + carriedOver;
+                    const expiresAt = admin.firestore.Timestamp.fromDate(istEndOfDay(now, order.planDays || 365));
+
                     tx.set(
-                        targetRef,
+                        waStatusRef,
                         {
-                            status: "paid",
-                            requestedPlanId: order.planId,
-                            paidAt: admin.firestore.FieldValue.serverTimestamp(),
+                            activeTier: "sellar",
+                            active: true,
+                            sellarPlan: {
+                                planId: order.planId,
+                                status: "active",
+                                quotaTotal,
+                                quotaUsed: 0,
+                                expiresAt,
+                            },
                         },
                         {merge: true}
                     );
+                    tx.set(
+                        db.doc(`adminWhatsappConfig/${order.targetDocId}`),
+                        {
+                            tier: "sellar",
+                            active: true,
+                            planId: order.planId,
+                            quotaTotal,
+                            quotaUsed: 0,
+                            expiresAt,
+                            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                            updatedByUid: "payment",
+                        },
+                        {merge: true}
+                    );
+                    tx.set(
+                        targetRef,
+                        {
+                            status: "activated",
+                            requestedPlanId: order.planId,
+                            carriedOverMessages: carriedOver,
+                            paidAt: admin.firestore.FieldValue.serverTimestamp(),
+                            activatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                        },
+                        {merge: true}
+                    );
+                    recordCouponRedemption(tx, order, orderRef.id);
                 }
             });
 

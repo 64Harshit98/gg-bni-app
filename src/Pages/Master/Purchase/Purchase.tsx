@@ -352,6 +352,7 @@ const PurchasePage: React.FC = () => {
     handleBarcodeScanned,
   } = usePurchaseSmartScan({
     availableItems,
+    items,
     setItems,
     addItemToCart,
     setModal,
@@ -1619,7 +1620,7 @@ const PurchasePage: React.FC = () => {
         {renderModal()}
         {renderClearCartConfirm()}
 
-        <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
+        <BarcodeScanner continuous isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
         {renderHeader()}
         {renderMoreSheet()}
         {renderFilterSheet()}
@@ -2090,7 +2091,7 @@ const PurchasePage: React.FC = () => {
           </div>
         </div>
       )}
-      <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
+      <BarcodeScanner continuous isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
 
       {renderHeader()}
       {renderMoreSheet()}

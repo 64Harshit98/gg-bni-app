@@ -963,7 +963,68 @@ exports.setCompanyWhatsappConfig = functions.https.onCall(async (data, context) 
 
         tx.set(configRef, configPayload, { merge: true });
         tx.set(statusRef, statusPayload, { merge: true });
+        // Saving a Snapto connection settles any self-submitted Snapto
+        // details (submitSnaptoSetup) so it drops off the request list.
+        if (tier === 'snapto') {
+            tx.set(db.doc(`whatsappActivationRequests/${companyId}`), { snaptoStatus: 'activated' }, { merge: true });
+        }
     });
+
+    return { success: true };
+});
+
+// A company submits its own Snapto (official WhatsApp Business) details from
+// the in-app setup guide (WAOfficialSetup.tsx). The API key goes to
+// snaptoSubmissions/{companyId}, which — like adminWhatsappConfig — has no
+// Firestore rule, so only super admins and Cloud Functions can read it. A
+// super admin reviews it on the WhatsApp Config page and saves to activate.
+const TEMPLATE_NAME_RE = /^[a-z0-9_]{1,512}$/;
+exports.submitSnaptoSetup = functions.https.onCall(async (data, context) => {
+    if (!context.auth || !context.auth.token.companyId) {
+        throw new functions.https.HttpsError('unauthenticated', 'Must be logged in.');
+    }
+    const companyId = context.auth.token.companyId;
+    const clean = (v) => String(v || '').trim();
+
+    const snaptoApiKey = clean(data.snaptoApiKey);
+    const snaptoPhoneId = clean(data.snaptoPhoneId).replace(/\s+/g, '');
+    const whatsappNumber = clean(data.whatsappNumber);
+    const templateName = clean(data.templateName);
+    const reminderTemplateName = clean(data.reminderTemplateName);
+    const stockAlertTemplateName = clean(data.stockAlertTemplateName);
+    const language = clean(data.language) || 'en';
+
+    if (snaptoApiKey.length < 10 || snaptoApiKey.length > 500) {
+        throw new functions.https.HttpsError('invalid-argument', 'Enter the API key from Snapto.');
+    }
+    if (!/^\d{10,20}$/.test(snaptoPhoneId)) {
+        throw new functions.https.HttpsError('invalid-argument', 'Phone Number ID should be 10–20 digits.');
+    }
+    if (!templateName || !TEMPLATE_NAME_RE.test(templateName)) {
+        throw new functions.https.HttpsError('invalid-argument', 'Enter the invoice template name (lowercase letters, numbers and _).');
+    }
+    for (const t of [reminderTemplateName, stockAlertTemplateName]) {
+        if (t && !TEMPLATE_NAME_RE.test(t)) {
+            throw new functions.https.HttpsError('invalid-argument', `"${t}" is not a valid template name.`);
+        }
+    }
+    if (!/^[a-z]{2}(_[A-Z]{2})?$/.test(language)) {
+        throw new functions.https.HttpsError('invalid-argument', 'Language should look like "en" or "en_US".');
+    }
+
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    const batch = db.batch();
+    batch.set(db.doc(`snaptoSubmissions/${companyId}`), {
+        snaptoApiKey, snaptoPhoneId, whatsappNumber,
+        templateName, reminderTemplateName, stockAlertTemplateName, language,
+        submittedByUid: context.auth.uid,
+        submittedAt: now,
+    });
+    batch.set(db.doc(`whatsappActivationRequests/${companyId}`), {
+        snaptoStatus: 'submitted',
+        snaptoSubmittedAt: now,
+    }, { merge: true });
+    await batch.commit();
 
     return { success: true };
 });
@@ -1994,14 +2055,15 @@ const PLAN_DAYS = 365;
 
 // Sellar WhatsApp message-quota plans — mirrors SELLAR_WHATSAPP_PLANS in
 // src/Pages/Additional/Whatsapp/SellarWhatsappPlans.ts. A completely separate
-// product from the subscription plans above: no expiry/pack change on the
-// company doc, just a paid flag on the company's whatsappActivationRequests
-// doc for the team to manually activate (see WAChooseProvider.tsx).
-const WHATSAPP_PLAN_PRICING = {
-    sellar_10k: 2100,
-    sellar_25k: 4500,
-    sellar_50k: 7999,
+// product from the subscription plans above: never touches the company's
+// expiry/pack. On a successful payment paymentWebhook.ts activates the plan
+// straight onto the company's WhatsApp status (no manual step).
+const WHATSAPP_PLANS = {
+    sellar_10k: { price: 1500, quota: 10000 },
+    sellar_25k: { price: 3500, quota: 25000 },
+    sellar_50k: { price: 6800, quota: 50000 },
 };
+const WHATSAPP_PLAN_DAYS = 365;
 const TAX_RATE = 0.18; // 18% GST, applied on every plan after any coupon discount
 
 // Applies GST to the post-discount amount. Rounded to the nearest rupee.
@@ -2020,7 +2082,7 @@ function getRazorpayInstance() {
 }
 
 // Read-only: looks up a coupon and computes the discount for a given plan/company, without writing anything.
-async function resolveCoupon(codeRaw, planId, companyId, baseAmount) {
+async function resolveCoupon(codeRaw, planId, companyId, baseAmount, isWhatsapp = false) {
     const code = String(codeRaw || "").trim().toUpperCase();
     if (!code) return { valid: false, message: "Enter a coupon code." };
 
@@ -2039,7 +2101,14 @@ async function resolveCoupon(codeRaw, planId, companyId, baseAmount) {
     const validTill = coupon.validTill && coupon.validTill.toDate ? coupon.validTill.toDate() : null;
     if (validTill && now > validTill) return { valid: false, message: "This coupon has expired." };
 
-    if (Array.isArray(coupon.applicablePlans) && coupon.applicablePlans.length > 0 && !coupon.applicablePlans.includes(planId)) {
+    const hasPlanList = Array.isArray(coupon.applicablePlans) && coupon.applicablePlans.length > 0;
+    // WhatsApp plans are opt-in: a coupon with no plan list ("all plans")
+    // covers the subscription plans only, so a general discount code can't
+    // stack on the already-discounted WhatsApp prices.
+    if (isWhatsapp && !(hasPlanList && coupon.applicablePlans.includes(planId))) {
+        return { valid: false, message: "This coupon is not valid for WhatsApp plans." };
+    }
+    if (hasPlanList && !coupon.applicablePlans.includes(planId)) {
         return { valid: false, message: "This coupon is not valid for the selected plan." };
     }
 
@@ -2071,11 +2140,12 @@ exports.validateCoupon = functions.https.onCall(async (data, context) => {
     if (!context.auth || !context.auth.token.companyId) {
         throw new functions.https.HttpsError("unauthenticated", "Must be logged in.");
     }
-    const { code, planId } = data;
-    const baseAmount = PLAN_PRICING[planId];
+    const { code, planId, product } = data;
+    const isWhatsapp = product === "whatsapp";
+    const baseAmount = isWhatsapp ? (WHATSAPP_PLANS[planId] && WHATSAPP_PLANS[planId].price) : PLAN_PRICING[planId];
     if (!baseAmount) throw new functions.https.HttpsError("invalid-argument", "Unknown plan.");
 
-    const result = await resolveCoupon(code, planId, context.auth.token.companyId, baseAmount);
+    const result = await resolveCoupon(code, planId, context.auth.token.companyId, baseAmount, isWhatsapp);
     const discountAmount = result.valid ? result.discountAmount : 0;
     const tax = applyTax(result.valid ? result.taxableAmount : baseAmount);
     return {
@@ -2185,7 +2255,8 @@ exports.createIciciOrder = functions.runWith({ secrets: ["ICICI_PG_SECRET_KEY"] 
     // never touches the company's subscription fields; see the
     // targetCollection branch below and paymentWebhook.ts's matching branch.
     const isWhatsapp = product === "whatsapp";
-    const baseAmount = isWhatsapp ? WHATSAPP_PLAN_PRICING[planId] : PLAN_PRICING[planId];
+    const whatsappPlan = isWhatsapp ? WHATSAPP_PLANS[planId] : null;
+    const baseAmount = isWhatsapp ? (whatsappPlan && whatsappPlan.price) : PLAN_PRICING[planId];
     if (!baseAmount) throw new functions.https.HttpsError("invalid-argument", "Unknown plan.");
 
     let taxableAmount = baseAmount;
@@ -2193,7 +2264,7 @@ exports.createIciciOrder = functions.runWith({ secrets: ["ICICI_PG_SECRET_KEY"] 
     let appliedCode = null;
 
     if (couponCode) {
-        const result = await resolveCoupon(couponCode, planId, companyId, baseAmount);
+        const result = await resolveCoupon(couponCode, planId, companyId, baseAmount, isWhatsapp);
         if (!result.valid) throw new functions.https.HttpsError("failed-precondition", result.message);
         taxableAmount = result.taxableAmount;
         discountAmount = result.discountAmount;
@@ -2257,7 +2328,11 @@ exports.createIciciOrder = functions.runWith({ secrets: ["ICICI_PG_SECRET_KEY"] 
         companyId,
         uid: context.auth.uid,
         planId,
-        ...(isWhatsapp ? {} : { planDays: PLAN_DAYS }),
+        // WhatsApp orders carry their own quota so the webhook can activate
+        // them without its own copy of the plan catalog.
+        ...(isWhatsapp
+            ? { product: "whatsapp", planDays: WHATSAPP_PLAN_DAYS, planQuota: whatsappPlan.quota }
+            : { planDays: PLAN_DAYS }),
         baseAmount,
         discountAmount,
         taxRate: TAX_RATE,

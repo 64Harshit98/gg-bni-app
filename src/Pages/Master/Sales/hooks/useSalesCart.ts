@@ -7,6 +7,7 @@ import { applyLineRounding } from '../sales.calculations';
 import { discountBaseOf, loadedLineDiscount, presetLinePricing } from '../sales.discountBase';
 import { withoutCustomerPrice as stripCustomerPrice, MANUAL_PRICE_SKIP } from '../../../utils/customerPricing';
 import type { SalesItem } from '../sales.types';
+import type { ScanOutcome } from '../../../../UseComponents/BarcodeScanner';
 import {
     discountFromPrice,
     isNewItemLine,
@@ -515,19 +516,33 @@ export const useSalesCart = ({
             setIsLinkingBarcode(false);
         }
     };
-    const handleBarcodeScanned = async (barcode: string) => {
-        setIsScannerOpen(false);
-        if (!dbOperations) return;
+    // Camera scan: if the same item (same tier, no add-ons) is already in the
+    // cart, bump the latest line's quantity instead of adding a duplicate line.
+    const addScannedItem = (item: Item, tier?: PriceTier) => {
+        const tierId = tier?.id;
+        const matches = items.filter(i => i.productId === item.id && (i.tierId || undefined) === tierId && !i.addOnKey);
+        if (matches.length === 0) {
+            addItemToCart(item, tier);
+            return;
+        }
+        const latestId = matches.reduce((a, b) => ((b.addedAt || 0) > (a.addedAt || 0) ? b : a)).id;
+        setItems(prev => prev.map(i => (i.id === latestId ? applyQuantity(i, (Number(i.quantity) || 0) + 1) : i)));
+    };
 
+    // Scanner stays open (continuous mode) — the return value feeds the list
+    // shown inside the camera view. Only an unknown barcode that can be linked
+    // closes the camera, so the link modal can be used.
+    const handleBarcodeScanned = async (barcode: string): Promise<ScanOutcome> => {
         const cleanBarcode = barcode.trim();
+        if (!dbOperations) return { status: 'error', message: 'Not ready yet, try again.' };
 
         try {
             // 👇 NEW: pehle check karo ki ye barcode kisi tier (combo/box pack) ka to nahi
             const tierMatch = findTierByBarcode(availableItems, cleanBarcode);
             if (tierMatch) {
                 const tierToPass = tierMatch.tier.id === '__base__' ? undefined : tierMatch.tier;
-                addItemToCart(tierMatch.item, tierToPass);
-                return;
+                addScannedItem(tierMatch.item, tierToPass);
+                return { status: 'added', label: tierToPass ? `${tierMatch.item.name} (${tierToPass.label})` : tierMatch.item.name };
             }
 
             let itemToAdd: Item | null | undefined = availableItems.find(item => item.barcode === cleanBarcode);
@@ -537,27 +552,26 @@ export const useSalesCart = ({
             }
 
             if (itemToAdd) {
-                addItemToCart(itemToAdd);
+                addScannedItem(itemToAdd);
 
                 setAvailableItems(prev => {
                     const exists = prev.find(p => p.id === itemToAdd!.id);
                     return exists ? prev : [...prev, itemToAdd!];
                 });
-            } else {
-                const hasAnyItemWithoutBarcode = availableItems.some(item => !(item.barcode || '').trim());
-                if (!hasAnyItemWithoutBarcode) {
-                    setModal({
-                        message: `Item not found for barcode: "${cleanBarcode}"`,
-                        type: State.ERROR
-                    });
-                    return;
-                }
-                setBarcodeToLink(cleanBarcode);
-                setIsBarcodeLinkModalOpen(true);
+                return { status: 'added', label: itemToAdd.name };
             }
+
+            const hasAnyItemWithoutBarcode = availableItems.some(item => !(item.barcode || '').trim());
+            if (!hasAnyItemWithoutBarcode) {
+                return { status: 'not_found', message: `Not found: ${cleanBarcode}` };
+            }
+            setIsScannerOpen(false);
+            setBarcodeToLink(cleanBarcode);
+            setIsBarcodeLinkModalOpen(true);
+            return { status: 'not_found', message: `Not found: ${cleanBarcode}` };
         } catch (e) {
             console.error(e);
-            setModal({ message: 'Scan error occurred.', type: State.ERROR });
+            return { status: 'error', message: 'Scan error occurred.' };
         }
     };
     const handleQuantityChange = (id: string, newQuantity: number) => {

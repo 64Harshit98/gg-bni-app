@@ -2,6 +2,7 @@ import { collection, collectionGroup, getDocs } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
 import { PLANS } from '../../../enums';
 import { MAX_EXPIRY_YEARS_AHEAD } from '../superAdminExpiryGuard';
+import { SELLAR_WHATSAPP_PLANS } from '../../Additional/Whatsapp/SellarWhatsappPlans';
 
 // Shared data + helpers for the super-admin pages. Company and payment data
 // is cached for a short time so moving between pages (and the sidebar badges)
@@ -420,8 +421,22 @@ export const toCoupon = (d: any): AdminCoupon => ({
 
 // Discount as a share of a plan's list price. The server caps any discount
 // at price − ₹1, so "100%" really means the plan sells for ₹1.
+// Coupon-able WhatsApp plans. Opt-in only: a coupon with no plan list
+// ("all plans") covers the subscription plans above, never these — the
+// server (resolveCoupon) enforces the same rule.
+export const WHATSAPP_COUPON_PLANS: { id: string; label: string; price: number }[] =
+  SELLAR_WHATSAPP_PLANS.map(p => ({ id: p.id, label: `WA ${p.subtitle.replace(/ Pack$/, '')}`, price: p.price }));
+
+export const COUPON_PLAN_PRICES: Record<string, number> = {
+  ...PLAN_PRICE_YEARLY,
+  ...Object.fromEntries(WHATSAPP_COUPON_PLANS.map(p => [p.id, p.price])),
+};
+
+export const couponPlanLabel = (planId: string) =>
+  PLAN_META[planId]?.label || WHATSAPP_COUPON_PLANS.find(p => p.id === planId)?.label || planId;
+
 export const couponShare = (c: AdminCoupon, planId: string) => {
-  const price = PLAN_PRICE_YEARLY[planId];
+  const price = COUPON_PLAN_PRICES[planId];
   if (!price) return 0;
   const off = c.discountType === 'percent' ? (price * c.discountValue) / 100 : c.discountValue;
   return Math.min(off, price - 1) / price;

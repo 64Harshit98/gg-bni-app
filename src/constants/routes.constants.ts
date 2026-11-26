@@ -64,6 +64,7 @@ export const ROUTES = {
   WHATSAPP_LANDING: '/whatsapp-landing',
   WHATSAPP_PLAN: '/whatsapp-plan',
   WHATSAPP_CHOOSE: '/whatsapp-choose',
+  WHATSAPP_OFFICIAL_SETUP: '/whatsapp-official-setup',
   WHATSAPP_MESSAGE_LOG: '/whatsapp-message-log',
   ADD_PRODUCT: 'add-product',
   CAT_ITEM_GROUP: 'item-groups',

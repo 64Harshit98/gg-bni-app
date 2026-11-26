@@ -1,17 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiSmartphone, FiBriefcase, FiExternalLink, FiArrowRight, FiZap, FiCheck } from 'react-icons/fi';
+import { FiSmartphone, FiBriefcase, FiArrowRight, FiZap, FiCheck } from 'react-icons/fi';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
 import { useAuth } from '../../../context/auth-context';
 import { ROUTES } from '../../../constants/routes.constants';
 import BackButton from '../../../Components/BackButton';
-import { SELLAR_WHATSAPP_PLANS } from './SellarWhatsappPlans';
-import { createIciciOrder } from '../../../lib/PaymentOperations';
+import { SELLAR_WHATSAPP_PLANS, discountPct, perMessageRate } from './SellarWhatsappPlans';
+import WACheckoutModal from './WACheckoutModal';
 
-// The Snapto signup link carries our referral/account id so signups from
-// inside the app are attributed correctly.
-const SNAPTO_SIGNUP_URL = 'https://wa.sellar.in/Signup?accId=6a96b1d8550e8ab4615ac0a6';
+interface ActiveSellarPlan { planId: string; quotaTotal: number | null; quotaUsed: number; expiresAt: Date | null }
 
 const WAChooseProvider: React.FC = () => {
   const navigate = useNavigate();
@@ -22,9 +20,9 @@ const WAChooseProvider: React.FC = () => {
   const [selectedPlanId, setSelectedPlanId] = useState<string>(
     SELLAR_WHATSAPP_PLANS.find(p => p.recommended)?.id || SELLAR_WHATSAPP_PLANS[0]?.id
   );
-  const [paying, setPaying] = useState(false);
-  const [payError, setPayError] = useState('');
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [existingRequestStatus, setExistingRequestStatus] = useState<string | null>(null);
+  const [activePlan, setActivePlan] = useState<ActiveSellarPlan | null>(null);
 
   useEffect(() => {
     if (!companyId) return;
@@ -33,22 +31,23 @@ const WAChooseProvider: React.FC = () => {
         if (snap.exists()) setExistingRequestStatus(snap.data().status || 'pending');
       })
       .catch(() => { });
+    getDoc(doc(db, 'companies', companyId, 'whatsappStatus', 'current'))
+      .then(snap => {
+        const x = snap.exists() ? snap.data() : null;
+        const p = x?.sellarPlan;
+        if (!x || x.activeTier !== 'sellar' || !x.active || !p || p.status !== 'active') return;
+        const expiresAt = p.expiresAt?.toDate ? p.expiresAt.toDate() : null;
+        if (expiresAt && expiresAt < new Date()) return;
+        setActivePlan({ planId: p.planId || '', quotaTotal: typeof p.quotaTotal === 'number' ? p.quotaTotal : null, quotaUsed: p.quotaUsed || 0, expiresAt });
+        setSellarExpanded(true);
+      })
+      .catch(() => { });
   }, [companyId]);
 
-  const selectedPlan = SELLAR_WHATSAPP_PLANS.find(p => p.id === selectedPlanId);
+  // Paid before auto-activation existed and still waiting on the team.
+  const awaitingManualActivation = !activePlan && existingRequestStatus === 'paid';
 
-  const handlePayNow = async () => {
-    if (!companyId || !selectedPlanId) return;
-    setPaying(true);
-    setPayError('');
-    try {
-      const order = await createIciciOrder(selectedPlanId, undefined, 'whatsapp');
-      window.location.href = order.redirectURI;
-    } catch (err: any) {
-      setPayError(err.message || 'Failed to start payment.');
-      setPaying(false);
-    }
-  };
+  const selectedPlan = SELLAR_WHATSAPP_PLANS.find(p => p.id === selectedPlanId);
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col items-center px-4 py-8">
@@ -82,24 +81,22 @@ const WAChooseProvider: React.FC = () => {
             <FiArrowRight className="text-gray-300 mt-1 shrink-0" />
           </button>
 
-          {/* Official business number -> Snapto (Meta Cloud API), key handed to Sellar support */}
+          {/* Official business number -> Snapto (Meta Cloud API), guided in-app setup */}
           <button
-            onClick={() => window.open(SNAPTO_SIGNUP_URL, '_blank', 'noopener,noreferrer')}
+            onClick={() => navigate(ROUTES.WHATSAPP_OFFICIAL_SETUP)}
             className="w-full text-left bg-white rounded-sm border border-gray-200 shadow-sm hover:border-blue-400 hover:shadow-md transition-all p-6 flex items-start gap-4"
           >
             <div className="w-11 h-11 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
               <FiBriefcase size={20} />
             </div>
             <div className="flex-1">
-              <h3 className="font-bold text-gray-900 flex items-center gap-1.5">
-                WhatsApp Business (Official Number)
-                <FiExternalLink size={13} className="text-gray-400" />
-              </h3>
+              <h3 className="font-bold text-gray-900">WhatsApp Business (Official Number)</h3>
               <p className="text-xs text-gray-500 mt-1">
-                Use Meta's official WhatsApp Business API via Snapto. Requires business verification and message templates,
-                but is more reliable for scale.
+                Use Meta's official WhatsApp Business API via Snapto. We guide you through each step right here —
+                account, number, message templates. More reliable for scale.
               </p>
             </div>
+            <FiArrowRight className="text-gray-300 mt-1 shrink-0" />
           </button>
 
           {/* Sellar's own shared number -> no setup, admin-activated */}
@@ -121,17 +118,30 @@ const WAChooseProvider: React.FC = () => {
 
             {sellarExpanded && (
               <div className="border-t border-gray-100 p-6 pt-4 space-y-3">
-                {existingRequestStatus ? (
+                {awaitingManualActivation ? (
                   <div className="bg-purple-50 border border-purple-100 rounded-sm p-4 text-sm text-purple-800 flex items-center gap-2">
                     <FiCheck className="shrink-0" />
-                    {existingRequestStatus === 'paid'
-                      ? "Payment received — we'll activate this shortly."
-                      : existingRequestStatus === 'pending'
-                        ? "Request sent — we'll activate this shortly."
-                        : `Request status: ${existingRequestStatus}`}
+                    Payment received — we'll activate this shortly.
                   </div>
                 ) : (
                   <>
+                    {activePlan && (
+                      <div className="bg-green-50 border border-green-100 rounded-sm p-4 text-sm text-green-800">
+                        <p className="font-bold flex items-center gap-2">
+                          <FiCheck className="shrink-0" />
+                          Active · {SELLAR_WHATSAPP_PLANS.find(p => p.id === activePlan.planId)?.name || 'Sellar WhatsApp plan'}
+                        </p>
+                        <p className="text-xs mt-1">
+                          {activePlan.quotaTotal === null
+                            ? 'Unlimited messages'
+                            : `${Math.max(0, activePlan.quotaTotal - activePlan.quotaUsed).toLocaleString('en-IN')} of ${activePlan.quotaTotal.toLocaleString('en-IN')} messages left`}
+                          {activePlan.expiresAt && ` · valid till ${activePlan.expiresAt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`}
+                        </p>
+                        <p className="text-xs mt-2 text-green-700">
+                          Buying another plan starts a fresh year and adds your unused messages on top.
+                        </p>
+                      </div>
+                    )}
                     <div className="space-y-2">
                       {SELLAR_WHATSAPP_PLANS.map(plan => (
                         <label
@@ -151,13 +161,26 @@ const WAChooseProvider: React.FC = () => {
                               <p className="text-xs text-gray-500">
                                 {plan.quota === null ? 'Unlimited messages' : `${plan.quota.toLocaleString('en-IN')} messages`} / {plan.duration.toLowerCase()}
                               </p>
+                              {perMessageRate(plan) !== null && (
+                                <p className="text-[11px] font-semibold text-purple-700 mt-0.5">₹{perMessageRate(plan)} / message</p>
+                              )}
                             </div>
                           </div>
                           <div className="flex flex-col items-end gap-1 shrink-0">
-                            {plan.recommended && (
-                              <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-sm bg-purple-100 text-purple-700">
-                                Popular
-                              </span>
+                            <div className="flex items-center gap-1">
+                              {plan.recommended && (
+                                <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-sm bg-purple-100 text-purple-700">
+                                  Popular
+                                </span>
+                              )}
+                              {discountPct(plan) > 0 && (
+                                <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-sm bg-green-100 text-green-700">
+                                  {discountPct(plan)}% off
+                                </span>
+                              )}
+                            </div>
+                            {plan.mrp > plan.price && (
+                              <span className="text-[11px] text-gray-400 line-through">₹{plan.mrp.toLocaleString('en-IN')}</span>
                             )}
                             <span className="text-sm font-bold text-gray-800">
                               ₹{plan.price.toLocaleString('en-IN')}
@@ -167,16 +190,15 @@ const WAChooseProvider: React.FC = () => {
                         </label>
                       ))}
                     </div>
-                    {payError && <p className="text-xs text-red-500 text-center">{payError}</p>}
                     <button
-                      onClick={handlePayNow}
-                      disabled={paying || !selectedPlanId}
+                      onClick={() => setCheckoutOpen(true)}
+                      disabled={!companyId || !selectedPlan}
                       className="w-full bg-purple-600 text-white py-2.5 rounded-sm font-bold hover:bg-purple-700 transition-colors disabled:opacity-50"
                     >
-                      {paying ? 'Redirecting to payment...' : selectedPlan ? `Pay ₹${selectedPlan.price.toLocaleString('en-IN')}` : 'Pay Now'}
+                      {selectedPlan ? `${activePlan ? 'Renew' : 'Buy'} ${selectedPlan.subtitle} · ₹${selectedPlan.price.toLocaleString('en-IN')}` : 'Choose a plan'}
                     </button>
                     <p className="text-[11px] text-gray-400 text-center">
-                      Price excludes GST, added at checkout. We'll activate this plan once payment is confirmed.
+                      Price excludes 18% GST. Have a coupon? Apply it at checkout.
                     </p>
                   </>
                 )}
@@ -185,6 +207,9 @@ const WAChooseProvider: React.FC = () => {
           </div>
         </div>
       </div>
+      {checkoutOpen && selectedPlan && (
+        <WACheckoutModal plan={selectedPlan} isRenewal={!!activePlan} onClose={() => setCheckoutOpen(false)} />
+      )}
     </div>
   );
 };

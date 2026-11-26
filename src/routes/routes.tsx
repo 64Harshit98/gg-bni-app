@@ -40,6 +40,7 @@ const AgentDashboard = lazy(() => import('../Pages/Account/AgentDashboard'))
 
 const WALanding = lazy(() => import('../Pages/Additional/Whatsapp/WALanding'));
 const WAChooseProvider = lazy(() => import('../Pages/Additional/Whatsapp/WAChooseProvider'));
+const WAOfficialSetup = lazy(() => import('../Pages/Additional/Whatsapp/WAOfficialSetup'));
 const WhatsappMessageLog = lazy(() => import('../Pages/Additional/Whatsapp/WhatsappMessageLog'));
 const WAPlan = lazy(() => import('../Pages/Additional/Whatsapp/WAPlan'));
 const WADetails = lazy(() => import('../Pages/Additional/Whatsapp/WADetails'));
@@ -107,6 +108,7 @@ const router = createBrowserRouter(
                 children: [
                   { path: ROUTES.WHATSAPP_LANDING, element: <WALanding />, handle: { isPublic: false } },
                   { path: ROUTES.WHATSAPP_CHOOSE, element: <WAChooseProvider />, handle: { isPublic: false } },
+                  { path: ROUTES.WHATSAPP_OFFICIAL_SETUP, element: <WAOfficialSetup />, handle: { isPublic: false } },
                   { path: ROUTES.WHATSAPP_MESSAGE_LOG, element: <WhatsappMessageLog />, handle: { isPublic: false } },
                   { path: ROUTES.WHATSAPP_PLAN, element: <WAPlan />, handle: { isPublic: false } },
                   { path: ROUTES.WHATSAPP_DETAILS, element: <WADetails />, handle: { isPublic: false } },
@@ -131,6 +133,7 @@ const router = createBrowserRouter(
                     children: [
                       { path: ROUTES.WHATSAPP_LANDING, element: <WALanding />, handle: { isPublic: false } },
                       { path: ROUTES.WHATSAPP_CHOOSE, element: <WAChooseProvider />, handle: { isPublic: false } },
+                      { path: ROUTES.WHATSAPP_OFFICIAL_SETUP, element: <WAOfficialSetup />, handle: { isPublic: false } },
                   { path: ROUTES.WHATSAPP_MESSAGE_LOG, element: <WhatsappMessageLog />, handle: { isPublic: false } },
                       { path: ROUTES.WHATSAPP_PLAN, element: <WAPlan />, handle: { isPublic: false } },
                       { path: ROUTES.WHATSAPP_DETAILS, element: <WADetails />, handle: { isPublic: false } },

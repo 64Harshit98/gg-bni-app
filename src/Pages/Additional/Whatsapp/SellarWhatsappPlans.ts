@@ -1,19 +1,18 @@
 // Plan catalog for the "Sellar WhatsApp Number" tier — a company does no
-// setup of their own; they pick one of these and Sellar activates them
-// manually (see WAChooseProvider.tsx + the super-admin WhatsApp page).
+// setup of their own; they pick one of these, pay through the payment
+// gateway, and paymentWebhook activates the plan on their company
+// automatically (see WAChooseProvider.tsx). Super admins can still assign or
+// edit a plan by hand on the WhatsApp Config page.
 //
-// Deliberately mirrors WHATSAPP_PLANS in WAPlan.tsx (the BotMaster plan
-// catalog) for now — same names/pricing/quotas — per instruction to keep
-// them aligned until the business defines separate Sellar-tier pricing.
-//
-// Shape is also read by the super-admin plan-assignment dropdown so both
-// surfaces stay in sync automatically.
+// Prices and quotas MUST match WHATSAPP_PLANS in functions/lib/index.js —
+// the server charges from its own copy, never from this file.
 export interface SellarWhatsappPlan {
   id: string;
   name: string;
   subtitle: string;
   duration: 'Month' | 'Year';
-  price: number;
+  price: number; // selling price, before GST
+  mrp: number; // list price, shown struck through
   quota: number | null; // null = unlimited
   tags: string[];
   features: string[];
@@ -26,7 +25,8 @@ export const SELLAR_WHATSAPP_PLANS: SellarWhatsappPlan[] = [
     name: '10,000 Messages',
     subtitle: 'Starter Pack',
     duration: 'Year',
-    price: 2100,
+    price: 1500,
+    mrp: 3000,
     quota: 10000,
     tags: ['STARTER'],
     features: [
@@ -42,7 +42,8 @@ export const SELLAR_WHATSAPP_PLANS: SellarWhatsappPlan[] = [
     name: '25,000 Messages',
     subtitle: 'Growth Pack',
     duration: 'Year',
-    price: 4500,
+    price: 3500,
+    mrp: 7500,
     quota: 25000,
     tags: ['MOST POPULAR'],
     features: [
@@ -58,7 +59,8 @@ export const SELLAR_WHATSAPP_PLANS: SellarWhatsappPlan[] = [
     name: '50,000 Messages',
     subtitle: 'Enterprise Pack',
     duration: 'Year',
-    price: 7999,
+    price: 6800,
+    mrp: 14000,
     quota: 50000,
     tags: ['VIP ACCESS'],
     features: [
@@ -70,3 +72,11 @@ export const SELLAR_WHATSAPP_PLANS: SellarWhatsappPlan[] = [
     recommended: false,
   },
 ];
+
+// ₹ per message, e.g. 0.15 / 0.14 / 0.136.
+export const perMessageRate = (p: SellarWhatsappPlan) =>
+  p.quota ? Math.round((p.price / p.quota) * 1000) / 1000 : null;
+
+// Whole-number discount off MRP, e.g. 50 / 53 / 51.
+export const discountPct = (p: SellarWhatsappPlan) =>
+  p.mrp > p.price ? Math.round(((p.mrp - p.price) / p.mrp) * 100) : 0;

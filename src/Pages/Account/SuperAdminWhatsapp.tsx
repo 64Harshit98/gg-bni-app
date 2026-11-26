@@ -4,7 +4,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { ChevronDown } from 'lucide-react';
 import { db } from '../../lib/Firebase';
 import PageLoader from '../../Components/PageLoader';
-import { SELLAR_WHATSAPP_PLANS } from '../Additional/Whatsapp/SellarWhatsappPlans';
+import { SELLAR_WHATSAPP_PLANS, discountPct, perMessageRate } from '../Additional/Whatsapp/SellarWhatsappPlans';
 import type { AdminCompany } from './superAdmin/data';
 import { DAY_MS, ageText, companyStatus, fmtDate, fmtDateTime, fmtMoney, loadCompanies, toDate } from './superAdmin/data';
 import { Alert, Btn, Card, Chip, EmptyRow, Field, PageHeader, PageShell, SearchBox, SelectBox, StatCard, inputCls } from './superAdmin/ui';
@@ -58,6 +58,10 @@ const HEALTH_META: Record<Health, { label: string; cls: string }> = {
   inactive: { label: 'INACTIVE', cls: 'bg-amber-100 text-amber-800' },
   not_set_up: { label: 'NOT SET UP', cls: 'bg-gray-200 text-gray-700' },
 };
+
+// Row.requested marker for a company that submitted its own Snapto details
+// (snaptoSubmissions/{id}) rather than a Sellar plan id.
+const SNAPTO_REQUEST = '__snapto__';
 
 const EMPTY_MSGS: MsgStats = { sent: 0, failed: 0, last: null, lastFailed: false, recentAllFailed: false };
 
@@ -119,7 +123,15 @@ const SuperAdminWhatsapp: React.FC = () => {
         const requested = new Map<string, string>();
         requestsSnap.docs.forEach(d => {
           const x = d.data();
-          if ((x.status || 'pending') === 'pending') requested.set(d.id, x.requestedPlanId || '');
+          // Payments now activate automatically ('activated'); 'paid' is a
+          // payment that still needs a hand-activation (older orders).
+          const st = x.status || 'pending';
+          const live = statuses.get(d.id);
+          const alreadyOnSellar = live?.tier === 'sellar' && live.active;
+          if ((st === 'pending' || st === 'paid') && !alreadyOnSellar) requested.set(d.id, x.requestedPlanId || '');
+          // Own Snapto details sent from the in-app setup guide (submitSnaptoSetup).
+          const alreadyOnSnapto = live?.tier === 'snapto' && live.active;
+          if (x.snaptoStatus === 'submitted' && !alreadyOnSnapto) requested.set(d.id, SNAPTO_REQUEST);
         });
 
         // 30-day message stats, only for companies that have WhatsApp set up.
@@ -266,7 +278,7 @@ const SuperAdminWhatsapp: React.FC = () => {
       )}
       {stats.requested > 0 && (
         <Alert tone="amber" action={<Btn size="sm" onClick={() => setHealthFilter('requested')}>Show requests</Btn>}>
-          <b>{stats.requested} compan{stats.requested === 1 ? 'y has' : 'ies have'} requested a Sellar WhatsApp plan</b> and {stats.requested === 1 ? 'is' : 'are'} waiting for activation.
+          <b>{stats.requested} compan{stats.requested === 1 ? 'y is' : 'ies are'} waiting for WhatsApp activation</b> — a Sellar plan request or their own Snapto details.
         </Alert>
       )}
 
@@ -277,7 +289,7 @@ const SuperAdminWhatsapp: React.FC = () => {
               <SearchBox className="flex-1" value={search} onChange={setSearch} placeholder="Search company or CMP ID…" />
               <SelectBox label="Status" value={healthFilter} onChange={v => setHealthFilter(v as any)}>
                 <option value="all">All</option><option value="connected">Connected</option><option value="failing">Failing</option>
-                <option value="inactive">Inactive</option><option value="not_set_up">Not set up</option><option value="requested">Requested plan</option>
+                <option value="inactive">Inactive</option><option value="not_set_up">Not set up</option><option value="requested">Waiting for activation</option>
               </SelectBox>
             </div>
             <div className="hidden md:grid grid-cols-[1.4fr_1fr_1fr_1.2fr_0.9fr_auto] gap-3 px-4 py-2.5 bg-gray-50 text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200">
@@ -294,7 +306,7 @@ const SuperAdminWhatsapp: React.FC = () => {
                   className={`grid grid-cols-[1fr_auto] md:grid-cols-[1.4fr_1fr_1fr_1.2fr_0.9fr_auto] gap-x-3 gap-y-1 px-4 py-3 border-b border-gray-100 items-center cursor-pointer ${selectedId === r.company.id ? 'bg-blue-50/60' : 'hover:bg-gray-50'}`}>
                   <div className="min-w-0">
                     <p className="font-semibold text-gray-900 truncate">{r.company.name}{r.company.isTestAccount && <Chip cls="ml-2 bg-gray-200 text-gray-700">TEST</Chip>}</p>
-                    <p className="text-xs font-mono text-gray-500">{r.company.id}{r.requested !== null && <span className="ml-2 font-sans font-semibold text-amber-700">requested plan</span>}</p>
+                    <p className="text-xs font-mono text-gray-500">{r.company.id}{r.requested !== null && <span className="ml-2 font-sans font-semibold text-amber-700">{r.requested === SNAPTO_REQUEST ? 'sent Snapto details' : 'requested plan'}</span>}</p>
                   </div>
                   <div><Chip cls={HEALTH_META[r.health].cls}>{HEALTH_META[r.health].label}</Chip></div>
                   <div className="hidden md:block text-sm font-medium text-gray-800">{s.tier === 'sellar' ? (plan?.name || s.planId || 'Sellar number') : s.tier === 'snapto' ? 'Own Snapto account' : 'None'}</div>
@@ -323,11 +335,15 @@ const SuperAdminWhatsapp: React.FC = () => {
                 <Card key={p.id} className="p-4">
                   <p className="font-semibold text-gray-900">{p.subtitle}</p>
                   <p className="text-2xl font-semibold mt-1">{fmtMoney(p.price)}<span className="text-sm font-normal text-gray-500"> / {p.duration.toLowerCase()}</span></p>
-                  <p className="text-sm text-gray-600 mt-1">{p.quota === null ? 'Unlimited' : p.quota.toLocaleString('en-IN')} messages · {planCounts.get(p.id) || 0} compan{(planCounts.get(p.id) || 0) === 1 ? 'y' : 'ies'} on it</p>
+                  {p.mrp > p.price && (
+                    <p className="text-sm text-gray-500"><span className="line-through">{fmtMoney(p.mrp)}</span> <span className="font-semibold text-green-700">{discountPct(p)}% off</span></p>
+                  )}
+                  <p className="text-sm text-gray-600 mt-1">{p.quota === null ? 'Unlimited' : p.quota.toLocaleString('en-IN')} messages{perMessageRate(p) !== null && ` · ₹${perMessageRate(p)}/msg`}</p>
+                  <p className="text-sm text-gray-600">{planCounts.get(p.id) || 0} compan{(planCounts.get(p.id) || 0) === 1 ? 'y' : 'ies'} on it</p>
                 </Card>
               ))}
             </div>
-            <p className="text-xs text-gray-500 mt-2">Plans and prices are set in <span className="font-mono">SellarWhatsappPlans.ts</span>.</p>
+            <p className="text-xs text-gray-500 mt-2">Prices excl. GST. Set in <span className="font-mono">SellarWhatsappPlans.ts</span> and <span className="font-mono">functions/lib/index.js</span> (WHATSAPP_PLANS) — keep both in sync. Paid plans activate automatically.</p>
           </div>
         </div>
 
@@ -355,25 +371,45 @@ const CompanyPanel: React.FC<{ row: Row; onSaved: (id: string, form: CompanyConf
   const [saving, setSaving] = useState(false);
   const [recent, setRecent] = useState<{ type: string; to: string; status: string; at: Date | null; error: string | null }[] | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [submittedAt, setSubmittedAt] = useState<Date | null>(null);
 
   useEffect(() => {
-    getDoc(doc(db, 'adminWhatsappConfig', id)).then(snap => {
+    const loadForm = async () => {
+      const [snap, sub] = await Promise.all([
+        getDoc(doc(db, 'adminWhatsappConfig', id)),
+        row.requested === SNAPTO_REQUEST ? getDoc(doc(db, 'snaptoSubmissions', id)) : Promise.resolve(null),
+      ]);
+      let next: CompanyConfigForm;
       if (!snap.exists()) {
         const requestedPlan = SELLAR_WHATSAPP_PLANS.find(p => p.id === row.requested);
-        setForm(requestedPlan
+        next = requestedPlan
           ? { ...emptyForm, tier: 'sellar', active: true, planId: requestedPlan.id, quotaTotal: requestedPlan.quota === null ? '' : String(requestedPlan.quota) }
-          : { ...emptyForm });
-        return;
+          : { ...emptyForm };
+      } else {
+        const c = snap.data();
+        next = {
+          tier: (c.tier || 'none') as Tier, active: !!c.active, snaptoApiKey: c.snaptoApiKey || '', snaptoPhoneId: c.snaptoPhoneId || '', whatsappNumber: c.whatsappNumber || '',
+          templateName: c.templateName || '', reminderTemplateName: c.reminderTemplateName || '', stockAlertTemplateName: c.stockAlertTemplateName || '',
+          language: c.language || 'en', planId: c.planId || '',
+          quotaTotal: c.quotaTotal === null || c.quotaTotal === undefined ? '' : String(c.quotaTotal),
+          expiresAt: toInput(toDate(c.expiresAt)), quotaUsed: c.quotaUsed || 0,
+        };
       }
-      const c = snap.data();
-      setForm({
-        tier: (c.tier || 'none') as Tier, active: !!c.active, snaptoApiKey: c.snaptoApiKey || '', snaptoPhoneId: c.snaptoPhoneId || '', whatsappNumber: c.whatsappNumber || '',
-        templateName: c.templateName || '', reminderTemplateName: c.reminderTemplateName || '', stockAlertTemplateName: c.stockAlertTemplateName || '',
-        language: c.language || 'en', planId: c.planId || '',
-        quotaTotal: c.quotaTotal === null || c.quotaTotal === undefined ? '' : String(c.quotaTotal),
-        expiresAt: toInput(toDate(c.expiresAt)), quotaUsed: c.quotaUsed || 0,
-      });
-    }).catch(err => { console.error(err); setForm({ ...emptyForm }); });
+      // Pre-fill from the details the company sent through the setup guide.
+      if (sub && sub.exists()) {
+        const x = sub.data();
+        next = {
+          ...next, tier: 'snapto', active: true,
+          snaptoApiKey: x.snaptoApiKey || '', snaptoPhoneId: x.snaptoPhoneId || '', whatsappNumber: x.whatsappNumber || next.whatsappNumber,
+          templateName: x.templateName || '', reminderTemplateName: x.reminderTemplateName || '', stockAlertTemplateName: x.stockAlertTemplateName || '',
+          language: x.language || 'en',
+        };
+        setSubmittedAt(toDate(x.submittedAt));
+        setShowAdvanced(true);
+      }
+      setForm(next);
+    };
+    loadForm().catch(err => { console.error(err); setForm({ ...emptyForm }); });
 
     getDocs(query(collection(db, 'companies', id, 'whatsappMessages'), orderBy('sentAt', 'desc'), limit(8)))
       .then(snap => setRecent(snap.docs.map(d => {
@@ -420,7 +456,11 @@ const CompanyPanel: React.FC<{ row: Row; onSaved: (id: string, form: CompanyConf
         <Chip cls={HEALTH_META[row.health].cls}>{HEALTH_META[row.health].label}</Chip>
       </div>
 
-      {row.requested !== null && (
+      {row.requested === SNAPTO_REQUEST ? (
+        <p className="mt-3 text-sm bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-3 py-2">
+          <b>Sent their own Snapto details</b>{submittedAt && ` on ${fmtDateTime(submittedAt)}`} from the in-app setup guide. The form below is pre-filled — check the Phone Number ID and template names, then save to activate.
+        </p>
+      ) : row.requested !== null && (
         <p className="mt-3 text-sm bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-3 py-2">
           Requested <b>{SELLAR_WHATSAPP_PLANS.find(p => p.id === row.requested)?.name || row.requested || 'a plan'}</b>. The form below is pre-filled — check it and save to activate.
         </p>

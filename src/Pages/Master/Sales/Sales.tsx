@@ -1975,7 +1975,7 @@ const Sales: React.FC = () => {
                     />
                 )}
                 {renderClearCartConfirm()}
-                <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
+                <BarcodeScanner continuous isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
                 <BarcodeLinkModal
                     isOpen={isBarcodeLinkModalOpen}
                     barcode={barcodeToLink}
@@ -2619,7 +2619,7 @@ ${colClass || ''}`}
             {renderClearCartConfirm()}
             {/* Duplicate item popup */}
             {/* {renderDuplicateItemPrompt()} */}
-            <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
+            <BarcodeScanner continuous isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
             <BarcodeLinkModal
                 isOpen={isBarcodeLinkModalOpen}
                 barcode={barcodeToLink}

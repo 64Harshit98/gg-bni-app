@@ -7,6 +7,7 @@ import { drawWatermark } from "../Components/pdfWatermark";
 import { splitAddOns, reserveAddOnSpace, nameWithBase, drawAddOnText } from './addOnText';
 import { needsImageText, textToImage, NAME_IMG_W, installUnicodeText } from './textToImage';
 import { loyaltyBillLine } from './loyaltyBillLine';
+import { settleBillTotal, sumExpenses } from './billTotals';
 
 const compressBase64Image = (
     base64: string,
@@ -396,6 +397,7 @@ export const generateA5Invoice = async (
 
         // ================= PRE-CALCULATE MATH & GRAND TOTAL =================
         let calculatedGrandTotal = 0;
+        let allRowsSaved = data.items.length > 0; // every row printed from its saved taxable/tax
         let totalQty = 0;
         let totalTaxable = 0;
         let totalTaxAmt = 0;
@@ -443,7 +445,21 @@ export const generateA5Invoice = async (
             let taxAmt = 0;
             let finalRowTotal = 0;
 
-            if (resolvedIsEstimate) {
+            // Saved line values (POS sales; catalogue rows mapped in CatalogueBill.tsx).
+            // POS lines already carry their share of the bill discount, so recomputing tax from
+            // `amount` would print tax and totals that differ from the saved bill.
+            const savedTaxable = Number(item.taxableAmount) || 0;
+            const savedTax = Number(item.taxAmount) || 0;
+            const hasSavedValues = savedTaxable > 0 || savedTax > 0;
+
+            if (resolvedIsEstimate || !hasSavedValues) allRowsSaved = false;
+
+            if (!resolvedIsEstimate && hasSavedValues) {
+                taxableValue = savedTaxable;
+                finalRowTotal = savedTaxable + savedTax;
+                // Composition / no-GST bills: no tax column, the row keeps its saved amount
+                taxAmt = (safeScheme === 'NONE' || safeScheme === 'COMPOSITION') ? 0 : savedTax;
+            } else if (resolvedIsEstimate) {
                 finalRowTotal = rowTotal;
                 taxableValue = rowTotal;
                 taxAmt = 0;
@@ -500,17 +516,17 @@ export const generateA5Invoice = async (
             return needsImageText(t) ? textToImage(t, NAME_IMG_W, 8, true) : null;
         });
 
-        const billDiscount = Number(data.billDiscount) || 0;
-        const extraExpense = Number(data.extraExpenseAmount) || 0;
-        const advance = Number((data as any).advance) || 0;
-
-        const netPayable = calculatedGrandTotal - billDiscount + extraExpense - advance;
-        const finalRoundTotal = Math.round(netPayable);
-        // const roundOffAmt = finalRoundTotal - netPayable;
-
-        const finalTotalAmountToPrint = finalRoundTotal > 0
-            ? finalRoundTotal
-            : Number(data.finalAmount || 0);
+        // GRAND TOTAL is the bill's saved total — not reduced by the advance (that's the
+        // balance due, shown by the QR). Recomputed only for estimates or when no total was saved.
+        const { total: finalTotalAmountToPrint } = settleBillTotal({
+            linesTotal: calculatedGrandTotal,
+            expensesTotal: sumExpenses(data.expenses, data.extraExpenseAmount),
+            billDiscount: Number(data.billDiscount) || 0,
+            savedTotal: isExplicitEstimate ? 0 : Number(data.finalAmount) || 0,
+            recompute: isExplicitEstimate,
+            // catalogue orders take the discount off after tax, never inside the lines
+            discountInLinesByDefault: allRowsSaved && (data as any).isCatalogue !== true,
+        });
         // ================= ITEMS TABLE =================
         autoTable(doc, {
             startY: tableStartY,

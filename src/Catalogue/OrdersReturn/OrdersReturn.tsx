@@ -1,0 +1,1203 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { FiSend } from 'react-icons/fi';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../lib/Firebase';
+
+import { useAuth } from '../../context/auth-context';
+import BackButton from '../../Components/BackButton';
+import { ROUTES } from '../../constants/routes.constants';
+import { Modal } from '../../constants/Modal';
+import { State } from '../../enums';
+import PaymentDrawer from '../../Components/PaymentDrawer';
+import { ReturnListItem, RETURN_ITEM_GRID_BOUGHT } from '../../Components/ReturnListItem';
+import type { Order, OrderItem } from '../Orders';
+import SearchableItemInput from '../../UseComponents/SearchIteminput';
+import { IconScanCircle } from '../../constants/Icons'
+import BarcodeScanner from '../../UseComponents/BarcodeScanner';
+import { GenericCartList } from '../../Components/CartItem';
+import { applyRounding } from '../../Pages/Master/Sales'
+import { ItemEditDrawer } from '../../Components/ItemDrawer';
+import ShowWrapper from '../../context/ShowWrapper';
+import { Permissions } from '../../enums/permissions.enum';
+import { Spinner } from '../../constants/Spinner';
+import { useWhatsappProvider } from '../../Pages/Additional/Whatsapp/useWhatsappProvider';
+import { useOrderCommunication } from '../Orders/hooks'; // ← adjust path if needed
+import { useFormatNumber } from '../../lib/formatNumber';
+
+import type { TransactionItem, ExchangeItem } from './ordersReturn.types';
+import {
+  useBarcodeScanning,
+  useExchangeItems,
+  useItemEditDrawer,
+  useOrdersReturnLookupData,
+  handleListChange,
+  useReturnItemsSelection,
+  useReturnSummary,
+  useReturnTransaction,
+  useSaleSelection,
+} from './hooks';
+import useTutorial from '../hooks/useTutorial';
+import { completeTutorial } from '../hooks/useCompleteTutorial';
+import { TutorialStep } from '../../Components/TutorialStep';
+
+const TOTAL_STEPS = 5;
+const TUTORIAL_KEY = 'orderReturnTutorialDone';
+
+/*  Tutorial order
+    1 Original order · 2 Select return items · 3 Transaction type
+    4 Exchange items · 5 Return summary                                */
+
+// ---- Sample data shown ONLY while the tutorial is running ----
+const SAMPLE_SALE: any = {
+  id: 'sample-order',
+  orderId: 'ORD-1024',
+  userName: 'Sample Customer',
+  userLoginPhone: '9876543210',
+  totalAmount: 2400,
+  paidAmount: 2400,
+  returnHistory: [],
+  items: [],
+};
+const SAMPLE_PARTY_NAME = 'Sample Customer';
+const SAMPLE_PARTY_NUMBER = '9876543210';
+
+// Shape = TransactionItem (+ originalQuantity, which ReturnListItem reads for "Bought / max")
+const SAMPLE_RETURN_ITEMS: any[] = [
+  { id: 'sample-1', originalItemId: 'sample-1', name: 'Sample Item A', mrp: 500, quantity: 2, originalQuantity: 2, unitPrice: 500, amount: 1000 },
+  { id: 'sample-2', originalItemId: 'sample-2', name: 'Sample Item B', mrp: 700, quantity: 1, originalQuantity: 1, unitPrice: 700, amount: 700 },
+  { id: 'sample-3', originalItemId: 'sample-3', name: 'Sample Item C', mrp: 300, quantity: 1, originalQuantity: 1, unitPrice: 300, amount: 300 },
+];
+const SAMPLE_SELECTED_IDS = new Set<string>(['sample-1', 'sample-2']);
+// Shape = ExchangeItem
+const SAMPLE_EXCHANGE_ITEMS: any[] = [
+  {
+    id: 'sample-x1', originalItemId: 'sample-x1', name: 'Sample Item D',
+    mrp: 900, quantity: 1, unitPrice: 900, salesPrice: 900,
+    amount: 900, discount: 0, basePrice: 900,
+  },
+];
+// Return 1700 − discount 100 − exchange 900 = 700 balance
+const SAMPLE_SUMMARY = { returnGross: 1700, discount: 100, exchangeValue: 900, balance: 700, paid: 2400, due: 0 };
+
+/* ------------------------------------------------------------------ */
+/* UI-only helpers (catreturn design: Catalogue orange tokens)         */
+/*   primary #c2410c · hover #9a3412 · soft #ffedd5 · canvas #fff5ec   */
+/*   border #f6e1d0 · control border #7a8aa3 · ink #0f172b             */
+/*                                                                    */
+/* RESPONSIVE NOTE                                                    */
+/*   The app shell has a ~230px sidebar, so Tailwind's viewport        */
+/*   breakpoints overstate the room available to this page.            */
+/*   - xl (1280px+) : two columns + 380px summary panel                */
+/*   - below xl     : single column, inline summary, sticky action bar */
+/*   - sm / lg      : used for card-level tweaks (search width, facts) */
+/* ------------------------------------------------------------------ */
+
+const Ico: React.FC<{ d: string | string[]; size?: number; className?: string }> = ({ d, size = 18, className = '' }) => (
+  <svg
+    viewBox="0 0 24 24"
+    width={size}
+    height={size}
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.75}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+    className={`flex-none ${className}`}
+  >
+    {(Array.isArray(d) ? d : [d]).map((p, i) => <path key={i} d={p} />)}
+  </svg>
+);
+
+const ICON = {
+  search: ['M11 4a7 7 0 1 0 0 14a7 7 0 0 0 0-14z', 'm20 20-3.5-3.5'],
+  order: ['M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z', 'M14 3v5h5M9 13h6M9 17h4'],
+  ret: ['M9 14 4 9l5-5', 'M4 9h11a5 5 0 0 1 0 10h-3'],
+  box: ['M21 8 12 3 3 8v8l9 5 9-5z', 'M3 8l9 5 9-5M12 13v8'],
+  swap: ['M7 7h13l-3-3', 'M17 17H4l3 3'],
+  check: 'M5 12.5l4.5 4.5L19 7',
+  chevron: 'm6 9 6 6 6-6',
+};
+
+/** Round tinted icon chip used in card headers */
+const Tint: React.FC<{ tone?: 'orange' | 'green'; children: React.ReactNode }> = ({ tone = 'orange', children }) => (
+  <span
+    className={`inline-grid h-8 w-8 flex-none place-items-center rounded-sm ${tone === 'green' ? 'bg-[#e9faef] text-[#008236]' : 'bg-[#ffedd5] text-[#9a3412]'
+      }`}
+  >
+    {children}
+  </span>
+);
+
+/** Card with a header row (icon chip, title, right-side slot) */
+const Section: React.FC<{
+  icon?: React.ReactNode;
+  title: string;
+  caption?: React.ReactNode;
+  right?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+  flush?: boolean; // body without padding (list / table sections)
+}> = ({ icon, title, caption, right, children, className = '', flush = false }) => (
+  <section className={`overflow-visible rounded-sm border border-[#f6e1d0] bg-white shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)] ${className}`}>
+    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 border-b border-[#f6e1d0] px-4 py-3">
+      {icon}
+      <h2 className="text-[15px] font-semibold text-[#0f172b]">{title}</h2>
+      {caption && <span className="ml-auto text-xs text-[#5b6b86]">{caption}</span>}
+      {right && <div className={`w-full sm:w-auto ${caption ? '' : 'sm:ml-auto'}`}>{right}</div>}
+    </div>
+    <div className={flush ? 'min-w-0' : 'grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 p-4'}>{children}</div>
+  </section>
+);
+
+const Fact: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+  <div className="min-w-0 bg-white px-3 py-2">
+    <span className="block text-[10px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]">{label}</span>
+    {children}
+  </div>
+);
+
+const factInput =
+  'block w-full min-w-0 max-w-full bg-transparent text-[13px] font-semibold text-[#0f172b] outline-none truncate tabular-nums focus:text-[#c2410c]';
+
+const fieldBase =
+  'flex h-10 items-center gap-2 rounded-sm border border-[#7a8aa3] bg-white px-3 text-[#5b6b86] focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-[#ea580c]';
+
+// const scanBtn =
+//   'grid h-10 w-10 flex-none place-items-center rounded-sm border border-[#7a8aa3] bg-white text-[#0f172b] transition-colors hover:bg-[#fff8f2]';
+
+/** Compact variants used in card headers (search + scan next to the title) */
+const fieldSm = fieldBase.replace('h-10', 'h-[34px]');
+const scanSm =
+  'grid h-[34px] w-[34px] flex-none place-items-center rounded-sm border border-[#7a8aa3] bg-white text-[#0f172b] transition-colors hover:bg-[#fff8f2]';
+
+/** Return type as selectable cards (replaces <select>) */
+const TypeCards: React.FC<{
+  value: string;
+  onChange: (v: string) => void;
+  refundValue: string;
+  /** Nothing paid on the order: no money can go back, so Refund / Credit note are off. */
+  unpaid: boolean;
+}> = ({ value, onChange, refundValue, unpaid }) => {
+  // Same three cards always; on an unpaid order Refund and Credit note are just disabled
+  const opts = [
+    { v: refundValue, t: 'Refund', s: 'Money back', disabled: unpaid },
+    { v: 'Exchange', t: 'Exchange', s: 'Swap items', disabled: false },
+    { v: 'Credit Note', t: 'Credit note', s: 'Store credit', disabled: unpaid },
+  ];
+  return (
+    <div className="grid grid-cols-3 gap-2" role="group" aria-label="Transaction type">
+      {opts.map((o) => {
+        const on = value === o.v;
+        return (
+          <button
+            key={o.t}
+            type="button"
+            disabled={o.disabled}
+            aria-pressed={on}
+            onClick={() => onChange(o.v)}
+            className={`grid min-w-0 gap-0.5 rounded-sm border text-left transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${on
+              ? 'border-2 border-[#c2410c] bg-[#ffedd5] px-[9px] py-[7px]'
+              : 'border-[#7a8aa3] bg-white px-2.5 py-2 hover:bg-[#fff8f2]'
+              }`}
+          >
+            <b className={`truncate text-sm font-semibold ${on ? 'text-[#9a3412]' : 'text-[#0f172b]'}`}>{o.t}</b>
+            <small className="truncate text-[11px] leading-[15px] text-[#5b6b86]">{o.s}</small>
+          </button>
+        );
+      })}
+    </div>
+  );
+};
+
+const OrdersReturnPage: React.FC = () => {
+  const navigate = useNavigate();
+  const fmt = useFormatNumber();
+  const { currentUser } = useAuth();
+  const { state } = useLocation();
+
+  const [returnDate, setReturnDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [partyName, setPartyName] = useState<string>('');
+  const [partyNumber, setPartyNumber] = useState<string>('');
+  const [modeOfReturn, setModeOfReturn] = useState<string>('Credit Note');
+  const [originalSaleItems, setOriginalSaleItems] = useState<TransactionItem[]>([]);
+  const [selectedReturnIds, setSelectedReturnIds] = useState<Set<string>>(new Set());
+  const [exchangeItems, setExchangeItems] = useState<ExchangeItem[]>([]);
+
+  const [salesList, setSalesList] = useState<Order[]>([]);
+  const [selectedSale, setSelectedSale] = useState<Order | null>(null);
+
+  const [availableItems, setAvailableItems] = useState<OrderItem[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
+
+  // --- TUTORIAL ---
+  const [tutorialStep, setTutorialStep] = useState(0);
+  const orderRef = useRef<HTMLDivElement | null>(null);
+  const itemsRef = useRef<HTMLDivElement | null>(null);
+  const typeMobileRef = useRef<HTMLDivElement | null>(null);
+  const typeDesktopRef = useRef<HTMLDivElement | null>(null);
+  const exchangeRef = useRef<HTMLDivElement | null>(null);
+  const summaryMobileRef = useRef<HTMLDivElement | null>(null);
+  const summaryDesktopRef = useRef<HTMLDivElement | null>(null);
+
+  const stepRefMap: Record<number, React.RefObject<HTMLDivElement | null>[]> = {
+    1: [orderRef],
+    2: [itemsRef],
+    3: [typeMobileRef, typeDesktopRef],
+    4: [exchangeRef],
+    5: [summaryMobileRef, summaryDesktopRef],
+  };
+
+  const next = useCallback((n: number) => {
+    setTutorialStep(n <= TOTAL_STEPS ? n : 0);
+  }, []);
+
+  const skip = useCallback(() => {
+    completeTutorial(currentUser, TUTORIAL_KEY, setTutorialStep);
+  }, [currentUser]);
+
+  useTutorial(currentUser, setTutorialStep, TUTORIAL_KEY);
+
+  useEffect(() => {
+    if (tutorialStep === 0) return;
+    // two copies exist (mobile + xl): scroll to whichever one is visible
+    const el = (stepRefMap[tutorialStep] || [])
+      .map((r) => r.current)
+      .find((e) => e && e.offsetParent !== null);
+    if (!el) return;
+    setTimeout(() => {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 80);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tutorialStep]);
+
+  const { catalogueSettings, error } = useOrdersReturnLookupData({
+    currentUser,
+    setSalesList,
+    setAvailableItems,
+    setIsLoading,
+  });
+
+  const {
+    setExchangeSearchQuery,
+    handleRemoveFromList,
+    handleDiscountChange,
+    handleQuantityChange,
+    handleCustomPriceChange,
+    handleCustomPriceBlur,
+    handleExchangeItemSelected,
+    mappedExchangeItems,
+  } = useExchangeItems({
+    availableItems,
+    exchangeItems,
+    setExchangeItems,
+    modeOfReturn,
+  });
+
+  const {
+    searchSaleQuery, setSearchSaleQuery,
+    isSalesDropdownOpen, setIsSalesDropdownOpen, salesDropdownRef,
+    isCustomerDropdownOpen, customerDropdownRef,
+    filteredSales,
+    filteredCustomers,
+    handleSelectSale,
+    handleSelectCustomer,
+    handleClear,
+    paidAmountOnSale,
+    isDueSale,
+    refreshSelectedOrder,
+  } = useSaleSelection({
+    currentUser,
+    locationState: state,
+    navigate,
+    salesList,
+    setSalesList,
+    selectedSale,
+    setSelectedSale,
+    setPartyName,
+    partyNumber,
+    setPartyNumber,
+    setOriginalSaleItems,
+    setSelectedReturnIds,
+    setExchangeItems,
+    setExchangeSearchQuery,
+    setModeOfReturn,
+  });
+
+  const {
+    returnItemSearchQuery, setReturnItemSearchQuery,
+    itemsToReturn,
+    filteredReturnItems,
+    handleToggleReturnItem,
+  } = useReturnItemsSelection({
+    originalSaleItems,
+    setOriginalSaleItems,
+    selectedReturnIds,
+    setSelectedReturnIds,
+    modeOfReturn,
+  });
+
+  const {
+    selectedItemForEdit, setSelectedItemForEdit,
+    isItemDrawerOpen, setIsItemDrawerOpen,
+    handleCloseEditDrawer,
+    handleSaveSuccess,
+  } = useItemEditDrawer({
+    setAvailableItems,
+    setExchangeItems,
+  });
+
+  const { scannerPurpose, setScannerPurpose, handleBarcodeScanned } = useBarcodeScanning({
+    salesList,
+    availableItems,
+    handleSelectSale,
+    handleExchangeItemSelected,
+    setModal,
+  });
+
+  // --- CALCULATION LOGIC (UI) ---
+  const {
+    totalReturnGross,
+    returnExclusiveTax,
+    totalExchangeValue,
+    roundOff,
+    finalBalance,
+    refundable,
+    dueReduction,
+    discountDeducted
+  } = useReturnSummary(itemsToReturn, exchangeItems, selectedSale, modeOfReturn, availableItems, paidAmountOnSale);
+
+  const {
+    isDrawerOpen, setIsDrawerOpen,
+    exchangeBalanceAction, setExchangeBalanceAction,
+    returnSuccess, setReturnSuccess,
+    saveReturnTransaction,
+    handleProcessReturn,
+    getBalanceLabel,
+  } = useReturnTransaction({
+    currentUser,
+    navigate,
+    selectedSale,
+    setSelectedSale,
+    setOriginalSaleItems,
+    setSelectedReturnIds,
+    itemsToReturn,
+    exchangeItems,
+    setExchangeItems,
+    modeOfReturn,
+    partyName,
+    partyNumber,
+    availableItems,
+    finalBalance,
+    refundable,
+    isDueSale,
+    setIsLoading,
+    setModal,
+    refreshSelectedOrder,
+  });
+
+  // ---- WhatsApp share after return (same flow as Orders' action sheet) ----
+  const { provider: whatsappProvider } = useWhatsappProvider(currentUser?.companyId);
+  const [companyInfo, setCompanyInfo] = useState<any>(null);
+  const [catalogueWhatsappExtra, setCatalogueWhatsappExtra] = useState<string>('');
+
+  useEffect(() => {
+    const loadShareData = async () => {
+      if (!currentUser?.companyId) return;
+      try {
+        const [companySnap, billSnap] = await Promise.all([
+          getDoc(doc(db, 'companies', currentUser.companyId)),
+          getDoc(doc(db, 'companies', currentUser.companyId, 'settings', 'bill')),
+        ]);
+        if (companySnap.exists()) setCompanyInfo(companySnap.data());
+        if (billSnap.exists()) setCatalogueWhatsappExtra(billSnap.data().catalogueWhatsappExtraMessage || '');
+      } catch (e) {
+        console.error('Share data load error:', e);
+      }
+    };
+    loadShareData();
+  }, [currentUser?.companyId]);
+
+  const { sendingPdf, handleSendWhatsapp, handleSendWhatsappSnapto } = useOrderCommunication({
+    currentUser,
+    companyInfo,
+    availableItems: availableItems as any,
+    catalogueWhatsappExtra,
+    setModal,
+  });
+
+  const handleCloseReturnSuccess = () => {
+    setReturnSuccess(null);
+    navigate(ROUTES.ORDERDETAILS);
+  };
+
+  const handleSendReturnWhatsapp = () => {
+    if (!returnSuccess) return;
+    const { order, creditUpdated, creditAdded, newCreditBalance } = returnSuccess;
+    const inr = (n: number) => n.toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
+    // Credit message only when the credit note was actually updated
+    const creditMsg = creditUpdated
+      ? `Your credit note has been updated.\nCredit added: ${inr(creditAdded)}\nTotal available credit: ${inr(newCreditBalance)}`
+      : undefined;
+
+    if (whatsappProvider === 'botmaster') handleSendWhatsapp(order, creditMsg);
+    else handleSendWhatsappSnapto(order); // template-based, see note below
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#fff5ec] text-sm text-[#45556c]">
+        <span className="mr-3 h-5 w-5 animate-spin rounded-full border-2 border-[#f6e1d0] border-t-[#c2410c]" />
+        Loading...
+      </div>
+    );
+  }
+
+  // ---- Tutorial: show sample data instead of real data (same idea as Home page) ----
+  const isTutorialActive = tutorialStep > 0 && tutorialStep <= TOTAL_STEPS;
+
+  const vSale = isTutorialActive ? SAMPLE_SALE : selectedSale;
+  const vMode = isTutorialActive ? 'Exchange' : modeOfReturn;
+  const vPartyName = isTutorialActive ? SAMPLE_PARTY_NAME : partyName;
+  const vPartyNumber = isTutorialActive ? SAMPLE_PARTY_NUMBER : partyNumber;
+  const vOriginalItems: any[] = isTutorialActive ? SAMPLE_RETURN_ITEMS : originalSaleItems;
+  const vFilteredItems: any[] = isTutorialActive ? SAMPLE_RETURN_ITEMS : filteredReturnItems;
+  const vSelectedIds = isTutorialActive ? SAMPLE_SELECTED_IDS : selectedReturnIds;
+  const vReturnItems: any[] = isTutorialActive
+    ? SAMPLE_RETURN_ITEMS.filter((i) => SAMPLE_SELECTED_IDS.has(i.id))
+    : itemsToReturn;
+  const vExchangeItems: any[] = isTutorialActive ? SAMPLE_EXCHANGE_ITEMS : exchangeItems;
+  const vReturnGross = isTutorialActive ? SAMPLE_SUMMARY.returnGross : totalReturnGross;
+  const vDiscount = isTutorialActive ? SAMPLE_SUMMARY.discount : discountDeducted;
+  const vExchangeValue = isTutorialActive ? SAMPLE_SUMMARY.exchangeValue : totalExchangeValue;
+  // GST added on top of the returned items (orders billed with exclusive GST)
+  const vReturnTax = isTutorialActive ? 0 : returnExclusiveTax;
+  const vRoundOff = isTutorialActive ? 0 : roundOff;
+  const showRoundOff = Math.abs(vRoundOff) >= 0.01;
+  const vBalance = isTutorialActive ? SAMPLE_SUMMARY.balance : finalBalance;
+  const vPaid = isTutorialActive ? SAMPLE_SUMMARY.paid : paidAmountOnSale;
+  const vBalanceLabel = isTutorialActive ? 'Credit due' : getBalanceLabel();
+  // Money that can actually go back; the rest of a positive balance only lowers the due
+  const vRefundable = isTutorialActive ? SAMPLE_SUMMARY.balance : refundable;
+  const vDueReduction = isTutorialActive ? 0 : dueReduction;
+  /** The amount on the balance panel / action button. */
+  const vShown = vBalance > 0 && vRefundable > 0 ? vRefundable : vBalance;
+
+  // ---- UI-only derived values ----
+  const isExchange = vMode === 'Exchange';
+  // Unpaid order: Exchange with no new items is allowed (it just lowers the due)
+  const exchangeBlocked = !isTutorialActive && isExchange && exchangeItems.length === 0 && !isDueSale;
+  const balanceTone = vBalance >= 0 ? 'text-[#9a3412]' : 'text-[#d5000c]';
+  const balancePanel = vBalance >= 0 ? 'bg-[#ffedd5]' : 'bg-[#ffeef0]';
+  const actionLabel = `Process ${isExchange ? 'exchange' : vMode.toLowerCase()} · ₹${fmt(Math.abs(vShown), 2)}`;
+
+  // Due on order: total minus what was actually paid
+  const dueOnOrder = vSale
+    ? Number(Math.max(0, Number(vSale.totalAmount || 0) - Number(vPaid || 0)).toFixed(2))
+    : 0;
+  // Earlier returns: Order.returnHistory (one entry per past return)
+  const earlierReturnsCount = vSale?.returnHistory?.length ?? 0;
+
+  const returnQty = vReturnItems.reduce((s: number, i: any) => s + Number(i.quantity || 0), 0);
+
+  /** "+1 Item A, +2 Item B +1 more" for the "What this return changes" box */
+  const stockLine = (list: any[], sign: '+' | '−') =>
+    list.length === 0
+      ? '—'
+      : list
+        .slice(0, 2)
+        .map((i: any) => `${sign}${Number(i.quantity || 0)} ${i.name ?? ''}`.trim())
+        .join(', ') + (list.length > 2 ? ` +${list.length - 2} more` : '');
+
+  /** Balance row: "Credit due ₹x" with the existing action <select> when exchange leaves a positive balance */
+  const renderBalance = (big?: boolean) => (
+    <div className={`rounded-sm px-3.5 py-3 ${balancePanel}`}>
+      <div className="flex items-center justify-between gap-3">
+        {/* Credit / refund choice only when money was actually paid and some goes back */}
+        {isExchange && vBalance > 0 && vRefundable > 0 ? (
+          <select
+            value={isTutorialActive ? 'Credit Note' : exchangeBalanceAction}
+            onChange={(e) => !isTutorialActive && setExchangeBalanceAction(e.target.value as any)}
+            className="h-[34px] cursor-pointer rounded-sm border border-[#7a8aa3] bg-white px-2 text-[13px] font-medium text-[#0f172b] outline-none focus:border-[#ea580c]"
+          >
+            <option value="Credit Note">Credit Due</option>
+            <option value="Cash Refund">Cash Refund</option>
+          </select>
+        ) : (
+          <span className={`text-sm font-medium ${balanceTone}`}>{vBalanceLabel}</span>
+        )}
+        <b className={`${big ? 'text-[26px] leading-8' : 'text-[22px] leading-7'} font-semibold tracking-tight tabular-nums ${balanceTone}`}>
+          ₹{fmt(Math.abs(vShown), 2)}
+        </b>
+      </div>
+      {vRefundable > 0 && vDueReduction > 0 && (
+        <p className="mt-1 text-xs text-[#45556c]">
+          ₹{fmt(vDueReduction, 2)} first clears what’s still owed — only the amount paid over the new total goes back.
+        </p>
+      )}
+      {vBalance > 0 && vRefundable <= 0 && !isTutorialActive && (
+        <p className="mt-1 text-xs text-[#45556c]">
+          {isDueSale ? 'Nothing was paid on this order, so no money goes back.' : 'This is within what’s still owed, so no money goes back.'}
+        </p>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-[#fff5ec] text-[#0f172b]">
+      {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} theme="catalogue" />}
+      <BarcodeScanner isOpen={scannerPurpose !== null} onClose={() => setScannerPurpose(null)} onScanSuccess={handleBarcodeScanned} />
+
+      {returnSuccess && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-sm bg-white p-6 text-center shadow-2xl">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-sm bg-green-100">
+              <svg className="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+            </div>
+            <p className="mb-1 text-lg font-medium text-gray-800">Return processed successfully!</p>
+            {returnSuccess.creditUpdated && (
+              <p className="mb-4 text-sm text-[#45556c]">
+                Credit note updated: ₹{returnSuccess.creditAdded.toFixed(2)} added
+              </p>
+            )}
+            <div className="mt-4 flex flex-col gap-3">
+              {(returnSuccess.order.userLoginPhone || returnSuccess.order.billingDetails?.phone) && whatsappProvider === 'botmaster' && (
+                <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+                  <button
+                    onClick={handleSendReturnWhatsapp}
+                    disabled={sendingPdf}
+                    className="flex w-full items-center justify-center gap-2 rounded-sm bg-green-600 px-4 py-2.5 font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-50"
+                  >
+                    {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
+                  </button>
+                </ShowWrapper>
+              )}
+              {(returnSuccess.order.userLoginPhone || returnSuccess.order.billingDetails?.phone) && (whatsappProvider === 'snapto' || whatsappProvider === 'sellar') && (
+                <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+                  <button
+                    onClick={handleSendReturnWhatsapp}
+                    disabled={sendingPdf}
+                    className="flex w-full items-center justify-center gap-2 rounded-sm bg-green-600 px-4 py-2.5 font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-50"
+                  >
+                    {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
+                  </button>
+                </ShowWrapper>
+              )}
+              {whatsappProvider === 'none' && (
+                <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+                  <button
+                    onClick={() => navigate(ROUTES.WHATSAPP_CHOOSE)}
+                    className="flex w-full items-center justify-center gap-2 rounded-sm border border-gray-300 bg-gray-100 px-4 py-2.5 font-medium text-gray-700 transition-colors hover:bg-gray-200"
+                  >
+                    <FiSend /> Connect WhatsApp
+                  </button>
+                </ShowWrapper>
+              )}
+              <button
+                onClick={handleCloseReturnSuccess}
+                className="w-full rounded-sm bg-[#c2410c] px-4 py-2.5 text-white transition-colors hover:bg-[#9a3412]"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* === HEADER === */}
+      <header className="flex flex-shrink-0 items-center gap-3 border-b border-[#f6e1d0] bg-white px-3 py-2.5 md:px-6 md:py-3.5">
+        <div className="flex-shrink-0">
+          <BackButton to={ROUTES.ORDERDETAILS} />
+        </div>
+        <div className="min-w-0">
+          <h1 className="truncate text-lg font-semibold leading-6 md:text-[22px] md:leading-[30px]">Order return</h1>
+          <p className="text-xs leading-4 text-[#5b6b86]">Process refunds &amp; exchanges</p>
+        </div>
+      </header>
+
+      {/* MAIN CONTENT WRAPPER */}
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden xl:flex-row">
+
+        {/* --- LEFT PANEL --- */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <div className="relative min-h-0 w-full min-w-0 flex-1 space-y-3.5 overflow-y-auto overflow-x-hidden bg-[#fff5ec] p-3 pb-6 sm:p-4 sm:pb-6 xl:p-5">
+
+            {/* Original order */}
+            <div ref={orderRef}>
+              <TutorialStep
+                step={1}
+                currentStep={tutorialStep}
+                text="Search the original order by order number, customer name or phone to start a return."
+                onNext={() => next(2)}
+                onSkip={skip}
+                mobileArrowAlign="left"
+              >
+                <Section
+                  icon={<Tint><Ico d={ICON.order} /></Tint>}
+                  title="Original order"
+                  caption={vSale ? `Order found · ${vSale.orderId}` : undefined}
+                >
+                  <div className="relative" ref={salesDropdownRef}>
+                    <label htmlFor="search-sale" className="sr-only">Search original sale</label>
+                    <div className="flex min-w-0 gap-2">
+                      <div className={`${fieldBase} min-w-0 flex-1`}>
+                        <Ico d={ICON.search} size={16} />
+                        <input
+                          id="search-sale"
+                          type="text"
+                          value={searchSaleQuery}
+                          onChange={(e) => {
+                            let value = e.target.value;
+
+                            // Agar input sirf numbers hai, toh use 10 digits tak limit karo
+                            if (/^\d*$/.test(value)) {
+                              value = value.slice(0, 10);
+                            }
+
+                            setSearchSaleQuery(value);
+                            setIsSalesDropdownOpen(true);
+                          }}
+                          onFocus={() => setIsSalesDropdownOpen(true)}
+                          placeholder={
+                            selectedSale
+                              ? `(${selectedSale.orderId})`
+                              : "Search order no., customer name or phone"
+                          }
+                          className="min-w-0 flex-1 border-0 bg-transparent text-sm font-medium text-[#0f172b] outline-none placeholder:font-normal placeholder:text-[#5b6b86]"
+                          autoComplete="off"
+                          readOnly={!!selectedSale}
+                        />
+                      </div>
+                      {selectedSale && (
+                        <button
+                          onClick={handleClear}
+                          className="h-10 whitespace-nowrap rounded-sm px-3 text-sm font-medium text-[#45556c] transition-colors hover:bg-[#fff8f2] hover:text-[#0f172b]"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+
+                    {isSalesDropdownOpen && !selectedSale && (
+                      <div className="absolute top-full z-20 mt-1.5 max-h-60 w-full overflow-y-auto rounded-sm border border-[#f6e1d0] bg-white shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)]">
+                        {filteredSales.map((sale) => {
+                          // Calculate total from items instead of using static totalAmount
+                          const calculatedAmount = (sale.items || []).reduce(
+                            (sum: number, item: any) =>
+                              sum +
+                              Number(
+                                item.finalPrice ??
+                                item.amount ??
+                                (item.salesPrice || item.mrp || 0) * (item.quantity || 0)
+                              ),
+                            0
+                          );
+
+                          return (
+                            <div
+                              key={sale.id}
+                              className="cursor-pointer border-b border-[#f6e1d0] px-3 py-2.5 transition-colors last:border-0 hover:bg-[#fff8f2]"
+                              onClick={() => handleSelectSale(sale)}
+                            >
+                              <div className="flex items-baseline justify-between gap-3">
+                                <p className="truncate text-sm font-semibold">
+                                  {sale.userName}{' '}
+                                  <span className="font-normal text-[#5b6b86]">({sale.orderId || 'N/A'})</span>
+                                </p>
+                                <p className="flex-none text-sm font-semibold tabular-nums text-[#9a3412]">₹{fmt(calculatedAmount, 2)}</p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {vSale && (
+                    <div className="grid min-w-0 grid-cols-2 gap-px overflow-hidden rounded-sm border border-[#f6e1d0] bg-[#f6e1d0] lg:grid-cols-4">
+                      <Fact label="Order">
+                        <b className="block truncate text-[13px] font-semibold tabular-nums">{vSale.orderId}</b>
+                      </Fact>
+                      <Fact label="Customer">
+                        <input type="text" value={vPartyName} readOnly className={factInput} />
+                      </Fact>
+
+                      {/* Phone (with customer dropdown, unchanged behaviour) */}
+                      <div className="relative min-w-0 bg-white px-3 py-2" ref={customerDropdownRef}>
+                        <span className="block text-[10px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]">Phone</span>
+                        <input
+                          type="text"
+                          value={vPartyNumber}
+                          readOnly
+                          className={factInput}
+                          autoComplete="off"
+                          placeholder="Search customer by number or name..."
+                          maxLength={10}
+                        />
+                        {isCustomerDropdownOpen && filteredCustomers.length > 0 && (
+                          <div className="absolute left-0 top-full z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-sm border border-[#f6e1d0] bg-white shadow-[0_10px_28px_rgba(21,48,140,0.14)]">
+                            {filteredCustomers.map((customer) => (
+                              <div
+                                key={customer.id}
+                                className="cursor-pointer border-b border-[#f6e1d0] p-2.5 last:border-0 hover:bg-[#fff8f2]"
+                                onClick={() => handleSelectCustomer(customer)}
+                              >
+                                <p className="text-sm font-semibold">{customer.name}</p>
+                                <p className="text-xs text-[#5b6b86]">{customer.number}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <Fact label="From">
+                        <b className="block truncate text-[13px] font-semibold">Catalogue order</b>
+                      </Fact>
+                      <Fact label="Paid">
+                        <b className="block text-[13px] font-semibold tabular-nums text-[#008236]">₹{fmt(vPaid, 2)}</b>
+                      </Fact>
+                      <Fact label="Due on order">
+                        <b className="block text-[13px] font-semibold tabular-nums">₹{fmt(dueOnOrder, 2)}</b>
+                      </Fact>
+                      <Fact label="Earlier returns">
+                        <b className="block text-[13px] font-semibold">
+                          {earlierReturnsCount === 0 ? 'None' : `${earlierReturnsCount} ${earlierReturnsCount === 1 ? 'return' : 'returns'}`}
+                        </b>
+                      </Fact>
+                      <Fact label="Return date">
+                        <input
+                          type="date"
+                          value={returnDate}
+                          onChange={(e) => setReturnDate(e.target.value)}
+                          className={factInput}
+                        />
+                      </Fact>
+                    </div>
+                  )}
+                </Section>
+              </TutorialStep>
+            </div>
+
+            {vSale && (
+              <>
+                {/* Select return items */}
+                <div ref={itemsRef}>
+                  <TutorialStep
+                    step={2}
+                    currentStep={tutorialStep}
+                    text="Select the items the customer is returning and set the return quantity for each."
+                    onNext={() => next(3)}
+                    onSkip={skip}
+                  >
+                    <Section
+                      flush
+                      icon={<Tint><Ico d={ICON.ret} /></Tint>}
+                      title="Select return items"
+                      right={
+                        <div className="flex items-center gap-2">
+                          <div className={`${fieldSm} flex-1 sm:w-60 sm:flex-none`}>
+                            <Ico d={ICON.search} size={16} />
+                            <input
+                              type="text"
+                              value={returnItemSearchQuery}
+                              onChange={(e) => setReturnItemSearchQuery(e.target.value)}
+                              placeholder="Search items in this order"
+                              className="min-w-0 flex-1 border-0 bg-transparent text-sm text-[#0f172b] outline-none placeholder:text-[#5b6b86]"
+                              autoComplete="off"
+                            />
+                          </div>
+                        </div>
+                      }
+                    >
+                      {vOriginalItems.length === 0 ? (
+                        <p className="m-3 rounded-sm bg-[#fff8f2] px-3 py-4 text-center text-sm text-[#5b6b86]">
+                          No returnable items found for this order.
+                        </p>
+                      ) : (
+                        <>
+                          {/* Desktop table header (matches ReturnListItem grid) */}
+                          <div className={`hidden 2xl:grid ${RETURN_ITEM_GRID_BOUGHT} gap-x-3 border-b border-[#f6e1d0] bg-[#fff8f2] px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]`}>
+                            <span />
+                            <span>Item</span>
+                            <span className="text-right">Bought</span>
+                            <span>Return qty</span>
+                            <span className="text-right">Price</span>
+                            <span className="text-right">Subtotal</span>
+                          </div>
+
+                          <div className="flex flex-col gap-2 p-3 2xl:gap-0 2xl:p-0">
+                            {vFilteredItems.map((item: any) => (
+                              <ReturnListItem
+                                key={item.id}
+                                item={item}
+                                isSelected={vSelectedIds.has(item.id)}
+                                onToggle={isTutorialActive ? () => { } : handleToggleReturnItem}
+                                onQuantityChange={(id, val) => {
+                                  if (isTutorialActive) return; // sample rows are read-only
+                                  const item = originalSaleItems.find(i => i.id === id);
+                                  if (!item) return;
+                                  const safeQty = Math.min(Math.max(1, val), (item as any).originalQuantity);
+                                  handleListChange(setOriginalSaleItems, id, 'quantity', safeQty);
+                                }}
+                                showMrp={true}
+                                theme="orange"
+                                showBought
+                              />
+                            ))}
+                          </div>
+
+                          <div className="flex flex-wrap justify-end gap-x-6 gap-y-1 rounded-sm border-t border-[#f6e1d0] bg-[#fff8f2] px-4 py-2.5 text-[13px] text-[#45556c]">
+                            <span>Selected <b className="tabular-nums text-[#0f172b]">{vSelectedIds.size} of {vOriginalItems.length}</b> items</span>
+                            <span>Return qty <b className="tabular-nums text-[#0f172b]">{returnQty}</b></span>
+                            <span>Return value <b className="tabular-nums text-[#0f172b]">₹{fmt(vReturnGross, 2)}</b></span>
+                          </div>
+                        </>
+                      )}
+                    </Section>
+                  </TutorialStep>
+                </div>
+
+                {/* Transaction type (below xl only; wide screens have it in the summary panel) */}
+                <div ref={typeMobileRef} className="xl:hidden">
+                  <TutorialStep
+                    step={3}
+                    currentStep={tutorialStep}
+                    text="Choose Refund, Exchange or Credit note. Exchange lets you add new items for the customer."
+                    onNext={() => next(4)}
+                    onSkip={skip}
+                  >
+                    <Section
+                      className="xl:hidden"
+                      icon={<Tint><Ico d={ICON.swap} /></Tint>}
+                      title="Transaction type"
+                    >
+                      <TypeCards
+                        value={vMode}
+                        onChange={(v) => !isTutorialActive && setModeOfReturn(v)}
+                        refundValue="Cash Refund"
+                        unpaid={isTutorialActive ? false : isDueSale}
+                      />
+                    </Section>
+                  </TutorialStep>
+                </div>
+
+                {/* Exchange section */}
+                {isExchange && (
+                  <div ref={exchangeRef}>
+                    <TutorialStep
+                      step={4}
+                      currentStep={tutorialStep}
+                      text="For an exchange, search or scan the new items the customer wants. They are added to the exchange cart."
+                      onNext={() => next(5)}
+                      onSkip={skip}
+                    >
+                      <Section
+                        icon={<Tint tone="green"><Ico d={ICON.box} /></Tint>}
+                        title="Exchange items"
+                        right={
+                          <div className="flex items-center gap-2">
+                            <div className="min-w-0 flex-1 sm:w-72 sm:flex-none [&_input]:!h-[34px] [&_input]:!py-0 [&_input]:!text-sm">
+                              <SearchableItemInput
+                                label=""
+                                placeholder="Search inventory..."
+                                // FIX: availableItems ko map karke purchasePrice ensure karein
+                                items={availableItems.map((item: any) => ({
+                                  ...item,
+                                  purchasePrice: item.purchasePrice ?? 0 // Agar undefined hai toh 0 set kar do
+                                }))}
+                                onItemSelected={handleExchangeItemSelected}
+                                isLoading={isLoading}
+                                error={error}
+                                onSearchChange={setExchangeSearchQuery}
+                              />
+                            </div>
+                            <button onClick={() => setScannerPurpose('item')} className={scanSm} aria-label="Scan item">
+                              <IconScanCircle width={18} height={18} />
+                            </button>
+                          </div>
+                        }
+                      >
+                        {isTutorialActive && (
+                          <div className="overflow-hidden rounded-sm border border-[#f6e1d0]">
+                            <div className="border-b border-[#f6e1d0] bg-[#fff8f2] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]">
+                              Exchange cart · {SAMPLE_EXCHANGE_ITEMS.length} item
+                            </div>
+                            <div className="bg-[#fff8f2]">
+                              {SAMPLE_EXCHANGE_ITEMS.map((x) => (
+                                <div key={x.id} className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm">
+                                  <span className="truncate font-semibold">{x.name}</span>
+                                  <span className="flex-none tabular-nums text-[#5b6b86]">
+                                    {x.quantity} × ₹{fmt(x.unitPrice, 2)} = <b className="text-[#0f172b]">₹{fmt(x.amount, 2)}</b>
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {!isTutorialActive && exchangeItems.length > 0 && (
+                          <div className="overflow-hidden rounded-sm border border-[#f6e1d0]">
+                            <div className="border-b border-[#f6e1d0] bg-[#fff8f2] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]">
+                              Exchange cart · {exchangeItems.length} {exchangeItems.length === 1 ? 'item' : 'items'}
+                            </div>
+
+                            <div className="max-h-60 overflow-y-auto bg-[#fff8f2]">
+                              <GenericCartList<any>
+                                items={mappedExchangeItems}
+                                availableItems={availableItems as any}
+                                basePriceKey="mrp"
+                                priceLabel="MRP"
+                                settings={{
+                                  enableRounding: false,
+                                  roundingInterval: 1,
+                                  enableItemWiseDiscount: catalogueSettings?.enableItemWiseDiscount ?? false,
+                                  enableDiscount2: false,
+                                  lockDiscount: false,
+                                  lockPrice: false,
+                                  hideMrp: false
+                                }}
+                                applyRounding={applyRounding}
+                                State={State}
+                                setModal={setModal}
+
+                                onOpenEditDrawer={(item: any) => {
+                                  const realItem = availableItems.find(i => i.id === item.id);
+                                  if (!realItem) {
+                                    console.error("Original item not found");
+                                    return;
+                                  }
+
+                                  setSelectedItemForEdit(realItem as any);
+                                  setIsItemDrawerOpen(true);
+                                }}
+
+                                onDeleteItem={(id: any) => handleRemoveFromList(setExchangeItems, id)}
+                                onDiscountChange={handleDiscountChange}
+                                onDiscount2Change={() => { }}
+                                onCustomPriceChange={handleCustomPriceChange}
+                                onCustomPriceBlur={handleCustomPriceBlur}
+                                onQuantityChange={handleQuantityChange}
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {isItemDrawerOpen && selectedItemForEdit && (
+                          <ItemEditDrawer
+                            item={selectedItemForEdit}
+                            isOpen={isItemDrawerOpen}
+                            onClose={handleCloseEditDrawer}
+                            onSaveSuccess={handleSaveSuccess}
+                            itemGroupRoute={`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`}
+                          />
+                        )}
+                      </Section>
+                    </TutorialStep>
+                  </div>
+                )}
+
+                {/* Below xl: inline summary (above the sticky action bar) */}
+                <div ref={summaryMobileRef} className="xl:hidden">
+                  <TutorialStep
+                    step={5}
+                    currentStep={tutorialStep}
+                    text="Check the final balance here. When everything looks right, use the button at the bottom to process the return."
+                    onNext={() => completeTutorial(currentUser, TUTORIAL_KEY, setTutorialStep)}
+                    onSkip={skip}
+                    isLast
+                    position="top"
+                  >
+                    <Section className="xl:hidden" title="Return summary">
+                      <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1.5 text-sm">
+                        <dt className="text-[#45556c]">Return value</dt>
+                        <dd className="text-right tabular-nums">₹{fmt(vReturnGross, 2)}</dd>
+                        {vReturnTax > 0 && (
+                          <>
+                            <dt className="text-xs text-[#45556c]">GST on returned items</dt>
+                            <dd className="text-right text-xs tabular-nums">+ ₹{fmt(vReturnTax, 2)}</dd>
+                          </>
+                        )}
+                        {vDiscount > 0 && (
+                          <>
+                            <dt className="text-xs text-[#d5000c]">Less bill discount</dt>
+                            <dd className="text-right text-xs tabular-nums text-[#d5000c]">- ₹{fmt(vDiscount, 2)}</dd>
+                          </>
+                        )}
+                        {isExchange && (
+                          <>
+                            <dt className="text-[#45556c]">Exchange value{vReturnTax > 0 ? ' (incl. GST)' : ''}</dt>
+                            <dd className="text-right tabular-nums text-[#9a3412]">₹{fmt(vExchangeValue, 2)}</dd>
+                          </>
+                        )}
+                        {showRoundOff && (
+                          <>
+                            <dt className="text-xs text-[#45556c]">Round off</dt>
+                            <dd className="text-right text-xs tabular-nums">{vRoundOff > 0 ? '+' : '-'} ₹{fmt(Math.abs(vRoundOff), 2)}</dd>
+                          </>
+                        )}
+                      </dl>
+                      {renderBalance()}
+                    </Section>
+                  </TutorialStep>
+                </div>
+              </>
+            )}
+
+          </div>
+
+          {/* --- PINNED ACTION BAR (below xl) --- same as the artifact's mobile "checkout" bar:
+            a flex sibling under the scroll area, so it always sits at the bottom of the page. */}
+          {vSale && (
+            <div className="flex flex-none items-center gap-3 border-t border-[#f6e1d0] bg-white px-4 py-3 xl:hidden">
+              <div className="min-w-0">
+                <span className={`block text-xs ${balanceTone}`}>{vBalanceLabel}</span>
+                <b className={`block text-xl leading-[26px] tabular-nums ${balanceTone}`}>₹{fmt(Math.abs(vShown), 2)}</b>
+              </div>
+              <button
+                onClick={isTutorialActive ? undefined : handleProcessReturn}
+                disabled={isTutorialActive || exchangeBlocked || (isExchange && itemsToReturn.length === 0)}
+                className="ml-auto h-[52px] min-w-0 flex-1 rounded-sm bg-[#c2410c] px-4 text-[15px] font-semibold text-white transition-colors hover:bg-[#9a3412] disabled:cursor-not-allowed disabled:bg-[#c2410c]/45 sm:max-w-sm"
+              >
+                <span className="block truncate">{actionLabel}</span>
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* --- RIGHT PANEL (wide screens only, xl+) --- */}
+        <aside className="relative z-10 hidden h-full w-[380px] flex-none flex-col border-l border-[#f6e1d0] bg-white p-5 xl:flex">
+          {vSale ? (
+            <div className="flex h-full min-h-0 flex-col gap-3.5">
+              {/* Scrollable body */}
+              <div className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto pr-1">
+                <h2 className="text-base font-semibold">Return summary</h2>
+
+                {/* Transaction Type */}
+                <div ref={typeDesktopRef}>
+                  <TutorialStep
+                    step={3}
+                    currentStep={tutorialStep}
+                    text="Choose Refund, Exchange or Credit note. Exchange lets you add new items for the customer."
+                    onNext={() => next(4)}
+                    onSkip={skip}
+                  >
+                    <div>
+                      <span className="mb-1 block text-xs font-medium text-[#45556c]">Transaction type</span>
+                      <TypeCards
+                        value={vMode}
+                        onChange={(v) => !isTutorialActive && setModeOfReturn(v)}
+                        refundValue="Cash Refund"
+                        unpaid={isTutorialActive ? false : isDueSale}
+                      />
+                    </div>
+                  </TutorialStep>
+                </div>
+
+                {/* Financials */}
+                <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1.5 text-sm">
+                  <dt className="text-[#45556c]">Return value ({returnQty} {returnQty === 1 ? 'pc' : 'pcs'})</dt>
+                  <dd className="text-right tabular-nums">₹{fmt(vReturnGross, 2)}</dd>
+                  {vReturnTax > 0 && (
+                    <>
+                      <dt className="text-[#45556c]">Add: GST on returned items</dt>
+                      <dd className="text-right tabular-nums">+ ₹{fmt(vReturnTax, 2)}</dd>
+                    </>
+                  )}
+                  {vDiscount > 0 && (
+                    <>
+                      <dt className="text-[#d5000c]">Less: proportional discount</dt>
+                      <dd className="text-right tabular-nums text-[#d5000c]">- ₹{fmt(vDiscount, 2)}</dd>
+                    </>
+                  )}
+                  <dt className="text-[#45556c]">Paid on this order</dt>
+                  <dd className="text-right tabular-nums">₹{fmt(vPaid, 2)}</dd>
+                  <dt className="mt-1 border-t border-[#f6e1d0] pt-2 text-base font-semibold">Net return value</dt>
+                  <dd className="mt-1 border-t border-[#f6e1d0] pt-2 text-right text-base font-semibold tabular-nums">
+                    ₹{fmt(vReturnGross + vReturnTax - vDiscount, 2)}
+                  </dd>
+                  {isExchange && (
+                    <>
+                      <dt className="text-[#45556c]">Less: new items value{vReturnTax > 0 ? ' (incl. GST)' : ''}</dt>
+                      <dd className="text-right tabular-nums text-[#9a3412]">- ₹{fmt(vExchangeValue, 2)}</dd>
+                    </>
+                  )}
+                  {showRoundOff && (
+                    <>
+                      <dt className="text-[#45556c]">Round off</dt>
+                      <dd className="text-right tabular-nums">{vRoundOff > 0 ? '+' : '-'} ₹{fmt(Math.abs(vRoundOff), 2)}</dd>
+                    </>
+                  )}
+                </dl>
+
+                {/* Result panel sits right under the summary, like the artifact */}
+                <div ref={summaryDesktopRef}>
+                  <TutorialStep
+                    step={5}
+                    currentStep={tutorialStep}
+                    text="Check the final balance here. When everything looks right, use the button below to process the return."
+                    onNext={() => completeTutorial(currentUser, TUTORIAL_KEY, setTutorialStep)}
+                    onSkip={skip}
+                    isLast
+                    position="top"
+                  >
+                    {renderBalance(true)}
+                  </TutorialStep>
+                </div>
+
+                {/* What this return changes */}
+                <div>
+                  <span className="mb-1 block text-xs font-medium text-[#45556c]">What this return changes</span>
+                  <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 rounded-sm bg-[#fff8f2] p-3 text-[13px]">
+                    <dt className="flex items-center gap-1.5 text-[#45556c]"><Ico d={ICON.order} size={16} />Stock in</dt>
+                    <dd className="break-words text-right font-semibold">{stockLine(vReturnItems, '+')}</dd>
+                    {isExchange && (
+                      <>
+                        <dt className="flex items-center gap-1.5 text-[#45556c]"><Ico d={ICON.box} size={16} />Stock out</dt>
+                        <dd className="break-words text-right font-semibold">{stockLine(vExchangeItems, '−')}</dd>
+                      </>
+                    )}
+                  </dl>
+                </div>
+              </div>
+              <button
+                onClick={isTutorialActive ? undefined : handleProcessReturn}
+                disabled={isTutorialActive}
+                className={`mt-auto h-[54px] w-full rounded-sm px-4 text-[15px] font-semibold transition-colors ${exchangeBlocked
+                  ? 'cursor-not-allowed bg-[#c2410c]/45 text-white'
+                  : 'bg-[#c2410c] text-white hover:bg-[#9a3412]'
+                  }`}
+              >
+                {actionLabel}
+              </button>
+            </div>
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+              <span className="grid h-12 w-12 place-items-center rounded-sm bg-[#ffedd5] text-[#9a3412]">
+                <Ico d={ICON.search} size={24} />
+              </span>
+              <p className="text-sm text-[#5b6b86]">Search an order to start a return</p>
+            </div>
+          )}
+        </aside>
+      </div>
+
+      <PaymentDrawer
+        mode='sale'
+        customerSource='catalogue'
+        theme='catalogue'
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        subtotal={Math.abs(finalBalance)}
+        billTotal={Math.abs(finalBalance)}
+        onPaymentComplete={saveReturnTransaction}
+        initialPartyName={partyName}
+        initialPartyNumber={partyNumber}
+        allowDueBilling={true}
+      />
+    </div>
+  );
+};
+
+export default OrdersReturnPage;

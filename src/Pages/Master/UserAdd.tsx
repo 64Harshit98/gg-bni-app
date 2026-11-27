@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ROUTES } from '../../constants/routes.constants';
 import { ROLES, Variant } from '../../enums';
 import { useAuth } from '../../context/auth-context';
 import { inviteUser } from '../../lib/AuthOperations';
-import { FiX } from 'react-icons/fi';
+import { newEmailError } from '../../lib/email';
+import { useEmailCheck } from '../../lib/useEmailCheck';
 import { FloatingLabelInput } from '../../Components/ui/FloatingLabelInput';
 import { CustomButton } from '../../Components/CustomButton';
+import { EmailSuggestion } from '../../Components/EmailSuggestion';
 import { ReusableDropdown, type Option } from '../../Components/Dropdown';
+import BackButton from '../../Components/BackButton';
 
 const roleOptions: Option<ROLES>[] = [
   { value: ROLES.SALESMAN, label: 'Salesman' },
@@ -15,7 +16,6 @@ const roleOptions: Option<ROLES>[] = [
   { value: ROLES.OWNER, label: 'Owner' }
 ];
 const UserAdd: React.FC = () => {
-  const navigate = useNavigate();
   const { currentUser, loading } = useAuth();
   const [fullName, setFullName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -25,6 +25,7 @@ const UserAdd: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const emailCheck = useEmailCheck(email, { newAccount: true });
 
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,6 +38,12 @@ const UserAdd: React.FC = () => {
 
     if (!fullName.trim() || !email.trim() || !password.trim() || !phoneNumber.trim()) {
       setError("Please fill out all user details.");
+      return;
+    }
+
+    emailCheck.reveal();
+    if (newEmailError(email) || emailCheck.holdForTypo()) {
+      document.getElementById('email')?.focus();
       return;
     }
 
@@ -65,7 +72,6 @@ const UserAdd: React.FC = () => {
 
       setTimeout(() => {
         setSuccess(null);
-        navigate(ROUTES.MASTERS);
       }, 2000);
 
     } catch (err: any) {
@@ -92,13 +98,7 @@ const UserAdd: React.FC = () => {
 
         {/* Header Section */}
         <div className="flex items-start gap-4 border-b border-slate-200 pb-6 mb-8">
-          <button
-            onClick={() => navigate(ROUTES.HOME)}
-            className="mt-1 p-2 -ml-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-colors"
-            aria-label="Go back"
-          >
-            <FiX className="w-6 h-6" />
-          </button>
+          <BackButton />
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 tracking-tight">Add New User</h1>
             <p className="text-sm text-slate-500 mt-1">Fill in the details below to invite a new team member.</p>
@@ -123,6 +123,7 @@ const UserAdd: React.FC = () => {
               id="phoneNumber"
               type="tel"
               label="Phone Number"
+              maxLength={10}
               value={phoneNumber}
               onChange={(e) => setPhoneNumber(e.target.value)}
               required
@@ -130,15 +131,26 @@ const UserAdd: React.FC = () => {
             />
           </div>
 
-          <FloatingLabelInput
-            id="email"
-            type="email"
-            label="Email Address"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            disabled={isSubmitting}
-          />
+          <div>
+            <FloatingLabelInput
+              id="email"
+              type="email"
+              label="Email Address"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onBlur={emailCheck.onBlur}
+              aria-invalid={Boolean(emailCheck.error) || undefined}
+              aria-describedby="email-msg"
+              required
+              disabled={isSubmitting}
+              className={emailCheck.error ? 'border-red-600' : ''}
+            />
+            <p id="email-msg" aria-live="polite" className="mt-1 text-xs leading-[17px] text-red-600 empty:hidden">
+              {emailCheck.error}
+              {emailCheck.error && emailCheck.suggestion && ' '}
+              <EmailSuggestion check={emailCheck} onUse={setEmail} />
+            </p>
+          </div>
 
           <FloatingLabelInput
             id="password"

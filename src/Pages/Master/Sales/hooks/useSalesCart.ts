@@ -1,0 +1,767 @@
+import { useState, useEffect, useMemo, useRef } from 'react';
+import type { Item, PriceTier, AddOnOption } from '../../../../constants/models';
+import { getSlabForQty } from '../../../../constants/models';
+import { State } from '../../../../enums';
+import { findTierByBarcode, hasQuantitySlabs } from '../../../utils/pricingUtils';
+import { applyLineRounding } from '../sales.calculations';
+import { discountBaseOf, loadedLineDiscount, presetLinePricing } from '../sales.discountBase';
+import { withoutCustomerPrice as stripCustomerPrice, MANUAL_PRICE_SKIP } from '../../../utils/customerPricing';
+import type { SalesItem } from '../sales.types';
+import type { ScanOutcome } from '../../../../UseComponents/BarcodeScanner';
+import {
+    discountFromPrice,
+    isNewItemLine,
+    newTempProductId,
+    normalizeItemName,
+    type NewItemField,
+    type QuickItemDetails,
+} from '../../../../lib/quickAddItems';
+
+// Same item + same add-on combo = same cart line (order of selection doesn't matter)
+const addOnKeyOf = (addOns: AddOnOption[]) => addOns.map(a => a.id).sort().join('|');
+
+// A hand edit (or a re-price from the item master) means the line no longer carries
+// the customer's agreed price — drop the "applied" tag so the flag shows again.
+// A hand-edited price is the cashier's call: drop any customer-price tag and mark the
+// line so the customer's fixed price is never re-applied over it automatically.
+const withoutCustomerPrice = (line: SalesItem): SalesItem =>
+    ({ ...stripCustomerPrice(line), customerPriceSkip: MANUAL_PRICE_SKIP });
+
+interface UseSalesCartParams {
+    salesSettings: any;
+    loadingSettings: boolean;
+    isEditMode: boolean;
+    invoiceToEdit: any;
+    pageIsLoading: boolean;
+    availableItems: Item[];
+    setAvailableItems: React.Dispatch<React.SetStateAction<Item[]>>;
+    dbOperations: any;
+    setModal: (modal: { message: string; type: State } | null) => void;
+    companyId?: string; // 👈 NEW — needed to scope the cart draft per company
+}
+
+// Owns item/cart management — moved verbatim from Sales.tsx: the `items`
+// state and its initial sessionStorage-restore, the edit-mode item hydration
+// effect and the cart-items sessionStorage draft-save effect (both mutate
+// `items`, so they live here rather than in useSalesCatalogueAndSettings —
+// see the note in that hook), addItemToCart and its duplicate-item-prompt
+// flow, barcode linking/scanning, quantity/delete handlers, discount/price
+// lock+edit handlers, the item-edit-drawer flow, clear-cart confirm, and the
+// grid category/sort/search state (kept in this single hook rather than
+// split out, since the grid state and cart-mutation handlers both read/write
+// `items` and splitting them would mean threading `items`/`setItems` between
+// two hooks for no real gain in clarity).
+export const useSalesCart = ({
+    salesSettings,
+    loadingSettings,
+    isEditMode,
+    invoiceToEdit,
+    pageIsLoading,
+    availableItems,
+    setAvailableItems,
+    dbOperations,
+    setModal,
+    companyId, // 👈 NEW
+}: UseSalesCartParams) => {
+    const draftKey = companyId ? `sales_cart_draft_${companyId}` : null; // 👈 NEW
+    // Sales Settings: take the item's discount off the sale price instead of MRP (see sales.discountBase.ts)
+    const discountOnSalePrice = !!salesSettings?.discountOnSalePrice;
+
+    const [items, setItems] = useState<SalesItem[]>(() => {
+        if (isEditMode || !draftKey) return []; // 👈 companyId aane tak draft mat uthao
+        try {
+            const savedDraft = sessionStorage.getItem(draftKey);
+            const parsedDraft = savedDraft ? JSON.parse(savedDraft) : [];
+            return parsedDraft;
+        } catch (e) {
+            return [];
+        }
+    });
+
+    const longPressTimer = useRef<NodeJS.Timeout | null>(null);
+    const cartListRef = useRef<HTMLDivElement>(null);
+
+    const [isDiscountLocked, setIsDiscountLocked] = useState(true);
+    const [discountInfo, setDiscountInfo] = useState<string | null>(null);
+    const [isPriceLocked, setIsPriceLocked] = useState(true);
+    const [priceInfo, setPriceInfo] = useState<string | null>(null);
+
+    const [duplicateItemPrompt, setDuplicateItemPrompt] = useState<{ item: Item; existingCount: number; tier?: PriceTier; addOns?: AddOnOption[] } | null>(null);
+    const [isScannerOpen, setIsScannerOpen] = useState(false);
+
+    const [barcodeToLink, setBarcodeToLink] = useState<string | null>(null);
+    const [isBarcodeLinkModalOpen, setIsBarcodeLinkModalOpen] = useState(false);
+    const [isLinkingBarcode, setIsLinkingBarcode] = useState(false);
+
+    const [selectedCategory, setSelectedCategory] = useState<string>('All');
+    const [listSelectedCategory] = useState<string>('All');
+    const [gridSearchQuery, setGridSearchQuery] = useState<string>('');
+    const [cartSearchQuery, setCartSearchQuery] = useState<string>('');
+    const [sortOrder, setSortOrder] = useState<'az' | 'za' | 'price_asc' | 'price_desc'>('az');
+
+    const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(null);
+    const [isItemDrawerOpen, setIsItemDrawerOpen] = useState(false);
+
+    const [showClearCartConfirm, setShowClearCartConfirm] = useState(false);
+
+    useEffect(() => {
+        if (!loadingSettings && salesSettings) {
+            setIsDiscountLocked(salesSettings.lockDiscountEntry ?? false);
+            setIsPriceLocked(salesSettings.lockSalePriceEntry ?? false);
+        }
+    }, [loadingSettings, salesSettings?.lockDiscountEntry, salesSettings?.lockSalePriceEntry]);
+
+    // ... (Edit Mode Init - Unchanged) ...
+    useEffect(() => {
+        if (isEditMode && invoiceToEdit?.items && !loadingSettings) {
+            const nonEditableItems = invoiceToEdit.items.map((item: any) => ({
+                ...item,
+                id: crypto.randomUUID(),
+                productId: item.id,
+                isEditable: true,
+                // saved effectiveUnitPrice includes add-ons; the cart keeps them separate
+                customPrice: item.effectiveUnitPrice !== undefined
+                    ? Number(item.effectiveUnitPrice) - (Number(item.addOnAmount) || 0)
+                    : undefined,
+                quantity: item.quantity || 1,
+                mrp: item.mrp || 0,
+                discount: loadedLineDiscount(item, discountOnSalePrice),
+                discount2: item.discount2 || 0,
+                taxableAmount: item.taxableAmount,
+                taxAmount: item.taxAmount,
+                taxRate: item.taxRate,
+                taxType: item.taxType,
+                finalPrice: item.finalPrice,
+                effectiveUnitPrice: item.effectiveUnitPrice,
+                discountPercentage: item.discountPercentage,
+                purchasePrice: item.purchasePrice || 0,
+                tax: Number(item.tax ?? item.taxRate ?? 0),
+                itemGroupId: item.itemGroupId || '',
+                stock: item.stock ?? item.Stock ?? 0,
+                amount: item.amount || 0,
+                barcode: item.barcode || '',
+                restockQuantity: item.restockQuantity || 0,
+                unit: item.unit || '',                     // ADDED
+                unitMultiplier: 1,  // ADDED
+                packetSize: item.packetSize || null,
+            }));
+            setItems(nonEditableItems);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isEditMode, invoiceToEdit, loadingSettings]);
+
+    useEffect(() => {
+        if (!isEditMode && !pageIsLoading && draftKey) {
+            sessionStorage.setItem(draftKey, JSON.stringify(items));
+        }
+    }, [items, isEditMode, pageIsLoading, draftKey]);
+
+    const categories = useMemo(() => {
+        const groups = new Set(availableItems.map(i => i.itemGroupId || 'uncategorized'));
+        return ['All', ...Array.from(groups).sort()];
+    }, [availableItems]);
+
+    const sortedGridItems = useMemo(() => {
+        const filtered = availableItems.filter(item => {
+            const itemGroupId = item.itemGroupId || 'uncategorized';
+            const matchesCategory = selectedCategory === 'All' || itemGroupId === selectedCategory;
+            const matchesSearch = gridSearchQuery === '' || item.name.toLowerCase().includes(gridSearchQuery.toLowerCase()) || item.barcode?.includes(gridSearchQuery);
+            return matchesCategory && matchesSearch;
+        });
+
+        const sortFn = (a: Item, b: Item) => {
+            switch (sortOrder) {
+                case 'az': return a.name.localeCompare(b.name);
+                case 'za': return b.name.localeCompare(a.name);
+                case 'price_asc': return (a.salesPrice || a.mrp || 0) - (b.salesPrice || b.mrp || 0);
+                case 'price_desc': return (b.salesPrice || b.mrp || 0) - (a.salesPrice || a.mrp || 0);
+                default: return 0;
+            }
+        };
+
+        return [...filtered].sort(sortFn);
+
+    }, [availableItems, selectedCategory, gridSearchQuery, items, sortOrder]);
+
+    // Quantity-slab pricing: auto price + discount% for a cart line at a given qty.
+    // Outside all slabs it falls back to the normal 3-tier logic (same as addItemToCart).
+    const getSlabPricing = (line: SalesItem, qty: number, presetDiscount: number) => {
+        const isRoundingEnabled = salesSettings?.enableRounding ?? true;
+        const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
+        const mrp = Number(line.mrp || 0);
+        const baseSales = Number(line.salesPrice || 0);
+        const slab = getSlabForQty(line, qty);
+
+        let net = 0;
+        let disc = 0;
+        if (slab) {
+            net = slab.salesPrice;
+            const base = discountBaseOf({ mrp, salesPrice: baseSales }, discountOnSalePrice);
+            disc = base > 0 ? ((base - net) / base) * 100 : 0;
+        } else {
+            ({ net, discount: disc } = presetLinePricing(mrp, baseSales, presetDiscount, discountOnSalePrice));
+        }
+
+        net = applyLineRounding(net, isRoundingEnabled, roundingInterval, mrp);
+        return { customPrice: net, discount: parseFloat(disc.toFixed(2)) };
+    };
+
+    // Single place that changes a line's quantity AND re-prices it if slab pricing is still auto.
+    const applyQuantity = (line: SalesItem, qty: number): SalesItem => {
+        const updated: SalesItem = { ...line, quantity: qty };
+        const isAutoPriced =
+            !isEditMode &&
+            line.slabAutoPrice !== undefined &&
+            Number(line.customPrice) === line.slabAutoPrice;
+
+        if (isAutoPriced && qty > 0) {
+            const source = availableItems.find(a => a.id === line.productId);
+            const p = getSlabPricing(line, qty, Number(source?.discount ?? 0));
+            updated.customPrice = p.customPrice;
+            updated.discount = p.discount;
+            updated.slabAutoPrice = p.customPrice;
+        }
+        return updated;
+    };
+
+    const addItemToCart = (itemToAdd: Item, tier?: PriceTier, addOns: AddOnOption[] = []) => {
+        if (!itemToAdd || !itemToAdd.id) {
+            setModal({ message: "Cannot add invalid item.", type: State.ERROR });
+            return;
+        }
+
+        const priceSource = tier
+            ? { mrp: tier.mrp, salesPrice: tier.salesPrice, discount: tier.discount ?? 0 }
+            : { mrp: itemToAdd.mrp, salesPrice: itemToAdd.salesPrice, discount: itemToAdd.discount };
+
+        const itemTaxExtracted = Number(itemToAdd.tax ?? (itemToAdd as any).taxRate ?? salesSettings?.defaultTaxRate ?? 0);
+
+        const addOnAmount = addOns.reduce((sum, a) => sum + (Number(a.price) || 0), 0);
+        const mrp = Number(priceSource.mrp || 0) > 0 ? Number(priceSource.mrp) : 0;
+        const salesPrice = Number(priceSource.salesPrice || 0) > 0 ? Number(priceSource.salesPrice) : 0;
+        const presetDiscount = Number(priceSource.discount || 0);
+        const initialMoq = Number((itemToAdd as any).moq || 1);
+
+        const preset = presetLinePricing(mrp, salesPrice, presetDiscount, discountOnSalePrice);
+        let finalNetPrice = preset.net;
+        const calculatedDiscount = preset.discount;
+
+        const isRoundingEnabled = salesSettings?.enableRounding ?? true;
+        const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
+        finalNetPrice = applyLineRounding(finalNetPrice, isRoundingEnabled, roundingInterval, mrp);
+
+        const newSalesItem: SalesItem = {
+            ...itemToAdd,
+            id: crypto.randomUUID(),
+            productId: itemToAdd.id!,
+            quantity: Math.max(1, initialMoq),
+            mrp: mrp,                    // 👈 NEW — tier ka MRP overwrite karo, warna base item ka purana MRP reh jata hai
+            salesPrice: salesPrice,      // 👈 NEW — tier ka salesPrice overwrite karo
+            discount: calculatedDiscount,
+            discount2: 0,
+            customPrice: finalNetPrice,
+            isEditable: true,
+            purchasePrice: itemToAdd.purchasePrice || 0,
+            tax: itemTaxExtracted,
+            itemGroupId: itemToAdd.itemGroupId || '',
+            stock: itemToAdd.stock || (itemToAdd as any).Stock || 0,
+            amount: itemToAdd.amount || 0,
+            barcode: tier?.barcode || itemToAdd.barcode || '',   // 👈 tier ka apna barcode ho to wahi
+            restockQuantity: itemToAdd.restockQuantity || 0,
+            unit: (itemToAdd as any).unit || '',
+            unitMultiplier: 1,
+            packetSize: (itemToAdd as any).packetSize || null,
+            addedAt: Date.now(),
+            tierId: tier?.id,                              // 👈 NEW
+            tierLabel: tier?.label,                         // 👈 NEW
+            tierQuantity: tier?.quantity || itemToAdd.unitMultiplier || 1,  // 👈 NEW — base tier ka fallback
+            addOns: addOns.length > 0 ? addOns : undefined,
+            addOnKey: addOns.length > 0 ? addOnKeyOf(addOns) : undefined,
+            addOnAmount: addOnAmount > 0 ? addOnAmount : undefined,
+        };
+
+        // Quantity slabs: initial qty (MOQ) might already fall in a slab
+        if (!tier && addOns.length === 0 && hasQuantitySlabs(itemToAdd)) {
+            const p = getSlabPricing(newSalesItem, newSalesItem.quantity, presetDiscount);
+            newSalesItem.customPrice = p.customPrice;
+            newSalesItem.discount = p.discount;
+            newSalesItem.slabAutoPrice = p.customPrice;
+        }
+
+        setItems(prev => {
+            const insertionOrder = salesSettings?.cartInsertionOrder || 'top';
+            const newList = insertionOrder === 'top' ? [newSalesItem, ...prev] : [...prev, newSalesItem];
+
+            setTimeout(() => {
+                if (cartListRef.current) {
+                    if (insertionOrder === 'bottom') {
+                        cartListRef.current.scrollTo({ top: cartListRef.current.scrollHeight, behavior: 'smooth' });
+                    } else {
+                        cartListRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+                    }
+                }
+            }, 50);
+
+            return newList;
+        });
+    };
+
+    // --- QUICK-ADD: an item that isn't in the catalogue yet ---
+    // The line is created blank (or with the sheet's details) and the item itself
+    // is only written to the catalogue when the bill is saved (useSalesPayment).
+    const priceOfNewLine = (mrp: number, price: number) => ({
+        customPrice: price,
+        salesPrice: price, // keeps the subtotal/discount base right while MRP is empty
+        // Disc1 is measured from the sale price (= this price) when discountOnSalePrice is on
+        discount: discountOnSalePrice ? 0 : discountFromPrice(mrp, price),
+        discount2: 0,
+    });
+
+    const handleQuickAddItem = (rawName: string, details?: Partial<QuickItemDetails>): string | null => {
+        const name = (details?.name ?? rawName ?? '').trim().replace(/\s+/g, ' ');
+        if (!name) return null;
+
+        // Same new name again → just one more of it
+        const existing = items.find(i => isNewItemLine(i) && normalizeItemName(i.name) === normalizeItemName(name));
+        if (existing && !details) {
+            setItems(prev => prev.map(i => i.id === existing.id ? { ...i, quantity: (Number(i.quantity) || 0) + 1 } : i));
+            setGridSearchQuery('');
+            return existing.id;
+        }
+
+        const mrp = Number(details?.mrp) || 0;
+        const price = Number(details?.price) || 0;
+        const lineId = crypto.randomUUID();
+        const newLine: SalesItem = {
+            id: lineId,
+            productId: newTempProductId(),
+            isNewItem: true,
+            name,
+            mrp,
+            ...priceOfNewLine(mrp, price),
+            quantity: Math.max(1, Number(details?.quantity) || 1),
+            isEditable: true,
+            purchasePrice: Number(details?.extraPrice) || 0,
+            tax: details?.tax !== undefined ? Number(details.tax) || 0 : Number(salesSettings?.defaultTaxRate ?? 0),
+            itemGroupId: '',
+            stock: 0,
+            amount: 0,
+            barcode: '',
+            restockQuantity: 0,
+            unit: 'pcs',
+            unitMultiplier: 1,
+            tierQuantity: 1,
+            addedAt: Date.now(),
+        };
+
+        setItems(prev => {
+            const insertionOrder = salesSettings?.cartInsertionOrder || 'top';
+            setTimeout(() => {
+                if (cartListRef.current) {
+                    cartListRef.current.scrollTo({
+                        top: insertionOrder === 'bottom' ? cartListRef.current.scrollHeight : 0,
+                        behavior: 'smooth',
+                    });
+                }
+            }, 50);
+            return insertionOrder === 'top' ? [newLine, ...prev] : [...prev, newLine];
+        });
+        setGridSearchQuery('');
+        return lineId;
+    };
+
+    // Inline NEW strip edits (name / MRP / GST / purchase price)
+    const handleNewItemFieldChange = (id: string, field: NewItemField, value: string) => {
+        setItems(prev => prev.map(i => {
+            if (i.id !== id || !isNewItemLine(i)) return i;
+            if (field === 'name') return { ...i, name: value };
+            const n = parseFloat(value);
+            const v = Number.isFinite(n) ? n : 0;
+            if (field === 'tax') return { ...i, tax: v };
+            if (field === 'extraPrice') return { ...i, purchasePrice: v };
+            // MRP: a price that's empty (or was just following the MRP) takes the MRP;
+            // otherwise the price stays and the discount is worked out from it
+            const price = Number(i.customPrice) || 0;
+            const followsMrp = price <= 0 || price === (Number(i.mrp) || 0);
+            return { ...i, mrp: v, ...priceOfNewLine(v, followsMrp ? v : price) };
+        }));
+    };
+
+    // QuickItemSheet "Save" on an existing NEW line
+    const applyNewItemDetails = (id: string, d: QuickItemDetails) => {
+        setItems(prev => prev.map(i => i.id === id && isNewItemLine(i)
+            ? {
+                ...i,
+                name: d.name.trim().replace(/\s+/g, ' '),
+                mrp: d.mrp,
+                ...priceOfNewLine(d.mrp, d.price),
+                tax: d.tax,
+                purchasePrice: d.extraPrice,
+                quantity: Math.max(1, d.quantity || 1),
+            }
+            : i));
+    };
+
+    const addItemWithAddOns = (item: Item, addOns: AddOnOption[], askIfDuplicate = false) => {
+        const key = addOnKeyOf(addOns);
+        const matches = items.filter(i => i.productId === item.id && !i.tierId && (i.addOnKey || '') === key);
+
+        // List view: same item with the same add-ons asks "increase quantity or add as new line"
+        if (matches.length > 0 && askIfDuplicate) {
+            setDuplicateItemPrompt({ item, existingCount: matches.length, addOns });
+            setGridSearchQuery('');
+            return;
+        }
+
+        if (matches.length > 0) {
+            const lastAdded = matches.reduce((latest, current) =>
+                (current.addedAt || 0) > (latest.addedAt || 0) ? current : latest
+            );
+            setItems(prev => prev.map(i =>
+                i.id === lastAdded.id ? applyQuantity(i, (i.quantity || 1) + 1) : i
+            ));
+        } else {
+            addItemToCart(item, undefined, addOns);
+        }
+        setGridSearchQuery('');
+    };
+
+    const handleClearCart = () => {
+        if (items.length > 0) {
+            setModal({
+                message: 'Are you sure you want to remove all items from the cart?',
+                type: State.ERROR,
+            });
+            setShowClearCartConfirm(true);
+        }
+    };
+    const handleConfirmClearCart = () => {
+        setItems([]);
+        setCartSearchQuery('');
+        setShowClearCartConfirm(false);
+    };
+    const handleItemSelected = (selectedItem: Item | null, tier?: PriceTier) => {
+        if (!selectedItem) return;
+
+        // Tier-aware match: same item ka SAME tier pehle se cart mein hai kya?
+        // Alag tier waali same item ki lines alag maani jayengi (duplicate nahi).
+        const tierId = tier?.id;
+        const existingMatches = items.filter(i => i.productId === selectedItem.id && (i.tierId || undefined) === tierId && !i.addOnKey);
+
+        if (existingMatches.length > 0) {
+            setDuplicateItemPrompt({ item: selectedItem, existingCount: existingMatches.length, tier });
+            setGridSearchQuery('');
+            return;
+        }
+
+        addItemToCart(selectedItem, tier);
+        setGridSearchQuery('');
+    };
+
+    const handleIncreaseExistingQuantity = () => {
+        if (!duplicateItemPrompt) return;
+        const targetProductId = duplicateItemPrompt.item.id;
+        const targetTierId = duplicateItemPrompt.tier?.id;   // 👈 NEW
+        const targetAddOnKey = addOnKeyOf(duplicateItemPrompt.addOns ?? []);
+
+        setItems(prev => {
+            const matches = prev.filter(i => i.productId === targetProductId && (i.tierId || undefined) === targetTierId && (i.addOnKey || '') === targetAddOnKey);
+            if (matches.length === 0) return prev;
+
+            const lastAdded = matches.reduce((latest, current) =>
+                (current.addedAt || 0) > (latest.addedAt || 0) ? current : latest
+            );
+
+            return prev.map(i =>
+                i.id === lastAdded.id ? applyQuantity(i, (i.quantity || 1) + 1) : i
+            );
+        });
+
+        setDuplicateItemPrompt(null);
+    };
+
+    // User ne "Naya Item Add Karo" choose kiya
+    const handleAddAsNewLine = () => {
+        if (!duplicateItemPrompt) return;
+        addItemToCart(duplicateItemPrompt.item, duplicateItemPrompt.tier, duplicateItemPrompt.addOns);
+        setDuplicateItemPrompt(null);
+    };
+    const closeBarcodeLinkModal = () => {
+        setIsBarcodeLinkModalOpen(false);
+        setBarcodeToLink(null);
+    };
+
+    const handleLinkScannedBarcode = async (selectedItem: Item) => {
+        if (!barcodeToLink || !dbOperations) return;
+        if (!selectedItem.id) {
+            setModal({ message: 'Selected item is invalid. Please try another item.', type: State.ERROR });
+            return;
+        }
+        setIsLinkingBarcode(true);
+        try {
+            await dbOperations.updateItem(selectedItem.id, { barcode: barcodeToLink });
+            const updatedItem: Item = { ...selectedItem, barcode: barcodeToLink };
+            setAvailableItems(prev => {
+                const exists = prev.some(item => item.id === selectedItem.id);
+                if (!exists) return [...prev, updatedItem];
+                return prev.map(item => item.id === selectedItem.id ? { ...item, barcode: barcodeToLink } : item);
+            });
+            addItemToCart(updatedItem);
+            closeBarcodeLinkModal();
+            setModal({ message: `Barcode linked to "${selectedItem.name}".`, type: State.SUCCESS });
+        } catch (err) {
+            console.error('Failed to link barcode:', err);
+            setModal({ message: 'Failed to link barcode. Please try again.', type: State.ERROR });
+        } finally {
+            setIsLinkingBarcode(false);
+        }
+    };
+    // Camera scan: if the same item (same tier, no add-ons) is already in the
+    // cart, bump the latest line's quantity instead of adding a duplicate line.
+    const addScannedItem = (item: Item, tier?: PriceTier) => {
+        const tierId = tier?.id;
+        const matches = items.filter(i => i.productId === item.id && (i.tierId || undefined) === tierId && !i.addOnKey);
+        if (matches.length === 0) {
+            addItemToCart(item, tier);
+            return;
+        }
+        const latestId = matches.reduce((a, b) => ((b.addedAt || 0) > (a.addedAt || 0) ? b : a)).id;
+        setItems(prev => prev.map(i => (i.id === latestId ? applyQuantity(i, (Number(i.quantity) || 0) + 1) : i)));
+    };
+
+    // Scanner stays open (continuous mode) — the return value feeds the list
+    // shown inside the camera view. Only an unknown barcode that can be linked
+    // closes the camera, so the link modal can be used.
+    const handleBarcodeScanned = async (barcode: string): Promise<ScanOutcome> => {
+        const cleanBarcode = barcode.trim();
+        if (!dbOperations) return { status: 'error', message: 'Not ready yet, try again.' };
+
+        try {
+            // 👇 NEW: pehle check karo ki ye barcode kisi tier (combo/box pack) ka to nahi
+            const tierMatch = findTierByBarcode(availableItems, cleanBarcode);
+            if (tierMatch) {
+                const tierToPass = tierMatch.tier.id === '__base__' ? undefined : tierMatch.tier;
+                addScannedItem(tierMatch.item, tierToPass);
+                return { status: 'added', label: tierToPass ? `${tierMatch.item.name} (${tierToPass.label})` : tierMatch.item.name };
+            }
+
+            let itemToAdd: Item | null | undefined = availableItems.find(item => item.barcode === cleanBarcode);
+
+            if (!itemToAdd) {
+                itemToAdd = await dbOperations.getItemByBarcode(cleanBarcode);
+            }
+
+            if (itemToAdd) {
+                addScannedItem(itemToAdd);
+
+                setAvailableItems(prev => {
+                    const exists = prev.find(p => p.id === itemToAdd!.id);
+                    return exists ? prev : [...prev, itemToAdd!];
+                });
+                return { status: 'added', label: itemToAdd.name };
+            }
+
+            const hasAnyItemWithoutBarcode = availableItems.some(item => !(item.barcode || '').trim());
+            if (!hasAnyItemWithoutBarcode) {
+                return { status: 'not_found', message: `Not found: ${cleanBarcode}` };
+            }
+            setIsScannerOpen(false);
+            setBarcodeToLink(cleanBarcode);
+            setIsBarcodeLinkModalOpen(true);
+            return { status: 'not_found', message: `Not found: ${cleanBarcode}` };
+        } catch (e) {
+            console.error(e);
+            return { status: 'error', message: 'Scan error occurred.' };
+        }
+    };
+    const handleQuantityChange = (id: string, newQuantity: number) => {
+        setItems(prev => prev.map(item =>
+            item.id === id ? applyQuantity(item, Math.max(0, newQuantity)) : item
+        ));
+    };
+    const handleDeleteItem = (id: string) => { setItems(prev => prev.filter(item => item.id !== id)); };
+    const handleDiscountPressStart = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); longPressTimer.current = setTimeout(() => { setIsDiscountLocked(false); setDiscountInfo(null); }, 500); };
+    const handleDiscountPressEnd = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); };
+    const handleDiscountClick = () => { if (isDiscountLocked) { setDiscountInfo("Cannot edit discount"); setTimeout(() => setDiscountInfo(null), 3000); } };
+    const handlePricePressStart = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); longPressTimer.current = setTimeout(() => { setIsPriceLocked(false); setPriceInfo(null); }, 500); };
+    const handlePricePressEnd = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); };
+    const handlePriceClick = () => { if (isPriceLocked) { setPriceInfo("Cannot edit sale price"); setTimeout(() => setPriceInfo(null), 1000); } };
+    const handleDiscountChange = (id: string, v: number | string) => {
+        const n = typeof v === 'string' ? parseFloat(v) : v;
+        const safeDiscount = isNaN(n) ? 0 : Math.min(100, Math.max(0, n));
+        setItems(prev => prev.map(i => {
+            if (i.id === id) {
+                // Base: MRP if it exists, otherwise Sales Price (sale price first when discountOnSalePrice is on)
+                const basePrice = discountBaseOf(i, discountOnSalePrice);
+                const safeDiscount2 = i.discount2 || 0;
+                const priceAfterFirstDiscount = basePrice * (1 - safeDiscount / 100);
+                let newPrice = priceAfterFirstDiscount * (1 - safeDiscount2 / 100);
+                const isRoundingEnabled = salesSettings?.enableRounding ?? true;
+                const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
+                newPrice = applyLineRounding(newPrice, isRoundingEnabled, roundingInterval, Number(i.mrp) || 0);
+                return { ...withoutCustomerPrice(i), discount: safeDiscount, customPrice: newPrice };
+            }
+            return i;
+        }));
+    };
+    const handleDiscount2Change = (id: string, v: number | string) => {
+        const n = typeof v === 'string' ? parseFloat(v) : v;
+        const safeDiscount2 = isNaN(n) ? 0 : n;
+        setItems(prev => prev.map(i => {
+            if (i.id === id) {
+                const basePrice = discountBaseOf(i, discountOnSalePrice);
+                const safeDiscount1 = i.discount || 0;
+                const priceAfterFirstDiscount = basePrice * (1 - safeDiscount1 / 100);
+                let newPrice = priceAfterFirstDiscount * (1 - safeDiscount2 / 100);
+                const isRoundingEnabled = salesSettings?.enableRounding ?? true;
+                const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
+                newPrice = applyLineRounding(newPrice, isRoundingEnabled, roundingInterval, Number(i.mrp) || 0);
+                return { ...withoutCustomerPrice(i), discount2: safeDiscount2, customPrice: newPrice };
+            }
+            return i;
+        }));
+    };
+    const handleCustomPriceChange = (id: string, v: string) => {
+        if (v === '' || /^[0-9]*\.?[0-9]*$/.test(v)) setItems(prev => prev.map(i => {
+            if (i.id !== id) return i;
+            // NEW line: its sale price IS this price (keeps the subtotal right while typing)
+            return isNewItemLine(i) ? { ...i, customPrice: v, salesPrice: parseFloat(v) || 0 } : { ...i, customPrice: v };
+        }));
+    };
+    const handleCustomPriceBlur = (id: string) => {
+        setItems(prev => prev.map(i => {
+            if (i.id === id && typeof i.customPrice === 'string') {
+                const n = parseFloat(i.customPrice);
+                if (isNewItemLine(i)) {
+                    return { ...i, ...priceOfNewLine(Number(i.mrp) || 0, i.customPrice === '' || isNaN(n) ? 0 : n) };
+                }
+                if (i.customPrice === '' || isNaN(n)) return { ...i, customPrice: undefined };
+                let d = 0;
+
+                // Base: MRP if it exists, otherwise Sales Price (sale price first when discountOnSalePrice is on)
+                const basePrice = discountBaseOf(i, discountOnSalePrice);
+
+                if (basePrice > 0) d = ((basePrice - n) / basePrice) * 100;
+                return { ...withoutCustomerPrice(i), customPrice: n, discount: parseFloat(d.toFixed(2)) };
+            }
+            return i;
+        }));
+    };
+    const handleOpenEditDrawer = (item: Item) => { setSelectedItemForEdit(item); setIsItemDrawerOpen(true); };
+    const handleCloseEditDrawer = () => { setIsItemDrawerOpen(false); setTimeout(() => setSelectedItemForEdit(null), 300); };
+    const handleSaveSuccess = (updatedItemData: Partial<Item>) => {
+        setAvailableItems(prevItems => prevItems.map(item =>
+            item.id === selectedItemForEdit?.id ? { ...item, ...updatedItemData, id: item.id } as Item : item
+        ));
+
+        const updateForCart: Partial<SalesItem> = { ...updatedItemData };
+        if ((updateForCart as any).Stock !== undefined) {
+            updateForCart.stock = (updateForCart as any).Stock;
+            delete (updateForCart as any).Stock;
+        }
+
+        Object.keys(updateForCart).forEach(key => {
+            if (updateForCart[key as keyof typeof updateForCart] === undefined) {
+                delete updateForCart[key as keyof typeof updateForCart];
+            }
+        });
+
+        setItems(prevCartItems => prevCartItems.map(cartItem => {
+            if (cartItem.productId === selectedItemForEdit?.id || cartItem.id === selectedItemForEdit?.id) {
+                const mergedItem = stripCustomerPrice({ ...cartItem, ...updateForCart } as SalesItem);
+
+                const mrp = Number(mergedItem.mrp || 0) > 0 ? Number(mergedItem.mrp) : 0;
+                const salesPrice = Number(mergedItem.salesPrice || 0) > 0 ? Number(mergedItem.salesPrice) : 0;
+                const presetDiscount = Number(mergedItem.discount || 0);
+                const existingDiscount2 = Number(mergedItem.discount2 || 0);
+
+                // 3-tier logic (or item discount on sale price, per Sales Settings)
+                const preset = presetLinePricing(mrp, salesPrice, presetDiscount, discountOnSalePrice);
+                let finalNetPrice = preset.net;
+                const calculatedDiscount = preset.discount;
+                // Apply existing discount2 on top, compounding it
+                finalNetPrice = finalNetPrice * (1 - (existingDiscount2 / 100));
+                const isRoundingEnabled = salesSettings?.enableRounding ?? true;
+                const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
+                finalNetPrice = applyLineRounding(finalNetPrice, isRoundingEnabled, roundingInterval, mrp);
+
+                mergedItem.customPrice = finalNetPrice;
+                mergedItem.discount = parseFloat(calculatedDiscount.toFixed(2)); // Make sure discount updates!
+                mergedItem.discount2 = existingDiscount2;
+                return mergedItem;
+            }
+            return cartItem;
+        }));
+    };
+    const displayItems = useMemo(() => {
+        const base = listSelectedCategory === 'All'
+            ? items
+            : items.filter(item => (item.itemGroupId || 'Others') === listSelectedCategory);
+
+        const q = cartSearchQuery.trim().toLowerCase();
+        if (!q) return base;
+
+        // 👈 NEW: same "search bumps result to top" behavior as the Orders page search
+        return [...base].sort((a, b) => {
+            const aMatch = (a.name || '').toLowerCase().includes(q);
+            const bMatch = (b.name || '').toLowerCase().includes(q);
+            if (aMatch && !bMatch) return -1;
+            if (!aMatch && bMatch) return 1;
+            return 0; // keep original relative order otherwise
+        });
+    }, [items, listSelectedCategory, cartSearchQuery]);
+
+    return {
+        items, setItems,
+        longPressTimer,
+        cartListRef,
+        isDiscountLocked, setIsDiscountLocked,
+        discountInfo, setDiscountInfo,
+        isPriceLocked, setIsPriceLocked,
+        priceInfo, setPriceInfo,
+        duplicateItemPrompt, setDuplicateItemPrompt,
+        isScannerOpen, setIsScannerOpen,
+        barcodeToLink, setBarcodeToLink,
+        isBarcodeLinkModalOpen, setIsBarcodeLinkModalOpen,
+        isLinkingBarcode, setIsLinkingBarcode,
+        selectedCategory, setSelectedCategory,
+        listSelectedCategory,
+        gridSearchQuery, setGridSearchQuery,
+        cartSearchQuery, setCartSearchQuery,
+        sortOrder, setSortOrder,
+        selectedItemForEdit, setSelectedItemForEdit,
+        isItemDrawerOpen, setIsItemDrawerOpen,
+        showClearCartConfirm, setShowClearCartConfirm,
+        categories,
+        sortedGridItems,
+        displayItems,
+        addItemToCart,
+        addItemWithAddOns,
+        handleQuickAddItem,
+        handleNewItemFieldChange,
+        applyNewItemDetails,
+        handleClearCart,
+        handleConfirmClearCart,
+        handleItemSelected,
+        handleIncreaseExistingQuantity,
+        handleAddAsNewLine,
+        closeBarcodeLinkModal,
+        handleLinkScannedBarcode,
+        handleBarcodeScanned,
+        handleQuantityChange,
+        handleDeleteItem,
+        handleDiscountPressStart,
+        handleDiscountPressEnd,
+        handleDiscountClick,
+        handlePricePressStart,
+        handlePricePressEnd,
+        handlePriceClick,
+        handleDiscountChange,
+        handleDiscount2Change,
+        handleCustomPriceChange,
+        handleCustomPriceBlur,
+        handleOpenEditDrawer,
+        handleCloseEditDrawer,
+        handleSaveSuccess,
+    };
+};

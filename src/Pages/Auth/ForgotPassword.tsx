@@ -1,148 +1,120 @@
 import React, { useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
+import { ArrowLeft, KeyRound, LoaderCircle, Mail, MailCheck } from 'lucide-react';
 import { ROUTES } from '../../constants/routes.constants';
-import { CustomButton } from '../../Components'; 
-import sellarLogo from '../../assets/sellar-logo-heading.png';
-import bgMain from '../../assets/bg-main.png';
-import { Variant } from '../../enums';
-import { FloatingLabelInput } from '../../Components/ui/FloatingLabelInput';
 import { Spinner } from '../../constants/Spinner';
-import { resetPassword } from '../../lib/AuthOperations'; // Make sure this is exported in AuthOperations
+import { resetPassword } from '../../lib/AuthOperations';
+import { useEmailCheck } from '../../lib/useEmailCheck';
 import { useAuth } from '../../context/auth-context';
-import { FiMail, FiArrowLeft, FiCheckCircle } from 'react-icons/fi';
+import {
+  AccountSafeNote,
+  AccountSafePanel,
+  AuthLayout,
+  CardHeading,
+  EmailField,
+  ErrorBanner,
+  SupportLink,
+  authBtn,
+} from './AuthUI';
 
 const ForgotPasswordPage: React.FC = () => {
-    const { currentUser, loading: authLoading } = useAuth();
-    const [email, setEmail] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const { currentUser, loading: authLoading } = useAuth();
+  const [email, setEmail] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sentTo, setSentTo] = useState<string | null>(null);
+  const emailCheck = useEmailCheck(email);
 
-    const handleReset = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setError(null);
-        setSuccessMessage(null);
+  const handleReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
 
-        if (!email) {
-            setError('Please enter your registered email address.');
-            return;
-        }
-
-        setLoading(true);
-        try {
-            await resetPassword(email);
-            setSuccessMessage(`Password reset link sent to ${email}. Check your inbox.`);
-            setEmail(''); // Clear input on success
-        } catch (err: any) {
-            setError(err.message || 'Failed to send reset email. Please try again.');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    if (authLoading) {
-        return (
-            <div className="flex h-screen w-screen items-center justify-center">
-                <Spinner />
-            </div>
-        );
+    const address = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
+      setError('Enter the email you log in with.');
+      return;
     }
 
-    if (currentUser) {
-        return <Navigate to={ROUTES.HOME} replace />;
+    setLoading(true);
+    try {
+      await resetPassword(address);
+      setSentTo(address);
+      setEmail('');
+    } catch (err) {
+      const { code, message } = (err ?? {}) as { code?: string; message?: string };
+      setError(
+        code === 'auth/network-request-failed'
+          ? "Can't reach SELLAR. Check your internet and try again."
+          : message || "Couldn't send the email. Please try again."
+      );
+    } finally {
+      setLoading(false);
     }
+  };
 
+  if (authLoading) {
     return (
-        <div className="relative h-screen w-screen flex flex-col">
-            {/* --- TOP SECTION (IMAGE + LOGO) --- */}
-            <div className="relative w-full flex-grow">
-                {/* Building Image */}
-                <img
-                    src={bgMain}
-                    alt="Building graphic"
-                    className="absolute inset-0 w-full h-full object-cover"
-                />
-                {/* Sellar Logo (Overlaid) */}
-                <div className="absolute top-55 left-1/2 -translate-x-1/2 z-10">
-                    <img src={sellarLogo} alt="Sellar Logo" className="w-48" />
-                </div>
-            </div>
-            {/* ---------------------------------- */}
-
-            {/* Reset Form Section */}
-            <div className="w-full bg-gray-100 p-6 py-8 shadow-t-lg rounded-t-2xl flex-shrink-0 z-20 mt-[-50px]">
-                <div className="w-full max-w-sm mx-auto">
-                    
-                    <h2 className="text-xl font-bold text-gray-800 text-center mb-2">Forgot Password?</h2>
-                    <p className="text-sm text-gray-500 text-center mb-6">
-                        Enter your email and we'll send you a link to reset your password.
-                    </p>
-
-                    {successMessage ? (
-                        <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center space-y-4">
-                            <div className="mx-auto bg-green-100 w-12 h-12 rounded-full flex items-center justify-center text-green-600">
-                                <FiCheckCircle size={24} />
-                            </div>
-                            <p className="text-green-800 font-medium text-sm">
-                                {successMessage}
-                            </p>
-                            <Link 
-                                to={ROUTES.LANDING}
-                                className="block w-full bg-green-600 text-white font-semibold py-3 rounded-lg hover:bg-green-700 transition text-sm"
-                            >
-                                Back to Login
-                            </Link>
-                        </div>
-                    ) : (
-                        <form onSubmit={handleReset} className="space-y-4">
-                            <div className="relative">
-                                <FiMail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                                <FloatingLabelInput
-                                    id="email"
-                                    type="email"
-                                    label="Email Address"
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    required
-                                    disabled={loading}
-                                    className="pl-10 h-14 border border-gray-300 rounded-lg text-lg focus:ring-blue-500 focus:border-blue-500"
-                                />
-                            </div>
-
-                            {error && (
-                                <div className="bg-red-50 p-3 rounded border border-red-100">
-                                    <p className="text-red-600 text-sm text-center font-medium">
-                                        {error}
-                                    </p>
-                                </div>
-                            )}
-
-                            <div className="pt-2">
-                                <CustomButton
-                                    variant={Variant.Filled}
-                                    type="submit"
-                                    disabled={loading}
-                                    className="w-full flex justify-center h-14 text-lg font-semibold rounded-lg"
-                                >
-                                    {loading ? <Spinner /> : 'Send Reset Link'}
-                                </CustomButton>
-                            </div>
-
-                            <div className="text-center pt-2">
-                                <Link
-                                    to={ROUTES.LANDING}
-                                    className="inline-flex items-center text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors"
-                                >
-                                    <FiArrowLeft className="mr-2" />
-                                    Back to Login
-                                </Link>
-                            </div>
-                        </form>
-                    )}
-                </div>
-            </div>
-        </div>
+      <div className="flex h-screen w-screen items-center justify-center">
+        <Spinner />
+      </div>
     );
+  }
+
+  if (currentUser) {
+    return <Navigate to={ROUTES.HOME} replace />;
+  }
+
+  return (
+    <AuthLayout panelLabel="Keeping your account safe" panel={<AccountSafePanel />} headerAside={<SupportLink />}>
+      <div className="mx-auto flex w-full max-w-[440px] flex-1 flex-col gap-3 lg:justify-center">
+        <Link
+          to={ROUTES.LANDING}
+          className="inline-flex min-h-11 items-center gap-1.5 self-start rounded-sm text-sm font-medium text-slate-600 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+        >
+          <ArrowLeft size={16} strokeWidth={1.75} aria-hidden="true" />
+          Back to log in
+        </Link>
+
+        <div className="rounded-sm border border-line bg-white shadow-card">
+          {sentTo ? (
+            <div role="status" className="flex flex-col gap-5 px-5 py-5 lg:px-7 lg:py-6">
+              <CardHeading icon={MailCheck} tone="green" title="Check your email" subtitle="The link is on its way." />
+              <p className="text-sm leading-[21px] text-slate-600">
+                We sent a reset link to <span className="font-medium text-slate-900">{sentTo}</span>. It can take a minute. Look in spam if it
+                isn't there.
+              </p>
+              <div className="flex flex-wrap gap-2.5">
+                <Link to={ROUTES.LANDING} className={`${authBtn.primary} flex-1`}>
+                  Back to log in
+                </Link>
+                <button type="button" onClick={() => setSentTo(null)} className={`${authBtn.ghost} h-12 hover:bg-sunken`}>
+                  Use another email
+                </button>
+              </div>
+            </div>
+          ) : (
+            <form onSubmit={handleReset} noValidate className="flex flex-col gap-5 px-5 py-5 lg:px-7 lg:py-6">
+              <CardHeading icon={KeyRound} title="Reset your password" subtitle="We'll email you a link to set a new one." />
+              {error && <ErrorBanner>{error}</ErrorBanner>}
+              <EmailField
+                icon={Mail}
+                value={email}
+                onChange={setEmail}
+                check={emailCheck}
+                help="Use the email you log in with."
+                disabled={loading}
+              />
+              <button type="submit" disabled={loading} aria-busy={loading} className={`${authBtn.primary} w-full`}>
+                {loading && <LoaderCircle size={18} aria-hidden="true" className="animate-spin motion-reduce:animate-none" />}
+                {loading ? 'Sending…' : 'Send reset link'}
+              </button>
+            </form>
+          )}
+          <AccountSafeNote />
+        </div>
+      </div>
+    </AuthLayout>
+  );
 };
 
 export default ForgotPasswordPage;

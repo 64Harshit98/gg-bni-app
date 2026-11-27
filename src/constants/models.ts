@@ -20,7 +20,8 @@ export interface Item {
   purchasediscount?: number;
   tax: number;
   taxRate?: number;
-  itemGroupId: string;
+  itemGroupId?: string;
+  itemGroupIds?: string[];
   isDeleted?: boolean;
   salesPrice: number;
   stock: number;
@@ -36,11 +37,25 @@ export interface Item {
   restockQuantity: number;
   isListed?: boolean;
   imageUrl?: string | null;
+  imageUrls?: string[];
   description?: string;
   firestoreDocId?: string;
   packetSize?: number;
   unitMultiplier?: number;
-  moq?:number;
+  moq?: number;
+  mrpOriginal?: number;
+  mfgDate?: string;
+  expDate?: string;
+  variants?: string[];
+  godownStock?: Record<string, number>;
+  priceTiers?: PriceTier[];
+  quantitySlabs?: QuantitySlab[];
+  addOnGroups?: AddOnGroup[];     // legacy: groups saved inside the item (older items)
+  addOnGroupIds?: string[];       // ids of groups from the add-on library (Item groups page)
+  // Per-group overrides for this item. No entry = all options + the group's own limit.
+  // optionIds missing = all options; maxSelect missing/0 = use the group's limit
+  addOnPicks?: { groupId: string; optionIds?: string[]; maxSelect?: number }[];
+  customFields?: CustomField[];   // user-defined extra details (IMEI, warranty, ...)
 }
 
 export interface ItemGroup {
@@ -58,6 +73,9 @@ export interface PurchaseItem {
   purchasePrice: number;
   quantity: number;
   stock?: number;
+  taxType?: 'inclusive' | 'exclusive' | 'exempt';
+  taxRate?: number;
+  tax?: number;
 }
 
 export interface Purchase {
@@ -109,4 +127,338 @@ export interface SalesItem {
   discountPercentage?: number;
   finalPrice?: number;
   stock?: number;
+  productId?: string
 }
+
+export interface PriceTier {
+  id: string;
+  label: string;              // "Piece", "Box of 10", "Combo Pack"
+  quantity: number;           // kitne base pcs = 1 tier (e.g. 10, 3, 1)
+  mrp: number;
+  salesPrice: number;
+  purchasePrice?: number;
+  discount?: number;
+  purchasediscount?: number;
+  barcode?: string;           // is tier ka apna alag barcode (optional)
+}
+
+// ─── Customer-wise fixed pricing (companies/{cid}/customerPricing/{partyDocId}) ───
+export interface CustomerItemOverride {
+  name: string;
+  type: 'percent' | 'netPrice';
+  value: number;
+}
+
+export interface CustomerPricingRule {
+  customerId: string;            // same as the customers doc id (phone, else name)
+  customerName: string;
+  customerNumber: string;
+  isActive: boolean;
+  defaultDiscountPct: number;    // 0 = none
+  categoryDiscounts: Record<string, number>;          // itemGroupId -> pct
+  itemOverrides: Record<string, CustomerItemOverride>; // itemId -> override
+  note?: string;
+  updatedAt?: any;
+  updatedBy?: string;
+}
+
+// ─── Supplier price book (companies/{cid}/supplierPriceBook/{partyDocId}) ───
+export interface SupplierPriceEntry {
+  rate: number;                  // purchasePrice per unit as entered on that bill
+  rateExclTax: number;           // normalised for comparison across tax modes
+  taxType: string;
+  taxRate: number;
+  mrp: number;
+  date: number;                  // bill date (ms)
+  invoiceNumber: string;
+  purchaseId: string;
+}
+
+export interface SupplierPriceBook {
+  supplierName: string;
+  supplierNumber: string;
+  updatedAt?: any;
+  items: Record<string, SupplierPriceEntry>; // key: productId or productId__tierId
+}
+
+export interface QuantitySlab {
+  id: string;
+  minQty: number;
+  maxQty: number | null;      // null = "and above"
+  salesPrice: number;         // per-unit price for the WHOLE quantity when qty falls in this slab
+}
+export interface AddOnOption {
+  id: string;
+  name: string;               // "Extra cheese", "Thin crust"
+  price: number | string;     // extra amount on top of the item price (0 = free). String only while typing in the form; saved as number
+  itemId?: string;            // set when this option is an inventory item (e.g. Coke sold with a burger)
+  itemQty?: number;           // pieces of that item taken from stock per 1 add-on (default 1)
+  syncPrice?: boolean;        // linked option: use the inventory item's current price instead of the saved one
+  extraPrice?: number | null; // charge when picked beyond the group's limit. empty = option's Price, then the group's flat extra
+  soldOut?: boolean;          // runtime only (set by resolveAddOnGroups): linked item has not enough stock
+}
+
+export interface AddOnGroup {
+  id: string;
+  name: string;
+  multiple: boolean;
+  maxSelect?: number;
+  extraPrice?: number | null;
+  order?: number;             // position in the add-on library (lower = first). Missing = old group, falls back to A-Z
+  options: AddOnOption[];
+}
+
+/** Returns the slab matching this quantity, or null if none matches. */
+export const getSlabForQty = (
+  item: { quantitySlabs?: QuantitySlab[] },
+  qty: number
+): QuantitySlab | null => {
+  const slabs = item.quantitySlabs;
+  if (!slabs || slabs.length === 0) return null;
+  return (
+    slabs.find(s => qty >= s.minQty && (s.maxQty === null || qty <= s.maxQty)) ?? null
+  );
+};
+
+/** Per-unit sales price before discount. Falls back to base salesPrice if no slab matches. */
+export const getEffectiveSalesPrice = (
+  item: { salesPrice: number; quantitySlabs?: QuantitySlab[] },
+  qty: number
+): number => getSlabForQty(item, qty)?.salesPrice ?? item.salesPrice;
+
+/** Returns an English error message if slabs are invalid, otherwise null. */
+export const validateQuantitySlabs = (
+  slabs: QuantitySlab[],
+  mrp: number
+): string | null => {
+  if (slabs.length === 0) return null;
+  const sorted = [...slabs].sort((a, b) => a.minQty - b.minQty);
+
+  for (let i = 0; i < sorted.length; i++) {
+    const s = sorted[i];
+    if (!s.minQty || s.minQty < 1) return 'Quantity slab "From Qty" must be at least 1.';
+    if (s.maxQty !== null && s.maxQty < s.minQty) {
+      return `Quantity slab starting at ${s.minQty}: "To Qty" cannot be less than "From Qty".`;
+    }
+    if (!s.salesPrice || s.salesPrice <= 0) {
+      return `Quantity slab starting at ${s.minQty} needs a valid price.`;
+    }
+    if (mrp > 0 && s.salesPrice > mrp) {
+      return `Quantity slab starting at ${s.minQty}: price cannot be greater than MRP.`;
+    }
+    if (s.maxQty === null && i !== sorted.length - 1) {
+      return 'Only the last slab can be "and above" (blank To Qty).';
+    }
+    if (i > 0) {
+      const prev = sorted[i - 1];
+      if (prev.maxQty !== null && s.minQty !== prev.maxQty + 1) {
+        return prev.maxQty >= s.minQty
+          ? 'Quantity slabs cannot overlap.'
+          : `Gap found between ${prev.maxQty} and ${s.minQty}. Slabs must be continuous.`;
+      }
+    }
+  }
+  return null;
+};
+
+/** Returns an English error message if add-on groups are invalid, otherwise null. */
+export const validateAddOnGroups = (groups: AddOnGroup[]): string | null => {
+  for (const g of groups) {
+    if (!g.name.trim()) return 'Every add-on group needs a name (e.g. "Crust").';
+    if (g.options.length === 0) return `Add-on group "${g.name}" needs at least one option.`;
+    if (Number(g.maxSelect) < 0) return `"${g.name}": max choices cannot be negative.`;
+    for (const o of g.options) {
+      if (!o.name.trim()) return `Every option in "${g.name}" needs a name.`;
+      if (Number(o.price) < 0) return `Option "${o.name}" cannot have a negative price.`;
+    }
+  }
+  return null;
+};
+/** Charge for a pick beyond the limit: option's own Extra, else its Price, else the group's flat extra. */
+export const extraChargeOf = (g: AddOnGroup, o: AddOnOption): number =>
+  o.extraPrice != null
+    ? Number(o.extraPrice) || 0
+    : Number(o.price) > 0
+      ? Number(o.price)
+      : Number(g.extraPrice) || 0;
+
+/** All add-on groups of an item: legacy groups saved on the item + groups picked from the library (only the options this item chose). */
+export const resolveAddOnGroups = (
+  item: {
+    addOnGroups?: AddOnGroup[];
+    addOnGroupIds?: string[];
+    addOnPicks?: { groupId: string; optionIds?: string[]; maxSelect?: number }[];
+  },
+  library: AddOnGroup[],
+  // Optional: inventory, so linked options get the live price and a sold-out flag
+  ctx?: {
+    items?: { id?: string; stock?: number; salesPrice?: number; mrp?: number }[];
+    allowNegative?: boolean;
+  }
+): AddOnGroup[] => {
+  const live = (o: AddOnOption): AddOnOption => {
+    if (!o.itemId || !ctx?.items) return o;
+    const it = ctx.items.find((i) => i.id === o.itemId);
+    if (!it) return o;
+    const next: AddOnOption = { ...o };
+    if (o.syncPrice) next.price = Number(it.salesPrice) || Number(it.mrp) || 0;
+    if (!ctx.allowNegative && Number(it.stock ?? 0) < (Number(o.itemQty) || 1)) next.soldOut = true;
+    return next;
+  };
+  // library is already sorted by the saved order, so filtering it keeps that order
+  const fromLibrary = library
+    .filter((g) => (item.addOnGroupIds ?? []).includes(g.id))
+    .map((g) => {
+      const pick = item.addOnPicks?.find((p) => p.groupId === g.id);
+      const options = (pick?.optionIds ? g.options.filter((o) => pick.optionIds!.includes(o.id)) : g.options).map(live);
+      let multiple = g.multiple;
+      let maxSelect = Number(g.maxSelect) || 0;
+      if (multiple && Number(pick?.maxSelect) > 0) maxSelect = Number(pick!.maxSelect); // this item's own limit
+      let extraPrice = g.extraPrice != null ? Number(g.extraPrice) || 0 : undefined;
+      if (multiple && maxSelect >= options.length) maxSelect = 0;                       // limit can never be reached = no limit
+      if (maxSelect === 0) extraPrice = undefined;                                      // no limit = no extra price
+      if (multiple && maxSelect === 1 && extraPrice === undefined) { multiple = false; maxSelect = 0; } // limit 1 = "Choose one"
+      return { ...g, options, multiple, maxSelect, extraPrice };
+    })
+    .filter((g) => g.options.length > 0);
+  return [...(item.addOnGroups ?? []), ...fromLibrary];
+};
+
+export const buildAddOnPicks = (
+  groupIds: string[],
+  picks: Record<string, string[]>,
+  limits: Record<string, number>,
+  library: AddOnGroup[]
+): { groupId: string; optionIds?: string[]; maxSelect?: number }[] =>
+  groupIds.flatMap((gid) => {
+    const sel = picks[gid];
+    const lim = Number(limits[gid]) > 0 ? Number(limits[gid]) : 0;
+    const g = library.find((x) => x.id === gid);
+    if (!g) return sel ? [{ groupId: gid, optionIds: sel, ...(lim ? { maxSelect: lim } : {}) }] : []; // library not loaded: keep what was chosen
+    const allChecked = !sel || g.options.every((o) => sel.includes(o.id));
+    if (allChecked && !lim) return [];
+    return [{
+      groupId: gid,
+      ...(allChecked ? {} : { optionIds: sel }),
+      ...(g.multiple && lim ? { maxSelect: lim } : {}),
+    }];
+  });
+
+export const addOnStockOf = (
+  line: { addOns?: AddOnOption[]; addOnStock?: { itemId: string; qty: number }[] }
+): { itemId: string; qty: number }[] =>
+  line.addOnStock ??
+  (line.addOns ?? []).filter((a) => a.itemId).map((a) => ({ itemId: a.itemId as string, qty: Number(a.itemQty) || 1 }));
+
+/** Stock to give back when `returnedQty` units of a bill line are returned: linked items, summed per itemId. */
+export const addOnStockToRestore = (
+  line: { addOns?: AddOnOption[]; addOnStock?: { itemId: string; qty: number }[] },
+  returnedQty: number
+): Map<string, number> => {
+  const out = new Map<string, number>();
+  addOnStockOf(line).forEach((a) => out.set(a.itemId, (out.get(a.itemId) || 0) + a.qty * (Number(returnedQty) || 0)));
+  return out;
+};
+export type CustomFieldType = 'text' | 'number' | 'date';
+
+export interface CustomField {
+  id: string;
+  label: string;
+  value: string;          // date type is always stored as yyyy-mm-dd
+  type?: CustomFieldType; // missing = text (old data)
+}
+
+/** Trims everything and drops fully empty rows. */
+export const cleanCustomFields = (fields: CustomField[]): CustomField[] =>
+  fields
+    .map(f => ({ ...f, label: f.label.trim(), value: f.value.trim() }))
+    .filter(f => f.label || f.value);
+
+/** Returns an error message if custom fields are invalid, otherwise null. */
+export const validateCustomFields = (fields: CustomField[]): string | null => {
+  const seen = new Set<string>();
+  for (const f of cleanCustomFields(fields)) {
+        if (!f.label) return `A custom field with value "${f.value}" needs a name.`;
+    if (f.value && f.type === 'date' && !/^\d{4}-\d{2}-\d{2}$/.test(f.value))
+      return `"${f.label}" must be a valid date.`;
+    if (f.value && f.type === 'number' && !Number.isFinite(Number(f.value)))
+      return `"${f.label}" must be a number.`;
+    const key = f.label.toLowerCase();
+    if (seen.has(key)) return `Custom field "${f.label}" is added twice.`;
+    seen.add(key);
+  }
+  return null;
+};
+
+/** Merge incoming values into existing fields by label (case-insensitive). Incoming wins; other fields are kept. */
+export const mergeCustomFields = (
+  existing: CustomField[] | undefined,
+  incoming: { label: string; value: string; type?: CustomFieldType }[]
+): CustomField[] => {
+  const out = [...(existing ?? [])];
+  for (const inc of incoming) {
+    const label = inc.label.trim();
+    const value = inc.value.trim();
+    if (!label || !value) continue;
+    const i = out.findIndex(f => f.label.trim().toLowerCase() === label.toLowerCase());
+     if (i >= 0) out[i] = { ...out[i], value, ...(inc.type ? { type: inc.type } : {}) };
+    else out.push({ id: crypto.randomUUID(), label, value, type: inc.type });
+  }
+  return out;
+};
+export const PRESET_CUSTOM_LABELS = [
+  'IMEI Number', 'Serial Number', 'Warranty', 'Colour',
+  'Batch No', 'Expiry Date', 'Mfg Date', 'Size', 'Brand', 'Model No',
+];
+
+export const PRESET_FIELD_TYPES: Record<string, CustomFieldType> = {
+  'Expiry Date': 'date',
+  'Mfg Date': 'date',
+};
+
+/** Match a typed/Excel header to a known name (case-insensitive) so "imei number" and "IMEI Number" are one field. */
+export const canonicalCustomLabel = (raw: string, known: string[] = []): string => {
+  const t = raw.trim();
+  const key = t.toLowerCase();
+  return [...PRESET_CUSTOM_LABELS, ...known].find(l => l.toLowerCase() === key) ?? t;
+};
+/** Type of a field name: preset first, then whatever other items already use, else text. */
+export const fieldTypeOf = (
+  label: string,
+  known: { label: string; type: CustomFieldType }[] = []
+): CustomFieldType =>
+  PRESET_FIELD_TYPES[label] ??
+  known.find(k => k.label.toLowerCase() === label.trim().toLowerCase())?.type ??
+  'text';
+
+/** Every custom field name used across items, with its type (for report filters/columns). */
+export const collectCustomLabels = (
+  items: { customFields?: CustomField[] }[]
+): { label: string; type: CustomFieldType }[] => {
+  const map = new Map<string, { label: string; type: CustomFieldType }>();
+  items.forEach(it =>
+    (it.customFields ?? []).forEach(f => {
+      const label = f.label?.trim();
+      if (!label) return;
+      const key = label.toLowerCase();
+      const type = f.type ?? PRESET_FIELD_TYPES[label] ?? 'text';
+      const cur = map.get(key);
+      if (!cur) map.set(key, { label, type });
+      else if (cur.type === 'text' && type !== 'text') cur.type = type;
+    })
+  );
+  return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label));
+};
+
+export const getCustomValue = (item: { customFields?: CustomField[] }, label: string): string =>
+  item.customFields?.find(f => f.label.trim().toLowerCase() === label.trim().toLowerCase())?.value ?? '';
+
+/** Excel Date object / dd-mm-yyyy / dd/mm/yyyy / yyyy-mm-dd -> yyyy-mm-dd. Unknown text is returned as is. */
+export const toIsoDate = (raw: unknown): string => {
+  if (raw instanceof Date && !isNaN(raw.getTime())) return raw.toISOString().slice(0, 10);
+  const s = String(raw ?? '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  return s;
+};

@@ -1,18 +1,150 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useAuth, useDatabase } from '../context/auth-context';
+import { useCatalogueData } from '../context/CatalogueDataContext';
 import type { Item, ItemGroup } from '../constants/models';
 import { Modal } from '../constants/Modal';
 import { State } from '../enums';
-import { FiX, FiPackage, FiPlus } from 'react-icons/fi';
-import { Trash2, X, ChevronLeft } from 'lucide-react';
-import { Spinner } from '../constants/Spinner';
+import { Trash2, Send, Pin, Download, Loader2, Copy, Share2, Plus, Pencil, ChevronDown, Link2, Image as ImageIcon, X } from 'lucide-react';
+import { fileToCategoryImage, loadImageFromUrl } from '../constants/categoryImage';
 import { db } from '../lib/Firebase';
-import { addDoc, collection, serverTimestamp, doc, getDoc } from 'firebase/firestore';
+import { addDoc, collection, serverTimestamp, doc, getDoc, setDoc } from 'firebase/firestore';
 import { OrderInvoiceNumber } from '../UseComponents/InvoiceCounter';
 import { useNavigate } from 'react-router';
-import Footer from './Footer';
 import { useBusinessName } from './hooks/BusinessName';
-import SearchBar from './SearchBar';
+import SubdomainClaimModal from '../Components/SubDomainModal';
+import SearchableItemInput from '../UseComponents/SearchIteminput';
+import ShowWrapper from '../context/ShowWrapper';
+import { Cata_Permissions } from './enum/cata_permissions.enum';
+//import { ROUTES } from '../constants/routes.constants';
+//import BackButton from '../Components/BackButton';
+import { Photo, Sheet, btnClass, toneClass } from './storefront/StoreUI';
+import { initialsOf } from './storefront/storefront.utils';
+import useTutorial from './hooks/useTutorial';
+import { completeTutorial } from './hooks/useCompleteTutorial';
+import { TutorialStep } from '../Components/TutorialStep';
+
+const TOTAL_STEPS = 4;
+const TUTORIAL_KEY = 'editCatalogueTutorialDone';
+
+const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
+
+// --- Sample data shown only while the tutorial is running ---
+const SAMPLE_GROUPS = [
+    { id: 'sample-group-1', name: 'Sample Snacks', description: 'Sample' },
+    { id: 'sample-group-2', name: 'Sample Beverages', description: 'Sample' },
+    { id: 'sample-group-3', name: 'Sample Stationery', description: 'Sample' },
+] as unknown as ItemGroup[];
+
+const SAMPLE_ITEMS = [
+    // Group 1: all live
+    { id: 's1', name: 'Sample Chips', mrp: 20, salesPrice: 18, itemGroupId: 'sample-group-1', isListed: true },
+    { id: 's2', name: 'Sample Biscuits', mrp: 30, salesPrice: 28, itemGroupId: 'sample-group-1', isListed: true },
+    { id: 's3', name: 'Sample Namkeen', mrp: 50, salesPrice: 45, itemGroupId: 'sample-group-1', isListed: true },
+    // Group 2: partly live
+    { id: 's4', name: 'Sample Cola', mrp: 40, salesPrice: 38, itemGroupId: 'sample-group-2', isListed: true },
+    { id: 's5', name: 'Sample Juice', mrp: 60, salesPrice: 55, itemGroupId: 'sample-group-2', isListed: false },
+    // Group 3: none live (shows the greyed-out card)
+    { id: 's6', name: 'Sample Notebook', mrp: 80, salesPrice: 70, itemGroupId: 'sample-group-3', isListed: false },
+    { id: 's7', name: 'Sample Pen', mrp: 10, salesPrice: 10, itemGroupId: 'sample-group-3', isListed: false },
+] as unknown as Item[];
+
+const SAMPLE_PINNED_IDS = new Set<string>(['sample-group-1']);
+
+// 1. Updated normalizer: Converts ANY image format (WebP, AVIF, PNG) into a jsPDF-safe JPEG
+const blobToNormalizedBase64 = (blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.crossOrigin = 'Anonymous';
+
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+
+            if (ctx) {
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0);
+                resolve(canvas.toDataURL('image/jpeg', 0.8)); // 0.8 compression keeps PDF file size down
+            } else {
+                reject(new Error("Canvas context failed"));
+            }
+            URL.revokeObjectURL(url);
+        };
+        img.onerror = () => {
+            URL.revokeObjectURL(url);
+            reject(new Error("Image load error"));
+        };
+        img.src = url;
+    });
+};
+
+// 2. Your existing fetch logic, routing the blob through the new Canvas normalizer
+const convertImageUrlToBase64 = async (url: string, itemName: string): Promise<string> => {
+    if (!url) {
+        console.warn(`⚠️ [${itemName}] No Image URL provided in the database.`);
+        return "";
+    }
+
+    try {
+        const cacheBuster = url + (url.includes('?') ? '&' : '?') + 'cb=' + new Date().getTime();
+        const response = await fetch(cacheBuster, { mode: 'cors' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const blob = await response.blob();
+
+        // Pass through the new normalizer
+        return await blobToNormalizedBase64(blob);
+
+    } catch (err) {
+        console.warn(`⚠️ [${itemName}] Direct fetch blocked. Trying Proxy...`);
+        try {
+            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+            const proxyResponse = await fetch(proxyUrl);
+            if (!proxyResponse.ok) throw new Error(`Proxy HTTP ${proxyResponse.status}`);
+            const blob = await proxyResponse.blob();
+
+            // Pass through the new normalizer
+            return await blobToNormalizedBase64(blob);
+
+        } catch (proxyErr) {
+            console.error(`❌ [${itemName}] Both direct and proxy fetch failed.`);
+            return "";
+        }
+    }
+};
+type PriceRounding = { enabled: boolean; interval: number };
+
+const roundToInterval = (value: number, rounding?: PriceRounding) => {
+    if (!rounding?.enabled || !(rounding.interval > 0)) return value;
+    return Number((Math.round(value / rounding.interval) * rounding.interval).toFixed(2));
+};
+
+// Helper to calculate effective prices consistently
+const getEffectivePriceInfo = (item: Item, rounding?: PriceRounding) => {
+    const mrp = Number(item.mrp || 0);
+    const itemSalesPrice = Number(item.salesPrice || 0);
+    const presetDiscount = Number(item.discount || 0);
+
+    let salePrice = 0;
+    if (mrp > 0 && itemSalesPrice > 0) {
+        salePrice = itemSalesPrice;
+    } else if (itemSalesPrice > 0) {
+        salePrice = itemSalesPrice * (1 - (presetDiscount / 100));
+    } else if (mrp > 0) {
+        salePrice = mrp * (1 - (presetDiscount / 100));
+    }
+    salePrice = Math.round((salePrice + Number.EPSILON) * 100) / 100;
+    salePrice = roundToInterval(salePrice, rounding);
+
+    return {
+        mrp,
+        salePrice,
+        hasBothPrices: mrp > 0 && salePrice > 0 && salePrice < mrp
+    };
+};
+
 const OrderingPage: React.FC = () => {
     // --- States ---
     const navigate = useNavigate()
@@ -20,10 +152,15 @@ const OrderingPage: React.FC = () => {
     const companyId = currentUser?.companyId;
     const { businessName: companyName, loading: _nameLoading } = useBusinessName(companyId);
     const dbOperations = useDatabase();
-    const [items, setItems] = useState<Item[]>([]);
-    const [itemGroups, setItemGroups] = useState<ItemGroup[]>([]);
+    const { items: catalogueItems, itemsLoading, itemGroups: catalogueItemGroups, itemGroupsLoading } = useCatalogueData();
+    // Local mirrors (not direct context reads) — this page optimistically
+    // mutates both after live-toggling items and renaming/deleting groups,
+    // ahead of the shared listener echoing those writes back.
+    const [realItems, setItems] = useState<Item[]>(catalogueItems);
+    const [realItemGroups, setItemGroups] = useState<ItemGroup[]>(catalogueItemGroups);
+    useEffect(() => { setItemGroups(catalogueItemGroups); }, [catalogueItemGroups]);
     const [searchQuery, _setSearchQuery] = useState('');
-    const [pageIsLoading, setPageIsLoading] = useState(true);
+    const pageIsLoading = authLoading || !dbOperations || itemsLoading || itemGroupsLoading;
     const [cart, setCart] = useState<any[]>([]);
     const [isPlacingOrder, setIsPlacingOrder] = useState(false);
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
@@ -34,135 +171,667 @@ const OrderingPage: React.FC = () => {
     const [highlightedId, _setHighlightedId] = useState<string | null>(null);
     const [sortOrder, setSortOrder] = useState<'A-Z' | 'Z-A'>('A-Z');
     const [isSortOpen, setIsSortOpen] = useState(false);
-    const [socialLinks, setSocialLinks] = useState<any>({});
+    const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
     // --- YOUR NEW STATES ---
     const [editingId, setEditingId] = useState<string | null>(null);
     const [tempName, setTempName] = useState('');
+    const [realPinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
+    const [isSubdomainModalOpen, setIsSubdomainModalOpen] = useState(false); // <-- NEW STATE
+    const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-    // --- Fetch Data ---
+    // --- New category popup ---
+    const [isNewCategoryOpen, setIsNewCategoryOpen] = useState(false);
+    const [newCategoryName, setNewCategoryName] = useState('');
+    const [newCategoryImage, setNewCategoryImage] = useState(''); // '' = no image
+    const [newCategoryLink, setNewCategoryLink] = useState('');
+    const [isCheckingLink, setIsCheckingLink] = useState(false);
+    const [newCategoryError, setNewCategoryError] = useState<string | null>(null);
+    const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+
+    // --- Edit category popup: image ---
+    const [tempImage, setTempImage] = useState(''); // '' = no image
+    const [tempImageLink, setTempImageLink] = useState('');
+    const [isCheckingEditLink, setIsCheckingEditLink] = useState(false);
+    const [isSavingEdit, setIsSavingEdit] = useState(false);
+    const [editError, setEditError] = useState<string | null>(null);
+
+    // --- TUTORIAL ---
+    const [tutorialStep, setTutorialStep] = useState(0);
+    const headerActionsRef = useRef<HTMLDivElement | null>(null);
+    const liveToggleRef = useRef<HTMLDivElement | null>(null);
+    const toolbarRef = useRef<HTMLDivElement | null>(null);
+    const firstCardRef = useRef<HTMLDivElement | null>(null);
+
+    const stepRefMap: Record<number, React.RefObject<HTMLDivElement | null>> = {
+        1: headerActionsRef,
+        2: liveToggleRef,
+        3: toolbarRef,
+        4: firstCardRef,
+    };
+
+    const next = useCallback((n: number) => {
+        setTutorialStep(n <= TOTAL_STEPS ? n : 0);
+    }, []);
+
+    const skip = useCallback(() => {
+        completeTutorial(currentUser, TUTORIAL_KEY, setTutorialStep);
+    }, [currentUser]);
+
+    useTutorial(currentUser, setTutorialStep, TUTORIAL_KEY);
+
+    // While the tutorial runs, show sample data instead of the real catalogue
+    const isTutorialActive = tutorialStep > 0 && tutorialStep <= TOTAL_STEPS;
+    const items = useMemo(() => (isTutorialActive ? SAMPLE_ITEMS : realItems), [isTutorialActive, realItems]);
+    const itemGroups = useMemo(() => (isTutorialActive ? SAMPLE_GROUPS : realItemGroups), [isTutorialActive, realItemGroups]);
+    const pinnedIds = useMemo(() => (isTutorialActive ? SAMPLE_PINNED_IDS : realPinnedIds), [isTutorialActive, realPinnedIds]);
+
     useEffect(() => {
-        if (authLoading || !currentUser || !dbOperations) {
-            setPageIsLoading(authLoading || !dbOperations);
-            return;
-        }
+        if (tutorialStep === 0) return;
+        const ref = stepRefMap[tutorialStep];
+        if (!ref?.current) return;
+        setTimeout(() => {
+            ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 80);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tutorialStep]);
 
-        const fetchData = async () => {
-            if (!companyId) return;
+    // --- GLOBAL "LIVE ENTIRE CATALOGUE" STATES ---
+    const [showCatalogueConfirmPopup, setShowCatalogueConfirmPopup] = useState(false);
+    const [pendingCatalogueLiveState, setPendingCatalogueLiveState] = useState<boolean | null>(null);
+    const [isTogglingCatalogue, setIsTogglingCatalogue] = useState(false);
 
+    // State nahi, derived value: items se hi nikalta hai, isliye alag se flip nahi hoga
+    const isAllCatalogueLive = useMemo(
+        () => items.length > 0 && items.every(item => item.isListed === true),
+        [items],
+    );
+
+    // Context se sync: bulk toggle ke dauran partial snapshots ignore
+    useEffect(() => {
+        if (isTogglingCatalogue) return;
+        setItems(catalogueItems);
+    }, [catalogueItems, isTogglingCatalogue]);
+
+    useEffect(() => {
+        if (!companyId) return;
+        const loadPins = async () => {
             try {
-                setPageIsLoading(true);
-
-                const [fetchedItems, fetchedItemGroups] = await Promise.all([
-                    dbOperations.syncItems(),
-                    dbOperations.getItemGroups()
-                ]);
-                const hasuncategorized = fetchedItemGroups.some(
-                    g => g.id === "uncategorized"
-                );
-
-                if (!hasuncategorized) {
-                    fetchedItemGroups.push({
-                        id: "uncategorized",
-                        name: "uncategorized"
-                    } as ItemGroup);
+                const ref = doc(db, 'companies', companyId, 'settings', 'pinned_categories');
+                const snap = await getDoc(ref);
+                if (snap.exists()) {
+                    const ids: string[] = snap.data().ids || [];
+                    setPinnedIds(new Set(ids));
+                    localStorage.setItem(`pinned_${companyId}`, JSON.stringify(ids));
+                } else {
+                    const saved = localStorage.getItem(`pinned_${companyId}`);
+                    if (saved) setPinnedIds(new Set(JSON.parse(saved)));
                 }
-
-                setItems(fetchedItems);
-
-                const groupMap = new Map<string, ItemGroup>();
-                fetchedItemGroups.forEach(group => {
-                    if (!groupMap.has(group.name.toLowerCase())) {
-                        groupMap.set(group.name.toLowerCase(), group);
-                    }
-                });
-
-                setItemGroups(
-                    Array.from(groupMap.values()).sort((a, b) =>
-                        a.name.localeCompare(b.name)
-                    )
-                );
-
-                const businessRef = doc(
-                    db,
-                    "companies",
-                    companyId,
-                    "business_info",
-                    companyId
-                );
-
-                const businessSnap = await getDoc(businessRef);
-
-                if (businessSnap.exists()) {
-                    setSocialLinks(businessSnap.data());
-                }
-
-            } catch (err) {
-                console.error("Error fetching data:", err);
-            } finally {
-                setPageIsLoading(false);
+            } catch {
+                const saved = localStorage.getItem(`pinned_${companyId}`);
+                if (saved) setPinnedIds(new Set(JSON.parse(saved)));
             }
         };
-        fetchData();
-    }, [authLoading, currentUser, dbOperations]);
-
+        loadPins();
+    }, [companyId]);
     // --- HANDLERS ---
     const handleEdit = (group: any) => {
+        if (isTutorialActive) return;
         setEditingId(group.id!);
         setTempName(group.name);
+        setTempImage(group.imageUrl ?? '');
+        // saved image link hai (data: upload nahi) to link field me dikhao
+        setTempImageLink(group.imageUrl && /^https?:\/\//i.test(group.imageUrl) ? group.imageUrl : '');
+        setEditError(null);
+    };
+
+    const closeEdit = () => {
+        if (isSavingEdit) return;
+        setEditingId(null);
+        setConfirmDeleteId(null);
+        setTempImage('');
+        setTempImageLink('');
+        setIsCheckingEditLink(false);
+        setEditError(null);
+    };
+
+    const handleEditImagePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (!file) return;
+        try {
+            setTempImage(await fileToCategoryImage(file));
+            setTempImageLink(''); // upload replaces pasted link
+            setEditError(null);
+        } catch (err: any) {
+            setEditError(err.message || 'Failed to process image.');
+        }
+    };
+
+    const handleApplyEditLink = async () => {
+        const url = tempImageLink.trim();
+        if (!url) return;
+        setIsCheckingEditLink(true);
+        try {
+            setTempImage(await loadImageFromUrl(url));
+            setEditError(null);
+        } catch (err: any) {
+            setEditError(err.message || 'Failed to load image link.');
+        } finally {
+            setIsCheckingEditLink(false);
+        }
+    };
+
+    const generateSlug = (name: string) => {
+        return name
+            .toLowerCase()
+            .trim()
+            .replace(/\s+/g, "-")       // Replace spaces with hyphens
+            .replace(/[^a-z0-9-]/g, ""); // Remove special characters
+    };
+
+    const handleShareCategory = async (group: ItemGroup) => {
+        if (isTutorialActive || !companyId || !group?.id) return;
+
+        const categorySlug = generateSlug(group.name);
+
+        // 1. Safe fallback just in case
+        let shareUrl = `${window.location.origin}/${companyId}/${categorySlug}`;
+
+        try {
+            // 2. Fetch their official subdomain instantly on click
+            const docRef = doc(db, 'companies', companyId);
+            const snap = await getDoc(docRef);
+
+            if (snap.exists() && snap.data().subdomain) {
+                // 3. Overwrite with the beautiful public URL!
+                shareUrl = `https://${snap.data().subdomain}.sellar.in/${categorySlug}`;
+            }
+        } catch (error) {
+            console.error("Error fetching subdomain for sharing:", error);
+        }
+
+        try {
+            if (navigator.share) {
+                await navigator.share({
+                    title: `${companyName} - ${group.name}`,
+                    text: `Check out this category from ${companyName}`,
+                    url: shareUrl,
+                });
+            } else {
+                // Fallback for desktop browsers
+                await navigator.clipboard.writeText(shareUrl);
+
+                // Using your existing modal state instead of a native alert for a cleaner UI!
+                setModal({ message: "Category link copied to clipboard!", type: State.SUCCESS });
+            }
+        } catch {
+            // Share cancelled by the user
+        }
+    };
+    const handleTogglePin = (e: React.MouseEvent, id: string) => {
+        e.stopPropagation();
+        if (isTutorialActive) return; // don't write sample IDs to Firestore/localStorage
+        setPinnedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) { next.delete(id); } else { next.add(id); }
+            if (companyId) {
+                localStorage.setItem(`pinned_${companyId}`, JSON.stringify([...next]));
+                const ref = doc(db, 'companies', companyId, 'settings', 'pinned_categories');
+                setDoc(ref, { ids: [...next] }, { merge: true });
+            }
+            return next;
+        });
+    };
+    const handleToggleAllCatalogueLive = () => {
+        if (isTutorialActive) return;
+        setPendingCatalogueLiveState(!isAllCatalogueLive);
+        setShowCatalogueConfirmPopup(true);
+    };
+
+    const confirmToggleAllCatalogueLive = async () => {
+        if (!dbOperations || pendingCatalogueLiveState === null) return;
+        const newState = pendingCatalogueLiveState;
+        setShowCatalogueConfirmPopup(false);
+        setIsTogglingCatalogue(true);
+
+        try {
+            const updates = realItems.map(item =>
+                dbOperations.updateItem(item.id!, { isListed: newState })
+            );
+            await Promise.all(updates);
+
+            setItems(prev => prev.map(item => ({ ...item, isListed: newState })));
+            setModal({ message: `Entire catalogue is now ${newState ? 'LIVE' : 'UNLIVE'}`, type: State.SUCCESS });
+        } catch (err) {
+            console.error("Bulk catalogue toggle failed:", err);
+            setModal({ message: 'Failed to update catalogue status', type: State.ERROR });
+        } finally {
+            setIsTogglingCatalogue(false);
+            setPendingCatalogueLiveState(null);
+        }
     };
 
     const handleSaveEdit = async (id: string) => {
         if (!dbOperations) {
-            setModal({ message: 'Database connection error', type: State.ERROR });
+            setEditError('Database connection error');
             return;
         }
+        const group = realItemGroups.find(g => g.id === id);
+        if (!group) return;
 
+        const name = tempName.trim();
+        if (!name) return setEditError('Category name cannot be empty.');
+        const lower = name.toLowerCase();
+        if (lower === 'uncategorized' || realItemGroups.some(g => g.id !== id && g.name.trim().toLowerCase() === lower)) {
+            return setEditError('A category with this name already exists.');
+        }
+
+        setIsSavingEdit(true);
+        setEditError(null);
         try {
-            await dbOperations.updateItemGroup(id, { name: tempName });
-            setItemGroups(prev => prev.map(group =>
-                group.id === id ? { ...group, name: tempName } : group
-            ));
+            // link paste kiya par "Use link" nahi dabaya? Save pe khud check kar lo
+            let imageUrl = tempImage;
+            if (!imageUrl && tempImageLink.trim()) {
+                imageUrl = await loadImageFromUrl(tempImageLink.trim());
+            }
 
-            setEditingId(null);
-            setModal({ message: 'Name updated successfully!', type: State.SUCCESS });
-        } catch (err) {
-            console.error("Update Error:", err);
-            setModal({ message: 'Failed to update name', type: State.ERROR });
+            const nameChanged = name !== group.name;
+            const imageChanged = imageUrl !== ((group as any).imageUrl ?? '');
+            if (!nameChanged && !imageChanged) {
+                setIsSavingEdit(false);
+                closeEdit();
+                return;
+            }
+
+            const updates: Record<string, any> = {};
+            if (nameChanged) updates.name = name;
+            if (imageChanged) updates.imageUrl = imageUrl; // '' = image hata di
+
+            await dbOperations.updateItemGroup(id, updates);
+            setItemGroups(prev => prev.map(g => (g.id === id ? { ...g, ...updates } : g)));
+
+            setIsSavingEdit(false);
+            closeEdit();
+            setModal({ message: nameChanged ? 'Category updated successfully!' : 'Category image updated!', type: State.SUCCESS });
+        } catch (err: any) {
+            console.error('Update Error:', err);
+            setEditError(err?.message || 'Failed to update category.');
+        } finally {
+            setIsSavingEdit(false);
         }
     };
 
+    // Same steps the old inline "Delete product group" did: move its items out, then delete the group
+    const handleDeleteGroup = async (groupId: string) => {
+        if (!dbOperations) return;
+        try {
+            const itemsToUpdate = realItems.filter(item => item.itemGroupId === groupId);
+            await Promise.all(itemsToUpdate.map(item => dbOperations.updateItem(item.id!, { itemGroupId: "" })));
+            await dbOperations.deleteItemGroup(groupId);
+            setItemGroups(prev => prev.filter(p => p.id !== groupId));
+            setEditingId(null);
+            setConfirmDeleteId(null);
+            setModal({ message: 'Deleted successfully', type: State.SUCCESS });
+        } catch (err) {
+            console.error(err);
+            setModal({ message: 'Delete failed', type: State.ERROR });
+        }
+    };
+
+    // --- New category popup ---
+    const resetNewCategory = () => {
+        setNewCategoryName('');
+        setNewCategoryImage('');
+        setNewCategoryLink('');
+        setIsCheckingLink(false);
+        setNewCategoryError(null);
+    };
+
+    const openNewCategory = () => {
+        if (isTutorialActive) return;
+        resetNewCategory();
+        setIsNewCategoryOpen(true);
+    };
+
+    const closeNewCategory = () => {
+        if (isCreatingCategory) return;
+        setIsNewCategoryOpen(false);
+        resetNewCategory();
+    };
+
+    const handleNewCategoryImagePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        e.target.value = ''; // same file dobara choose ho sake
+        if (!file) return;
+        try {
+            setNewCategoryImage(await fileToCategoryImage(file));
+            setNewCategoryLink(''); // upload replaces any pasted link
+            setNewCategoryError(null);
+        } catch (err: any) {
+            setNewCategoryError(err.message || 'Failed to process image.');
+        }
+    };
+
+    const handleApplyNewCategoryLink = async () => {
+        const url = newCategoryLink.trim();
+        if (!url) return;
+        setIsCheckingLink(true);
+        try {
+            setNewCategoryImage(await loadImageFromUrl(url)); // preview updates instantly
+            setNewCategoryError(null);
+        } catch (err: any) {
+            setNewCategoryError(err.message || 'Failed to load image link.');
+        } finally {
+            setIsCheckingLink(false);
+        }
+    };
+
+    const handleCreateCategory = async () => {
+        const name = newCategoryName.trim();
+        if (!name) return setNewCategoryError('Category name cannot be empty.');
+        const lower = name.toLowerCase();
+        if (lower === 'uncategorized' || realItemGroups.some(g => g.name.trim().toLowerCase() === lower)) {
+            return setNewCategoryError('A category with this name already exists.');
+        }
+        if (!dbOperations) return;
+
+        setIsCreatingCategory(true);
+        setNewCategoryError(null);
+        try {
+            // link paste kiya par "Use link" nahi dabaya? Create pe khud check kar lo
+            let imageUrl = newCategoryImage;
+            if (!imageUrl && newCategoryLink.trim()) {
+                imageUrl = await loadImageFromUrl(newCategoryLink.trim());
+            }
+
+            await dbOperations.createItemGroup({
+                name,
+                description: '',
+                ...(imageUrl ? { imageUrl } : {}),
+            });
+            // the shared catalogue listener adds it to the grid automatically
+            setIsNewCategoryOpen(false);
+            resetNewCategory();
+            setModal({ message: `Category "${name}" created!`, type: State.SUCCESS });
+        } catch (err: any) {
+            console.error('Create category failed:', err);
+            setNewCategoryError(err?.message || 'Failed to create category. Please try again.');
+        } finally {
+            setIsCreatingCategory(false);
+        }
+    };
+
+    const handleCopyStoreLink = async () => {
+        if (!companyId) return;
+        let url = `${window.location.origin}/catalogue/${companyId}`;
+        try {
+            const snap = await getDoc(doc(db, 'companies', companyId));
+            if (snap.exists() && snap.data().subdomain) url = `https://${snap.data().subdomain}.sellar.in`;
+            await navigator.clipboard.writeText(url);
+            setModal({ message: 'Store link copied to clipboard!', type: State.SUCCESS });
+        } catch (err) {
+            console.error('Copy store link failed:', err);
+            setIsSubdomainModalOpen(true);
+        }
+    };
+
+    // Opens the same Share card as the sidebar's Share action
+    const handleShareCatalogue = () => window.dispatchEvent(new CustomEvent('open-catalogue-share'));
+
     // --- Memos ---
     const cartValue = useMemo(() => cart.reduce((acc, item) => acc + (item.mrp * item.quantity), 0), [cart]);
+
+    const itemGroupMap = useMemo(() => {
+        return itemGroups.reduce((acc, group) => {
+            if (group.id) {
+                acc[group.id] = group.name;
+            }
+            return acc;
+        }, {} as Record<string, string>);
+    }, [itemGroups]);
+
+    const handleDownloadFullCatalogPDF = async () => {
+        // 1. STRICT filter for live items only
+        const liveItems = realItems.filter(item => item.isListed === true);
+
+        if (liveItems.length === 0) {
+            setModal({ message: 'No live items available to download.', type: State.ERROR });
+            return;
+        }
+
+        setIsGeneratingPDF(true);
+
+        // Read the shop's round-off setting (must happen outside the try below,
+        // because `const doc = new jsPDF()` shadows Firestore's `doc` there)
+        let rounding: PriceRounding = { enabled: true, interval: 1 };
+        if (companyId) {
+            try {
+                const s = await getDoc(doc(db, 'companies', companyId, 'settings', 'catalogue-sales-settings'));
+                if (s.exists()) {
+                    const d = s.data();
+                    rounding = {
+                        enabled: d.enableRounding ?? true,
+                        interval: Number(d.roundingInterval ?? 1) || 1,
+                    };
+                }
+            } catch (e) {
+                console.warn('Could not load rounding settings, using defaults.', e);
+            }
+        }
+
+        try {
+            // Deferred to keep jsPDF/jspdf-autotable out of the storefront's
+            // initial bundle — only fetched when a customer actually clicks
+            // "Download Catalogue PDF".
+            const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+                import('jspdf'),
+                import('jspdf-autotable'),
+            ]);
+
+            const doc = new jsPDF();
+
+            // --- Document Header ---
+            doc.setFontSize(18);
+            doc.text(`${companyName} - Catalogue`, 14, 20);
+            doc.setFontSize(10);
+            doc.setTextColor(100);
+            doc.text(`Generated by SELLAR.IN: ${new Date().toLocaleDateString()}`, 14, 26);
+
+            const tableBody: any[] = [];
+            const tableImages: string[] = [];
+
+            // 2. Sort ONLY the strictly filtered live items
+            const sortedItems = [...liveItems].sort((a, b) => {
+                const catA = a.itemGroupId ? itemGroupMap[a.itemGroupId] || 'Uncategorized' : 'Uncategorized';
+                const catB = b.itemGroupId ? itemGroupMap[b.itemGroupId] || 'Uncategorized' : 'Uncategorized';
+
+                if (catA === catB) {
+                    return (a.name || '').localeCompare(b.name || '');
+                }
+                return catA.localeCompare(catB);
+            });
+
+            // --- Prepare Data (Throttled to prevent 429 errors) ---
+            for (const item of sortedItems) {
+                const { salePrice, mrp, hasBothPrices } = getEffectivePriceInfo(item, rounding);
+                let base64Img = '';
+
+                if (item.imageUrl) {
+                    // Make sure your convertImageUrlToBase64 function in THIS file 
+                    // has been updated to use the Canvas normalizer!
+                    base64Img = await convertImageUrlToBase64(
+                        item.imageUrl,
+                        item.name || 'Unknown Product'
+                    );
+
+                    // Tiny 50ms artificial delay between fetches to keep Google servers happy
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                }
+
+                const catName = item.itemGroupId ? itemGroupMap[item.itemGroupId] || 'Uncategorized' : 'Uncategorized';
+                const mrpText = hasBothPrices ? `Rs. ${mrp}` : '-';
+                const salePriceText = `Rs. ${salePrice}`;
+
+                tableBody.push([
+                    '', // Image placeholder
+                    item.name?.toUpperCase() || 'UNNAMED PRODUCT',
+                    catName,
+                    mrpText,
+                    salePriceText
+                ]);
+
+                tableImages.push(base64Img);
+            }
+
+            // --- Generate AutoTable ---
+            autoTable(doc, {
+                startY: 32,
+                margin: { bottom: 25 }, // CRITICAL: Adds space at the bottom so the table doesn't hit the footer
+                head: [['Image', 'Product Details', 'Category', 'MRP', 'Sale Price']],
+                body: tableBody,
+                headStyles: { fillColor: [249, 115, 22] }, // Orange
+                bodyStyles: { minCellHeight: 25, valign: 'middle' },
+                columnStyles: {
+                    0: { cellWidth: 25 },
+                    1: { cellWidth: 'auto', fontStyle: 'bold', textColor: [26, 59, 93] },
+                    2: { cellWidth: 35, textColor: [100, 100, 100] },
+                    3: { cellWidth: 20, halign: 'center', textColor: [156, 163, 175] },
+                    4: { cellWidth: 30, halign: 'right', fontStyle: 'bold', textColor: [249, 115, 22] }
+                },
+                didDrawCell: (data) => {
+                    // Inject images into the first column
+                    if (data.column.index === 0 && data.cell.section === 'body') {
+                        const base64Img = tableImages[data.row.index];
+                        if (base64Img) {
+                            // Because we used the Canvas normalizer, this is now a guaranteed clean JPEG
+                            doc.addImage(base64Img, 'JPEG', data.cell.x + 2, data.cell.y + 2, 21, 21);
+                        }
+                    }
+                },
+                didDrawPage: () => {
+                    // --- Footer Branding Injection ---
+                    const pageSize = doc.internal.pageSize;
+                    const pageWidth = pageSize.width ? pageSize.width : pageSize.getWidth();
+                    const pageHeight = pageSize.height ? pageSize.height : pageSize.getHeight();
+                    const footerY = pageHeight - 12; // Base Y position near the bottom
+
+                    doc.setFontSize(10);
+
+                    // -- Line 1: Powered by SELLAR.IN --
+                    doc.setFont('helvetica', 'bold');
+                    const text1a = "Powered by ";
+                    const text1b = "SELLAR.IN";
+                    const w1a = doc.getTextWidth(text1a);
+                    const w1b = doc.getTextWidth(text1b);
+                    const startX1 = (pageWidth - (w1a + w1b)) / 2; // Centers the combined text
+
+                    doc.setTextColor(0, 0, 0); // Black
+                    doc.text(text1a, startX1, footerY - 5);
+
+                    doc.setTextColor(37, 99, 235); // Blue
+                    doc.text(text1b, startX1 + w1a, footerY - 5);
+
+                    // Draw underline for SELLAR.IN
+                    doc.setLineWidth(0.3);
+                    doc.setDrawColor(37, 99, 235);
+                    doc.line(startX1 + w1a, footerY - 4, startX1 + w1a + w1b, footerY - 4);
+
+                    // -- Line 2: Made with Love in India --
+                    doc.setFont('helvetica', 'normal');
+                    const text2a = "Made with ";
+                    const text2b = "Love";
+                    const text2c = " in India";
+                    const w2a = doc.getTextWidth(text2a);
+                    const w2b = doc.getTextWidth(text2b);
+                    const w2c = doc.getTextWidth(text2c);
+                    const startX2 = (pageWidth - (w2a + w2b + w2c)) / 2;
+
+                    doc.setTextColor(0, 0, 128); // Dark Navy/Blackish for start
+                    doc.text(text2a, startX2, footerY);
+
+                    doc.setTextColor(239, 68, 68); // Red
+                    doc.text(text2b, startX2 + w2a, footerY);
+
+                    doc.setTextColor(0, 0, 128); // Dark Navy for end
+                    doc.text(text2c, startX2 + w2a + w2b, footerY);
+                }
+            });
+
+            // --- Save the PDF ---
+            const safeCompanyName = (companyName || 'Company').replace(/\s+/g, '_');
+            doc.save(`${safeCompanyName}_Full_Master_Catalogue.pdf`);
+
+        } catch (error) {
+            console.error("Error generating full PDF:", error);
+            setModal({ message: 'Failed to generate PDF.', type: State.ERROR });
+        } finally {
+            setIsGeneratingPDF(false);
+        }
+    };
+
     const filteredItems = useMemo(() => {
-        const query = searchQuery.toLowerCase();
+        const validGroupIds = new Set(itemGroups.map(g => g.id));
+        const uncategorizedItems = items.filter(item =>
+            !item.itemGroupId || !validGroupIds.has(item.itemGroupId)
+        );
 
-        const result = itemGroups.filter(group => {
-            // Group name match
-            const matchesGroupName = group.name.toLowerCase().includes(query);
+        let displayedGroups = [...itemGroups];
+        if (uncategorizedItems.length > 0) {
+            displayedGroups.push({
+                id: 'uncategorized',
+                name: 'Uncategorized',
+                description: 'System default category'
+            } as ItemGroup);
+        }
 
-            // Items inside group match
-            const matchesInnerItems = items.some(item =>
-                item.itemGroupId === group.id &&
-                item.name.toLowerCase().includes(query)
-            );
+        const query = searchQuery.toLowerCase().trim();
+        if (query) {
+            displayedGroups = displayedGroups.filter(group => {
+                const groupItems = group.id === 'uncategorized'
+                    ? uncategorizedItems
+                    : items.filter(i => i.itemGroupId === group.id);
 
-            return matchesGroupName || matchesInnerItems;
-        });
+                const matchesGroupName = group.name.toLowerCase().includes(query);
+                const matchesInnerItems = groupItems.some(item =>
+                    item.name.toLowerCase().includes(query)
+                );
 
-        return [...result].sort((a, b) => {
+                return matchesGroupName || matchesInnerItems;
+            });
+        }
+
+        return displayedGroups.sort((a, b) => {
+            const aPinned = pinnedIds.has(a.id!);
+            const bPinned = pinnedIds.has(b.id!);
+            if (aPinned !== bPinned) return aPinned ? -1 : 1;
             if (sortOrder === 'A-Z') return a.name.localeCompare(b.name);
             return b.name.localeCompare(a.name);
         });
-    }, [itemGroups, items, searchQuery, sortOrder]);
+    }, [itemGroups, items, searchQuery, sortOrder, pinnedIds]);
 
     const getGroupImages = (groupId: string): string[] => {
+        const validGroupIds = new Set(itemGroups.map(g => g.id));
+
         const imgs = items
-            .filter(item => item.itemGroupId === groupId)
+            .filter(item => {
+                if (groupId === 'uncategorized') {
+                    const allIds = [
+                        ...(item.itemGroupId ? [item.itemGroupId] : []),
+                        ...(item.itemGroupIds || []),
+                    ];
+                    return allIds.length === 0 || allIds.every(id => !validGroupIds.has(id));
+                }
+                const allIds = [
+                    ...(item.itemGroupId ? [item.itemGroupId] : []),
+                    ...(item.itemGroupIds || []),
+                ];
+                return allIds.includes(groupId);
+            })
             .map(item => item.imageUrl)
             .filter(Boolean) as string[];
 
-        return imgs.slice(0, 4); // max 4 images
+        return imgs.slice(0, 4);
     };
 
     // --- Order Logic ---
@@ -182,6 +851,8 @@ const OrderingPage: React.FC = () => {
                 totalAmount: cartValue,
                 status: 'Upcoming',
                 createdAt: serverTimestamp(),
+                // Every Orders write bumps updatedAt — the orders cache syncs on it
+                updatedAt: serverTimestamp(),
                 userName: customerName,
                 userPhone: customerPhone,
                 companyId: currentUser!.companyId,
@@ -200,227 +871,478 @@ const OrderingPage: React.FC = () => {
         }
     };
 
-    if (pageIsLoading) return <div className="flex items-center justify-center h-screen bg-[#E9F0F7]"><Spinner /></div>;
+    if (pageIsLoading) {
+        return (
+            <div className="min-h-full bg-sf-canvas px-4 py-5 md:px-6" aria-busy="true" aria-label="Loading your catalogue">
+                <div className="h-8 w-48 animate-pulse rounded-sm bg-white motion-reduce:animate-none" />
+                <div className="mt-5 h-20 animate-pulse rounded-sm bg-white motion-reduce:animate-none" />
+                <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-5 xl:grid-cols-5">
+                    {Array.from({ length: 10 }).map((_, i) => <div key={i} className="aspect-[3/4] animate-pulse rounded-sm bg-white motion-reduce:animate-none" />)}
+                </div>
+            </div>
+        );
+    }
+
+    const validGroupIds = new Set(itemGroups.map(g => g.id));
+    const groupItemsOf = (groupId: string) => items.filter(item => {
+        const allIds = [
+            ...(item.itemGroupId ? [item.itemGroupId] : []),
+            ...(item.itemGroupIds || []),
+        ];
+        if (groupId === 'uncategorized') return allIds.length === 0 || allIds.every(id => !validGroupIds.has(id));
+        return allIds.includes(groupId);
+    });
+    const liveTotal = items.filter(i => i.isListed === true).length;
+    const realCategoryCount = filteredItems.filter(g => g.id !== 'uncategorized').length;
+    const editingGroup = itemGroups.find(g => g.id === editingId) || null;
+    const hasEditChanges = !!editingGroup && (
+        tempName.trim() !== editingGroup.name ||
+        tempImage !== ((editingGroup as any).imageUrl ?? '') ||
+        (!tempImage && !!tempImageLink.trim())
+    );
 
     return (
-        <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col relative">
-            {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
+        <div className="min-h-full bg-sf-canvas pb-10 font-sans text-slate-900">
+            {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} theme="catalogue" />}
 
-            {/* --- FIXED HEADER SECTION --- */}
-            <header className="sticky top-0 z-[100] bg-white border-b border-gray-100 shadow-sm w-full">
-                <div className="max-w-7xl mx-auto px-4 py-3 flex items-center">
-                    <div className="flex items-center gap-3">
-                        <button
-                            onClick={() => navigate(-1)}
-                            className="p-1 hover:bg-gray-100 rounded-full transition-colors"
-                        >
-                            <ChevronLeft className="text-[#1A3B5D]" size={20} />
-                        </button>
-                        <div className="w-1 h-5 bg-[#00A3E1] rounded-sm"></div>
-                        <h1 className="text-xs md:text-sm font-black text-[#1A3B5D] uppercase tracking-tighter">
-                            {companyName}
-                        </h1>
-                    </div>
+            {companyId && (
+                <SubdomainClaimModal
+                    companyId={companyId}
+                    forceOpen={isSubdomainModalOpen}
+                    onClose={() => setIsSubdomainModalOpen(false)}
+                />
+            )}
+
+            {/* --- Page header --- */}
+            <header className="flex flex-wrap items-center gap-3 px-4 pb-4 pt-5 md:gap-4 md:px-6">
+                <div className="min-w-0 flex-1">
+                    <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Edit catalogue</h1>
+                    <p className="truncate text-[13px] text-slate-600">What customers see when they open {companyName ? `${companyName}'s` : 'your'} store link</p>
+                </div>
+                <div ref={headerActionsRef}>
+                    <TutorialStep
+                        step={1}
+                        currentStep={tutorialStep}
+                        text="Download your catalogue as a PDF, copy your store link, or share the catalogue with customers from here."
+                        onNext={() => next(2)}
+                        onSkip={skip}
+                        mobileArrowAlign="left"
+                    >
+                        <div className="flex items-center gap-2">
+                            <button type="button" onClick={handleDownloadFullCatalogPDF} disabled={realItems.length === 0 || isGeneratingPDF || isTutorialActive}
+                                aria-label="Download catalogue PDF" className={cx(btnClass('secondary'), 'w-10 px-0! md:w-auto md:px-4!')}>
+                                {isGeneratingPDF ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+                                <span className="hidden md:inline">{isGeneratingPDF ? 'Making PDF…' : 'PDF'}</span>
+                            </button>
+                            <button type="button" onClick={() => setIsSubdomainModalOpen(true)} aria-label="Store link"
+                                className={cx(btnClass('secondary'), 'w-10 px-0! md:w-auto md:px-4!')}>
+                                <Link2 className="size-4" /><span className="hidden md:inline">Store link</span>
+                            </button>
+                            <button type="button" onClick={handleCopyStoreLink} className={cx(btnClass('secondary'), 'max-lg:hidden')}>
+                                <Copy className="size-4" />Copy store link
+                            </button>
+                            <button type="button" onClick={handleShareCatalogue} className={btnClass('primary')}>
+                                <Share2 className="size-4" />Share<span className="hidden md:inline"> catalogue</span>
+                            </button>
+                        </div>
+                    </TutorialStep>
                 </div>
             </header>
 
-            <main className="p-4 space-y-4 flex-1 max-w-7xl mx-auto w-full pb-20">
-                <div className='flex items-center justify-center'>
-                    <h1 className="text-sm md:text-xl font-extrabold text-[#00A3E1] uppercase tracking-tighter">Categories</h1>
-                </div>
-                {/* --- SEARCH BAR --- */}
-                <SearchBar
-                    items={items}
-                    placeholder="Search products..."
-                    onItemSelected={(item) => {
-                        if (!item.id) return;
-                        navigate(
-                            `/catalogue-home/my-shop/${item.itemGroupId}`,
-                            {
-                                state: {
-                                    highlightItemId: item.id,
-                                    isUnlisted: !item.isListed
-                                }
-                            }
-                        );
-                    }}
-                />
-                {/* --- CATALOGUE COUNT & FILTER --- */}
-                <div className="max-w-7xl mx-auto px-1 flex items-center justify-between relative">
-                    <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">
-                            Total Catalogues:
-                        </span>
-                        <span className="bg-[#00A3E1]/10 text-[#00A3E1] px-2.5 py-0.5 rounded-sm text-[10px] font-black">
-                            {filteredItems.length}
-                        </span>
-                    </div>
-
-                    <div className="relative">
-                        <button
-                            onClick={() => setIsSortOpen(!isSortOpen)}
-                            className="flex items-center gap-2 bg-white border border-gray-100 px-3 py-1.5 rounded-sm shadow-sm active:scale-95 transition-all"
+            <div className="grid gap-4 px-4 md:px-6">
+                {/* --- Live entire catalogue --- */}
+                <ShowWrapper requiredPermission={Cata_Permissions.ViewEditButton}>
+                    <div ref={liveToggleRef}>
+                        <TutorialStep
+                            step={2}
+                            currentStep={tutorialStep}
+                            text="Use this switch to make your whole catalogue live or hidden for customers in one tap."
+                            onNext={() => next(3)}
+                            onSkip={skip}
                         >
-                            <span className="text-[10px] font-black uppercase text-[#1A3B5D]">Sort: {sortOrder}</span>
-                            <FiPlus className={`transition-transform duration-300 ${isSortOpen ? 'rotate-45' : ''}`} size={12} />
-                        </button>
-
-                        {isSortOpen && (
-                            <div className="absolute right-0 mt-2 w-32 bg-white rounded-sm shadow-xl border border-gray-50 z-[70] overflow-hidden">
-                                <button
-                                    onClick={() => { setSortOrder('A-Z'); setIsSortOpen(false); }}
-                                    className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 ${sortOrder === 'A-Z' ? 'text-[#00A3E1]' : 'text-[#1A3B5D]'}`}
-                                >
-                                    A to Z
-                                </button>
-                                <button
-                                    onClick={() => { setSortOrder('Z-A'); setIsSortOpen(false); }}
-                                    className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 border-t border-gray-50 ${sortOrder === 'Z-A' ? 'text-[#00A3E1]' : 'text-[#1A3B5D]'}`}
-                                >
-                                    Z to A
+                            <div className="flex items-center gap-3 rounded-sm border border-sf-line bg-white p-4 shadow-sf-card md:gap-4 md:px-5">
+                                <span className={cx('size-2.5 shrink-0 rounded-full', isAllCatalogueLive ? 'bg-green-600' : 'bg-slate-400')} aria-hidden />
+                                <div className="min-w-0 flex-1">
+                                    <b className="block text-[15px] font-semibold">{isAllCatalogueLive ? 'Catalogue is live' : liveTotal > 0 ? 'Part of the catalogue is live' : 'Catalogue is hidden'}</b>
+                                    <p className="text-xs leading-[18px] text-slate-500">
+                                        {isAllCatalogueLive
+                                            ? 'Customers can browse and order everything from your store link. Turn off to hide all products.'
+                                            : `${liveTotal} of ${items.length} products are live. Turn on to show every product.`}
+                                    </p>
+                                </div>
+                                <span className="hidden text-xs text-slate-600 sm:inline">{realCategoryCount} categor{realCategoryCount === 1 ? 'y' : 'ies'}</span>
+                                <button type="button" role="switch" aria-checked={isAllCatalogueLive} aria-label="Live entire catalogue"
+                                    onClick={handleToggleAllCatalogueLive} disabled={isTogglingCatalogue || items.length === 0}
+                                    className={cx('relative h-6 w-11 shrink-0 rounded-sm transition-colors disabled:opacity-45', isAllCatalogueLive ? 'bg-sf-primary' : 'bg-sf-control')}>
+                                    {isTogglingCatalogue
+                                        ? <Loader2 className="absolute inset-0 m-auto size-4 animate-spin text-white" />
+                                        : <span className={cx('absolute top-[3px] size-[18px] rounded-[2px] bg-white shadow-sm transition-transform', isAllCatalogueLive ? 'left-[23px]' : 'left-[3px]')} />}
                                 </button>
                             </div>
-                        )}
+                        </TutorialStep>
                     </div>
-                </div>
+                </ShowWrapper>
 
-                {/* --- PRODUCT GRID --- */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1">
-                    {filteredItems.map(group => {
-                        // Count calculation based on existing _items state
-                        const itemCount = items.filter(item => item.itemGroupId === group.id).length;
-                        const collageImages = getGroupImages(group.id!);
-                        return (
-                            <div
-                                id={group.id}
-                                key={group.id}
-                                onClick={() => {
-                                    navigate(`/catalogue-home/my-shop/${group.id}`)
-                                }}
-                                className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col transition-all group cursor-pointer active:scale-95 ${highlightedId === group.id ? 'ring-2 ring-[#00A3E1] shadow-lg scale-[1.02]' : 'border-gray-100'}`}>
-                                {/* --- IMAGE SECTION WITH TOP BADGE --- */}
-                                <div className="aspect-square bg-[#F8FAFC] relative overflow-hidden">
-                                    {collageImages.length > 0 ? (
-                                        <div className="grid grid-cols-2 grid-rows-2 w-full h-full gap-[2px] p-[2px]">
-                                            {collageImages.map((img, index) => (
-                                                <div key={index} className="w-full h-full overflow-hidden rounded-[2px]">
-                                                    <img
-                                                        src={img}
-                                                        alt={`product-${index}`}
-                                                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                                                    />
-                                                </div>
-                                            ))}
-
-                                            {/* filler if less than 4 */}
-                                            {Array.from({ length: 4 - collageImages.length }).map((_, i) => (
-                                                <div
-                                                    key={`empty-${i}`}
-                                                    className="w-full h-full bg-gray-100 flex items-center justify-center"
-                                                >
-                                                    <FiPackage className="h-4 w-4 text-gray-300" />
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <div className="w-full h-full flex items-center justify-center">
-                                            <FiPackage className="h-10 w-10 text-gray-200" />
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* --- CONTENT SECTION --- */}
-                                <div className="p-3 flex flex-col flex-1">
-                                    {editingId === group.id ? (
-                                        <div className="space-y-2 py-1" onClick={(e) => e.stopPropagation()}>
-                                            <input
-                                                autoFocus
-                                                type="text"
-                                                value={tempName}
-                                                onChange={(e) => setTempName(e.target.value)}
-                                                className="w-full bg-gray-50 border border-gray-100 rounded-sm py-1 px-2 text-[14px] font-bold outline-none"
-                                            />
-                                            <div className="flex gap-1">
-                                                <button onClick={(e) => { e.stopPropagation(); handleSaveEdit(group.id!); }} className="flex-1 bg-[#00A3E1] text-white py-1.5 rounded-sm text-[12px] font-black uppercase">Save</button>
-                                                <button
-                                                    onClick={async (e) => {
-                                                        e.stopPropagation();
-                                                        if (window.confirm("Delete product group?") && dbOperations) {
-                                                            try {
-                                                                await dbOperations.deleteItemGroup(group.id!);
-                                                                setItemGroups(itemGroups.filter(p => p.id !== group.id));
-                                                                setEditingId(null);
-                                                                setModal({ message: 'Deleted successfully', type: State.SUCCESS });
-                                                            } catch (err) {
-                                                                console.error(err);
-                                                                setModal({ message: 'Delete failed', type: State.ERROR });
-                                                            }
-                                                        }
-                                                    }}
-                                                    className="p-3 bg-red-100 text-red-700 rounded-sm"
-                                                >
-                                                    <Trash2 size={12} />
-                                                </button>
-                                                <button onClick={(e) => { e.stopPropagation(); setEditingId(null); }} className="p-3 bg-gray-200 text-gray-500 rounded-sm"><X size={12} /></button>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <h3 className="text-[14px] font-bold text-[#1A3B5D] mb-1.5leading-tight uppercase">
-                                                {group.name}
-                                            </h3>
-
-                                            {/* Centered Item Count Badge UI */}
-                                            <div className="flex items-center justify-center gap-1.5 bg-blue-50 px-2 py-0.5 rounded-sm border border-blue-100 w-fit mx-auto mb-2">
-                                                <span className="text-[12px] font-black text-[#00A3E1] leading-none">
-                                                    {itemCount}
-                                                </span>
-                                                <span className="text-[10px] font-black uppercase tracking-widest text-[#1A3B5D]/60 leading-none">
-                                                    Items
-                                                </span>
-                                            </div>
-
-                                            <div className="mt-auto w-full py-1.5 rounded-sm text-[12px] font-black uppercase text-center tracking-wider transition-all bg-[#00A3E1] text-white"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleEdit(group)
-                                                }}
-                                            >
-                                                Edit Group
-                                            </div>
-                                        </>
-                                    )}
-                                </div>
+                {/* --- Search, sort, new category --- */}
+                <div ref={toolbarRef}>
+                    <TutorialStep
+                        step={3}
+                        currentStep={tutorialStep}
+                        text="Search a product, sort your categories, or create a new category from here."
+                        onNext={() =>
+                            filteredItems.length > 0
+                                ? next(4)
+                                : completeTutorial(currentUser, TUTORIAL_KEY, setTutorialStep)
+                        }
+                        onSkip={skip}
+                        isLast={filteredItems.length === 0}
+                    >
+                        <div className="flex flex-wrap items-center gap-2 md:gap-3">
+                            <div className="w-full sm:max-w-[460px] sm:flex-1">
+                                <SearchableItemInput
+                                    items={items}
+                                    placeholder="Search products"
+                                    itemGroupMap={itemGroupMap}
+                                    onItemSelected={(item) => {
+                                        if (!item.id) return;
+                                        // Card click jaisa hi logic: itemGroupId + itemGroupIds dono dekho, URL me group id use karo
+                                        const allIds = [item.itemGroupId, ...(item.itemGroupIds || [])].filter(Boolean) as string[];
+                                        const targetId = allIds.find(id => itemGroups.some(g => g.id === id)) ?? 'uncategorized';
+                                        navigate(`/catalogue-home/my-shop/${targetId}`, {
+                                            state: { highlightItemId: item.id, isUnlisted: !item.isListed }
+                                        });
+                                    }}
+                                />
                             </div>
-                        );
-                    })}
-                </div>
-            </main>
-
-            {isCustomerModalOpen && (
-                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-[#1A3B5D]/60 backdrop-blur-md p-4">
-                    <div className="bg-white rounded-sm p-8 w-full max-w-sm shadow-2xl text-center relative">
-                        <button onClick={() => setIsCustomerModalOpen(false)} className="absolute top-6 right-6 text-gray-400"><FiX size={20} /></button>
-                        <h3 className="text-sm font-black text-[#1A3B5D] uppercase mb-6">Customer Details</h3>
-                        <div className="space-y-4">
-                            <input type="text" placeholder="Customer Name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="w-full bg-gray-50 border-none rounded-sm p-4 text-xs font-bold outline-none focus:ring-2 focus:ring-[#00A3E1]/20" />
-                            <input type="tel" placeholder="Phone Number" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} className="w-full bg-gray-50 border-none rounded-sm p-4 text-xs font-bold outline-none focus:ring-2 focus:ring-[#00A3E1]/20" />
+                            <span className="hidden flex-1 sm:block" />
+                            <div className="relative">
+                                <button type="button" onClick={() => setIsSortOpen(!isSortOpen)} aria-expanded={isSortOpen}
+                                    className="inline-flex h-9 items-center gap-2 rounded-sm border border-sf-control bg-white px-3 text-[13px] font-medium">
+                                    Sort: {sortOrder === 'A-Z' ? 'A–Z' : 'Z–A'}<ChevronDown className="size-4 text-slate-500" />
+                                </button>
+                                {isSortOpen && (
+    <div className="absolute left-0 z-30 mt-1 w-36 overflow-hidden rounded-sm border border-sf-line bg-white py-1 shadow-sf-float">
+                                        {(['A-Z', 'Z-A'] as const).map(opt => (
+                                            <button key={opt} type="button" onClick={() => { setSortOrder(opt); setIsSortOpen(false); }}
+                                                className={cx('block w-full px-3 py-2 text-left text-sm hover:bg-sf-sunken', sortOrder === opt && 'font-medium text-sf-primary')}>
+                                                {opt === 'A-Z' ? 'Name A–Z' : 'Name Z–A'}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                            <ShowWrapper requiredPermission={Cata_Permissions.ManageItems}>
+                                <button type="button" onClick={openNewCategory} className={btnClass('secondary', 'md')}>
+                                    <Plus className="size-4" />New category
+                                </button>
+                            </ShowWrapper>
                         </div>
-                        <button disabled={isPlacingOrder} onClick={handleConfirmAndSaveOrder} className="w-full mt-6 bg-[#00A3E1] text-white py-4 rounded-sm font-black text-[10px] uppercase shadow-lg tracking-widest active:scale-95 disabled:opacity-50 transition-all">
-                            {isPlacingOrder ? 'Placing Order...' : 'Confirm Order'}
+                    </TutorialStep>
+                </div>
+
+                <p className="text-xs text-slate-500">
+                    {filteredItems.length} categor{filteredItems.length === 1 ? 'y' : 'ies'} · pinned ones show first, here and on your store
+                </p>
+
+                {/* --- Category grid --- */}
+                {filteredItems.length === 0 ? (
+                    <div className="grid place-items-center gap-2 rounded-sm border border-sf-line bg-white px-4 py-14 text-center text-[13px] text-slate-500">
+                        <b className="text-[15px] font-semibold text-slate-900">No categories yet</b>
+                        Add a category, then add products to it so customers can browse them.
+                        <button type="button" onClick={openNewCategory} className={cx(btnClass('secondary', 'sm'), 'mt-2')}>
+                            <Plus className="size-4" />New category
                         </button>
                     </div>
-                </div>
-            )}
-            <div className="w-full m-0 p-0">
-                <Footer
-                    companyName={companyName}
-                    instagram={socialLinks.instagram}
-                    facebook={socialLinks.facebook}
-                    twitter={socialLinks.twitter}
-                    gmail={socialLinks.gmail}
-                />
+                ) : (
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:gap-5 lg:grid-cols-4 xl:grid-cols-5">
+                        {filteredItems.map((group, gi) => {
+                            const isVirtual = group.id === 'uncategorized';
+                            const groupItems = groupItemsOf(group.id!);
+                            const itemCount = groupItems.length;
+                            const liveCount = groupItems.filter(i => i.isListed === true).length;
+                            const isFullyUnlive = itemCount > 0 && liveCount === 0;
+                            const collageImages = getGroupImages(group.id!);
+                            const pinned = pinnedIds.has(group.id!);
+                            const liveText = itemCount === 0 ? 'No products yet' : liveCount === itemCount ? 'all live' : liveCount === 0 ? 'none live' : `${liveCount} live`;
+
+                            const card = (
+                                <article
+                                    id={group.id}
+                                    key={group.id}
+                                    onClick={() => { if (!isTutorialActive) navigate(`/catalogue-home/my-shop/${group.id}`); }}
+                                    className={cx('group flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-sm border bg-white shadow-sf-card transition-shadow hover:shadow-sf-float',
+                                        highlightedId === group.id ? 'border-sf-primary outline-2 outline-offset-2 outline-sf-primary' : pinned ? 'border-sf-primary' : 'border-sf-line',
+                                        isVirtual && 'border-dashed border-sf-control shadow-none',
+                                        isFullyUnlive && 'bg-slate-50')}
+                                >
+                                    {/* Photo: the category's products as a collage, or its first letter */}
+                                    <div className="relative">
+                                        <div className={cx('relative aspect-[4/3] overflow-hidden bg-sf-sunken', isFullyUnlive && 'grayscale opacity-60')}>
+                                            {group.imageUrl ? (
+                                                <Photo src={group.imageUrl} alt="" fit="cover" className="h-full w-full rounded-none" />
+                                            ) : collageImages.length > 0 ? (
+                                                <div className={cx('grid h-full w-full gap-0.5',
+                                                    collageImages.length === 1 ? 'grid-cols-1' : 'grid-cols-2',
+                                                    collageImages.length > 2 && 'grid-rows-2')}>
+                                                    {collageImages.map((img, index) => (
+                                                        <Photo key={index} src={img} alt="" fit="contain"
+                                                            className={cx('h-full rounded-none', collageImages.length === 3 && index === 2 && 'col-span-2')} />
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <div className={cx('grid h-full w-full place-items-center text-3xl font-semibold text-slate-500/70', toneClass(gi))}>
+                                                    {isVirtual ? '?' : initialsOf(group.name).slice(0, 1) || '?'}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {!isVirtual && (
+                                            <button type="button" onClick={(e) => handleTogglePin(e, group.id!)} aria-label={pinned ? `Unpin ${group.name}` : `Pin ${group.name} to the top`}
+                                                title={pinned ? 'Unpin' : 'Pin to top'}
+                                                className={cx('absolute left-1.5 top-1.5 inline-flex h-6 items-center justify-center gap-0.5 rounded-sm text-[10px] font-medium shadow-sm transition-colors',
+                                                    pinned
+                                                        ? 'bg-sf-soft px-1.5 text-sf-primary hover:brightness-95'
+                                                        : 'w-6 bg-white/90 text-slate-700 hover:bg-white')}>
+                                                <Pin className={cx('size-3', pinned && 'fill-current')} />
+                                                {pinned && 'Pinned'}
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    <div className="flex flex-1 flex-col gap-1 p-3 md:p-4">
+                                        <h3 className={cx('line-clamp-2 min-w-0 break-words text-[13px] font-semibold leading-[18px] md:text-[15px] md:leading-[21px]', isVirtual && 'italic text-slate-500', isFullyUnlive && 'text-slate-500')}>{group.name}</h3>
+                                        <p className="text-[12px] text-slate-500">
+                                            {itemCount} item{itemCount === 1 ? '' : 's'}{itemCount > 0 && <> · <span className={liveCount === itemCount ? 'text-green-700' : liveCount === 0 ? 'text-slate-500' : 'text-yellow-800'}>{liveText}</span></>}
+                                        </p>
+                                        <div className="mt-auto pt-2.5">
+                                            {isVirtual ? (
+                                                <p className="text-xs leading-[18px] text-slate-500">Products without a category. Give them one so customers can find them.</p>
+                                            ) : (
+                                                <div className="flex items-center gap-1.5">
+                                                    <button type="button" onClick={(e) => { e.stopPropagation(); handleEdit(group); setConfirmDeleteId(null); }}
+                                                        className={cx(btnClass('secondary', 'sm', true), 'min-w-0 flex-1')}>
+                                                        <Pencil className="size-4" />
+                                                        <span className="sm:hidden">Edit</span>
+                                                        <span className="hidden sm:inline">Edit category</span>
+                                                    </button>
+                                                    <button type="button" onClick={(e) => { e.stopPropagation(); handleShareCategory(group); }} aria-label={`Share ${group.name}`} title="Share category"
+                                                        className="grid size-8 shrink-0 place-items-center rounded-sm bg-sf-sunken text-slate-600 transition-colors hover:bg-sf-line hover:text-slate-900">
+                                                        <Send className="size-4" />
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </article>
+                            );
+
+                            if (gi !== 0) return card;
+
+                            return (
+                                <div key={group.id} ref={firstCardRef} className="min-w-0 [&>*]:h-full">
+                                    <TutorialStep
+                                        step={4}
+                                        currentStep={tutorialStep}
+                                        text="Tap a category to open it. Use Pin to keep it on top, Edit to rename or delete it, and the send icon to share it."
+                                        onNext={() => completeTutorial(currentUser, TUTORIAL_KEY, setTutorialStep)}
+                                        onSkip={skip}
+                                        isLast
+                                        position="top"
+                                    >
+                                        {card}
+                                    </TutorialStep>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
             </div>
+
+            {/* --- New category --- */}
+            <Sheet open={isNewCategoryOpen} title="New category" onClose={closeNewCategory}
+                footer={<>
+                    <button type="button" onClick={closeNewCategory} disabled={isCreatingCategory} className={btnClass('ghost')}>Cancel</button>
+                    <button type="button" onClick={handleCreateCategory}
+                        disabled={isCreatingCategory || isCheckingLink || !newCategoryName.trim()}
+                        className={btnClass('primary')}>
+                        {isCreatingCategory ? 'Creating…' : 'Create category'}
+                    </button>
+                </>}>
+                <form onSubmit={(e) => { e.preventDefault(); handleCreateCategory(); }}>
+                    {newCategoryError && (
+                        <p className="mb-3 rounded-sm bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{newCategoryError}</p>
+                    )}
+
+                    {/* Image + name in one row */}
+                    <div className="mb-3 flex items-start gap-3">
+                        <div className="relative size-16 shrink-0 overflow-hidden rounded-sm border border-sf-control bg-sf-sunken">
+                            <label
+                                className="flex size-full cursor-pointer items-center justify-center text-slate-400 transition-colors hover:bg-sf-line"
+                                aria-label={newCategoryImage ? 'Change category image' : 'Add category image'}
+                            >
+                                {newCategoryImage
+                                    ? <img src={newCategoryImage} alt="" className="size-full object-cover" />
+                                    : <ImageIcon className="size-6" strokeWidth={1.5} />}
+                                <input type="file" accept="image/*" onChange={handleNewCategoryImagePick} className="sr-only" />
+                            </label>
+                            <span aria-hidden className="pointer-events-none absolute bottom-0 right-0 inline-flex size-5 items-center justify-center rounded-full bg-sf-primary text-white">
+                                <Plus className="size-3" strokeWidth={2.5} />
+                            </span>
+                            {newCategoryImage && (
+                                <button type="button" onClick={() => { setNewCategoryImage(''); setNewCategoryLink(''); }}
+                                    aria-label="Remove category image"
+                                    className="absolute left-0.5 top-0.5 inline-flex size-4 items-center justify-center rounded-full bg-black/55 text-white transition-colors hover:bg-red-600">
+                                    <X className="size-2.5" strokeWidth={2.5} />
+                                </button>
+                            )}
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                            <label htmlFor="new-cat-name" className="mb-1.5 block text-[13px] font-medium">Category name</label>
+                            <input id="new-cat-name" autoFocus value={newCategoryName} maxLength={60}
+                                placeholder="e.g. Beverages"
+                                onChange={(e) => { setNewCategoryName(e.target.value); setNewCategoryError(null); }}
+                                className="h-10 w-full rounded-sm border border-sf-control px-3 text-sm focus:outline-2 focus:outline-offset-1 focus:outline-sf-primary" />
+                        </div>
+                    </div>
+
+                    {/* Image link */}
+                    <div className="flex gap-2">
+                        <input type="url" inputMode="url" value={newCategoryLink}
+                            onChange={(e) => setNewCategoryLink(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleApplyNewCategoryLink(); } }}
+                            placeholder="Or paste image link (https://…)"
+                            aria-label="Category image link"
+                            className="h-9 min-w-0 flex-1 rounded-sm border border-sf-control px-3 text-[13px] focus:outline-2 focus:outline-offset-1 focus:outline-sf-primary" />
+                        <button type="button" onClick={handleApplyNewCategoryLink}
+                            disabled={!newCategoryLink.trim() || isCheckingLink}
+                            className={btnClass('secondary', 'sm')}>
+                            {isCheckingLink ? 'Checking…' : 'Use link'}
+                        </button>
+                    </div>
+
+                    <p className="mt-2 text-xs text-slate-500">Customers will see this name on your store. Image is optional, you can add products after creating.</p>
+                </form>
+            </Sheet>
+
+            {/* --- Edit category: rename or delete --- */}
+            <Sheet open={!!editingGroup} title={confirmDeleteId ? 'Delete this category?' : 'Edit category'} onClose={closeEdit}
+                footer={confirmDeleteId ? (
+                    <>
+                        <button type="button" onClick={() => setConfirmDeleteId(null)} className={btnClass('ghost')}>Cancel</button>
+                        <button type="button" onClick={() => handleDeleteGroup(confirmDeleteId)}
+                            className="inline-flex h-10 items-center gap-2 rounded-sm bg-red-700 px-4 text-sm font-medium text-white hover:bg-red-800">
+                            <Trash2 className="size-4" />Delete category
+                        </button>
+                    </>
+                ) : (
+                    <>
+                        <button type="button" onClick={() => editingGroup && setConfirmDeleteId(editingGroup.id!)} disabled={isSavingEdit} className={cx(btnClass('danger'), 'mr-auto')}>
+                            <Trash2 className="size-4" />Delete
+                        </button>
+                        <button type="button" onClick={closeEdit} disabled={isSavingEdit} className={btnClass('ghost')}>Cancel</button>
+                        <button type="button"
+                            disabled={isSavingEdit || isCheckingEditLink || !tempName.trim() || !hasEditChanges}
+                            onClick={() => editingGroup && handleSaveEdit(editingGroup.id!)}
+                            className={btnClass('primary')}>
+                            {isSavingEdit ? 'Saving…' : 'Save'}
+                        </button>
+                    </>
+                )}>
+                {editingGroup && (confirmDeleteId ? (
+                    <p className="text-sm text-slate-600">
+                        <b className="font-semibold text-slate-900">{editingGroup.name}</b> will be removed. Its {groupItemsOf(editingGroup.id!).length} product{groupItemsOf(editingGroup.id!).length === 1 ? '' : 's'} stay in your catalogue without a category.
+                    </p>
+                ) : (
+                    <form onSubmit={(e) => { e.preventDefault(); if (tempName.trim() && hasEditChanges && !isSavingEdit) handleSaveEdit(editingGroup.id!); }}>
+                        {editError && (
+                            <p className="mb-3 rounded-sm bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{editError}</p>
+                        )}
+
+                        {/* Image + name in one row */}
+                        <div className="mb-3 flex items-start gap-3">
+                            <div className="relative size-16 shrink-0 overflow-hidden rounded-sm border border-sf-control bg-sf-sunken">
+                                <label
+                                    className="flex size-full cursor-pointer items-center justify-center text-slate-400 transition-colors hover:bg-sf-line"
+                                    aria-label={tempImage ? 'Change category image' : 'Add category image'}
+                                >
+                                    {tempImage
+                                        ? <img src={tempImage} alt="" className="size-full object-cover" />
+                                        : <ImageIcon className="size-6" strokeWidth={1.5} />}
+                                    <input type="file" accept="image/*" onChange={handleEditImagePick} className="sr-only" />
+                                </label>
+                                <span aria-hidden className="pointer-events-none absolute bottom-0 right-0 inline-flex size-5 items-center justify-center rounded-full bg-sf-primary text-white">
+                                    <Plus className="size-3" strokeWidth={2.5} />
+                                </span>
+                                {tempImage && (
+                                    <button type="button" onClick={() => { setTempImage(''); setTempImageLink(''); }}
+                                        aria-label="Remove category image"
+                                        className="absolute left-0.5 top-0.5 inline-flex size-4 items-center justify-center rounded-full bg-black/55 text-white transition-colors hover:bg-red-600">
+                                        <X className="size-2.5" strokeWidth={2.5} />
+                                    </button>
+                                )}
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                                <label htmlFor="cat-name" className="mb-1.5 block text-[13px] font-medium">Category name</label>
+                                <input id="cat-name" autoFocus value={tempName} maxLength={60}
+                                    onChange={(e) => { setTempName(e.target.value); setEditError(null); }}
+                                    className="h-10 w-full rounded-sm border border-sf-control px-3 text-sm focus:outline-2 focus:outline-offset-1 focus:outline-sf-primary" />
+                            </div>
+                        </div>
+
+                        {/* Image link */}
+                        <div className="flex gap-2">
+                            <input type="url" inputMode="url" value={tempImageLink}
+                                onChange={(e) => setTempImageLink(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleApplyEditLink(); } }}
+                                placeholder="Or paste image link (https://…)"
+                                aria-label="Category image link"
+                                className="h-9 min-w-0 flex-1 rounded-sm border border-sf-control px-3 text-[13px] focus:outline-2 focus:outline-offset-1 focus:outline-sf-primary" />
+                            <button type="button" onClick={handleApplyEditLink}
+                                disabled={!tempImageLink.trim() || isCheckingEditLink}
+                                className={btnClass('secondary', 'sm')}>
+                                {isCheckingEditLink ? 'Checking…' : 'Use link'}
+                            </button>
+                        </div>
+
+                        <p className="mt-2 text-xs text-slate-500">Customers see this name on your store. Changing it also changes the category's link.</p>
+                    </form>
+                ))}
+            </Sheet>
+
+            {/* --- Live entire catalogue: confirm --- */}
+            <Sheet open={showCatalogueConfirmPopup} title={pendingCatalogueLiveState ? 'Make the whole catalogue live?' : 'Hide the whole catalogue?'}
+                onClose={() => setShowCatalogueConfirmPopup(false)}
+                footer={<>
+                    <button type="button" onClick={() => setShowCatalogueConfirmPopup(false)} className={btnClass('ghost')}>Cancel</button>
+                    <button type="button" onClick={confirmToggleAllCatalogueLive} className={btnClass('primary')}>
+                        {pendingCatalogueLiveState ? 'Make all live' : 'Hide all'}
+                    </button>
+                </>}>
+                <p className="text-sm text-slate-600">
+                    {pendingCatalogueLiveState
+                        ? `All ${items.length} products in every category will show on your store link.`
+                        : `All ${items.length} products in every category will be hidden from your store link. Customers won't be able to order until you turn it back on.`}
+                </p>
+            </Sheet>
+
+            {/* --- Customer details (manual order) --- */}
+            <Sheet open={isCustomerModalOpen} title="Customer details" onClose={() => setIsCustomerModalOpen(false)}
+                footer={<button type="button" disabled={isPlacingOrder} onClick={handleConfirmAndSaveOrder} className={btnClass('primary', 'md', true)}>
+                    {isPlacingOrder ? 'Placing order…' : 'Confirm order'}
+                </button>}>
+                <div className="grid gap-4">
+                    <div>
+                        <label htmlFor="cust-name" className="mb-1.5 block text-[13px] font-medium">Customer name</label>
+                        <input id="cust-name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="h-10 w-full rounded-sm border border-sf-control px-3 text-sm focus:outline-2 focus:outline-sf-primary" />
+                    </div>
+                    <div>
+                        <label htmlFor="cust-phone" className="mb-1.5 block text-[13px] font-medium">Phone number</label>
+                        <input id="cust-phone" type="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} className="h-10 w-full rounded-sm border border-sf-control px-3 text-sm focus:outline-2 focus:outline-sf-primary" />
+                    </div>
+                </div>
+            </Sheet>
         </div>
     );
 };

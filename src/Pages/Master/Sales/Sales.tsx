@@ -1,0 +1,2916 @@
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { searchParties } from '../../../lib/partySearch';
+import type { PaymentCompletionData } from '../../../Components/PaymentDrawer';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuth, useDatabase } from '../../../context/auth-context';
+import { ROUTES } from '../../../constants/routes.constants';
+import SearchableItemInput from '../../../UseComponents/SearchIteminput';
+import BarcodeScanner from '../../../UseComponents/BarcodeScanner';
+import PaymentDrawer from '../../../Components/PaymentDrawer';
+import { Modal } from '../../../constants/Modal';
+import { Permissions, ROLES, State, Variant } from '../../../enums';
+import { CustomButton } from '../../../Components';
+import { useSalesSettings, useItemSettings, useLoyaltySettings } from '../../../context/SettingsContext';
+import { readSaleLoyalty } from '../../../lib/loyalty';
+import { Spinner } from '../../../constants/Spinner';
+import { ItemEditDrawer } from '../../../Components/ItemDrawer';
+import BackButton from '../../../Components/BackButton';
+import { GenericCartList } from '../../../Components/CartItem';
+import BarcodeLinkModal from '../../../Components/BarcodeLinkModal';
+import { AddUserModal } from '../../../Components/AddUserModal';
+import { FiTrash2, FiX, FiEdit, FiCamera, FiDelete, FiSearch, FiMoreVertical, FiCalendar, FiCheck, FiChevronUp, FiChevronRight, FiMinus, FiPlus, FiSliders, FiUser, FiUserPlus, FiTag } from 'react-icons/fi';
+import CustomerPricingEditorModal from '../../../Components/CustomerPricingEditorModal';
+import { GenericBillFooter } from '../../../Components/Footer';
+import { CartLinesCompact } from '../../../Components/CartLinesCompact';
+import { QuickItemSheet } from '../../../Components/QuickItemSheet';
+import { looksLikeBarcode, normalizeItemName, type QuickItemDetails } from '../../../lib/quickAddItems';
+import { IconScanCircle, IconPrint } from '../../../constants/Icons';
+import QRCode from 'react-qr-code';
+import { buildUpiUri } from '../../../UseComponents/upiQr';
+import { FiSend } from 'react-icons/fi';
+import CalcDisplay from '../../../Components/CalcDisplay';
+import { useWhatsappProvider } from '../../Additional/Whatsapp/useWhatsappProvider';
+import type { SalesItem } from './sales.types';
+import { useCustomerPricing } from './hooks/useCustomerPricing';
+import { TierPickerModal } from '../../../Components/TierPickerModal';
+import { hasMultiplePricing } from '../../utils/pricingUtils';
+import type { Item, AddOnGroup } from '../../../constants/models';
+import { resolveAddOnGroups, addOnStockOf, extraChargeOf } from '../../../constants/models';
+import { useAddOnTemplates } from '../../../lib/addOnTemplates';
+import { applyRounding, applyLineRounding, calculateSaleTotals } from './sales.calculations';
+import {
+    useSalesCalculator,
+    useSalesCart,
+    useSalesCatalogueAndSettings,
+    useSalesCommunication,
+    useSalesPayment,
+} from './hooks';
+import useTutorial from '../../../Catalogue/hooks/useTutorial';
+import { completeTutorial } from '../../../Catalogue/hooks/useCompleteTutorial';
+import { TutorialStep } from '../../../Components/TutorialStep';
+export type { SalesItem };
+
+const TOTAL_STEPS = 6;
+const TUTORIAL_KEY = 'salesTutorialDone';
+
+// Inside Sales component, add interface and button data
+interface CalcKey {
+    label: string;
+    value: string;
+    type: 'number' | 'operator' | 'function';
+    icon?: React.ElementType;
+    colClass?: string;
+}
+
+// Dialer-style: operators on top, 7-8-9 / 4-5-6 / 1-2-3 / 00-0-. , tall "+" (Add line) on the right
+const calcKeys: CalcKey[] = [
+    { label: '%', value: '%', type: 'operator' },
+    { label: '×', value: '*', type: 'operator' },
+    { label: '−', value: '-', type: 'operator' },
+    { label: '', value: 'Backspace', type: 'function', icon: FiDelete },
+
+    { label: '7', value: '7', type: 'number' },
+    { label: '8', value: '8', type: 'number' },
+    { label: '9', value: '9', type: 'number' },
+    { label: '+', value: '+', type: 'operator', colClass: 'row-span-4' }, // Add line
+
+    { label: '4', value: '4', type: 'number' },
+    { label: '5', value: '5', type: 'number' },
+    { label: '6', value: '6', type: 'number' },
+
+    { label: '1', value: '1', type: 'number' },
+    { label: '2', value: '2', type: 'number' },
+    { label: '3', value: '3', type: 'number' },
+
+    { label: '00', value: '00', type: 'number' },
+    { label: '0', value: '0', type: 'number' },
+    { label: '.', value: '.', type: 'number' },
+];
+
+// ── SELLAR design tokens (Tailwind arbitrary values) ──
+const SHADOW_FLOAT = 'shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)]';
+const LABEL_CLS = 'text-[11px] font-semibold tracking-[.08em] uppercase text-[#5b6b86]';
+const SALESMAN_NAME_CLS = 'h-[22px] px-2 rounded-full bg-[#e6eeff] text-[#155dfc] text-[11px] leading-[22px] font-semibold truncate';
+
+const chipCls = (active: boolean) =>
+    `inline-flex items-center h-[34px] px-3.5 rounded-full border text-[13px] font-medium whitespace-nowrap flex-shrink-0 cursor-pointer transition-colors ${active
+        ? 'bg-[#0f172b] border-[#0f172b] text-white'
+        : 'bg-white border-[#7a8aa3] text-[#45556c] hover:bg-[#f5f7ff]'
+    }`;
+
+const FIELD_CLS =
+    'w-full h-12 md:h-[52px] pl-11 pr-10 bg-white border border-[#7a8aa3] rounded-sm text-[15px] font-medium text-[#0f172b] placeholder:text-[#5b6b86] outline-none transition-all focus:border-[#155dfc] focus:ring-4 focus:ring-[#e6eeff]';
+
+const SCAN_BTN_CLS =
+    'inline-flex items-center justify-center gap-2 h-12 md:h-[52px] w-12 md:w-auto md:px-4 flex-shrink-0 rounded-sm text-sm font-medium transition-colors bg-[#155dfc] text-white hover:bg-[#1447e6] md:bg-white md:text-[#0f172b] md:border md:border-[#7a8aa3] md:hover:bg-[#f5f7ff]';
+
+const POPUP_INPUT_CLS =
+    'w-full h-10 px-3 text-sm rounded-sm border border-[#7a8aa3] bg-white text-[#0f172b] placeholder:text-[#5b6b86] outline-none focus:border-[#155dfc] focus:ring-4 focus:ring-[#e6eeff]';
+
+const SORT_OPTIONS = [
+    { value: 'az', label: 'A → Z' },
+    { value: 'za', label: 'Z → A' },
+    { value: 'price_asc', label: 'Price ↑' },
+    { value: 'price_desc', label: 'Price ↓' },
+] as const;
+// ── Tutorial sample data (shown only while a tutorial step is active and the cart is empty) ──
+// Totals: MRP 620 − discount 70 = net 550  (2×100 + 1×80 + 2×135)
+const TUTORIAL_SAMPLE_LINES: any[] = [
+    { id: 'tour-1', productId: 'tour-1', name: 'Sample Item A', quantity: 2, mrp: 120, salesPrice: 100, customPrice: 100, discount: 0, purchasePrice: 0, tax: 0, stock: 99, amount: 200, barcode: '', isEditable: false },
+    { id: 'tour-2', productId: 'tour-2', name: 'Sample Item B', quantity: 1, mrp: 80, salesPrice: 80, customPrice: 80, discount: 0, purchasePrice: 0, tax: 0, stock: 99, amount: 80, barcode: '', isEditable: false },
+    { id: 'tour-3', productId: 'tour-3', name: 'Sample Item C', quantity: 2, mrp: 150, salesPrice: 135, customPrice: 135, discount: 0, purchasePrice: 0, tax: 0, stock: 99, amount: 270, barcode: '', isEditable: false },
+];
+const TUTORIAL_SAMPLE_CUSTOMER = { name: 'Sample Customer', phone: '9000000000' };
+const TUTORIAL_SAMPLE_SALESMAN = 'Sample Salesman';
+
+interface CustomerSuggestion {
+    name: string;
+    number: string;
+    creditBalance?: number;
+}
+const Sales: React.FC = () => {
+    const navigate = useNavigate();
+    const location = useLocation();
+    const { currentUser, loading: authLoading, hasPermission } = useAuth();
+    const { provider: whatsappProvider } = useWhatsappProvider(currentUser?.companyId);
+    const dbOperations = useDatabase();
+    const canEditItems = hasPermission(Permissions.EditItems);
+    const { salesSettings: rawSettings, loadingSettings } = useSalesSettings();
+    const { itemSettings } = useItemSettings();
+    const addOnsEnabled = !!(itemSettings as any)?.enableAddOns;
+    const { templates: addOnLibrary } = useAddOnTemplates(addOnsEnabled ? currentUser?.companyId : undefined);
+
+    const invoiceToEdit = location.state?.invoiceData;
+    const isEditMode = location.state?.isEditMode === true && !!invoiceToEdit;
+    // "Add bill" from the party ledger opens a new bill with the customer filled in.
+    const prefillParty = (location.state as { prefillParty?: { name: string; number: string } } | null)?.prefillParty;
+
+    const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
+    const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
+    const [tierPickerItem, setTierPickerItem] = useState<Item | null>(null);
+    // Add-ons popup: item being customised + chosen option ids per group
+    const [addOnItem, setAddOnItem] = useState<Item | null>(null);
+    const [addOnSelection, setAddOnSelection] = useState<Record<string, string[]>>({});
+    const [editingLineId, setEditingLineId] = useState<string | null>(null); // cart line whose add-ons are being edited
+
+    // Customer — popup se fill hota hai, payment drawer ko starting details milti hain
+    const [customerName, setCustomerName] = useState(prefillParty?.name ?? '');
+    const [customerPhone, setCustomerPhone] = useState(prefillParty?.number ?? '');
+    const [showCustomerModal, setShowCustomerModal] = useState(false);
+    const [showPricingInfo, setShowPricingInfo] = useState(false); // customer's discount details popup
+    const [customerDraft, setCustomerDraft] = useState({ name: '', phone: '' });
+    // Customer popup suggestions (same behaviour as PaymentDrawer)
+    const [customerSuggestions, setCustomerSuggestions] = useState<CustomerSuggestion[]>([]);
+    const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);
+    const [activeSuggestField, setActiveSuggestField] = useState<'name' | 'number'>('number');
+    const customerSearchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const customerPhoneWrapRef = useRef<HTMLDivElement>(null);
+    const customerNameWrapRef = useRef<HTMLDivElement>(null);
+    const customerSuggestionsRef = useRef<HTMLDivElement>(null);
+    const closeCustomerModal = () => {
+        setShowCustomerModal(false);
+        setShowCustomerSuggestions(false);
+        setCustomerSuggestions([]);
+    };
+
+    // Customer picker before billing (shown when customer-wise pricing is on)
+    const openCustomerModal = () => {
+        setCustomerDraft({ name: customerName, phone: customerPhone });
+        setCustomerSuggestions([]);
+        setShowCustomerSuggestions(false);
+        setShowCustomerModal(true);
+    };
+
+    const saveCustomer = () => {
+        const phone = customerDraft.phone.replace(/\D/g, '');
+        if (phone && phone.length !== 10) {
+            setModal({ message: 'Customer phone number must be exactly 10 digits.', type: State.ERROR });
+            return;
+        }
+        setCustomerName(customerDraft.name.trim());
+        setCustomerPhone(phone);
+        setPricingParty({ name: customerDraft.name.trim(), number: phone });
+        closeCustomerModal();
+    };
+    const clearCustomer = () => {
+        setCustomerName('');
+        setCustomerPhone('');
+        setCustomerDraft({ name: '', phone: '' });
+        setPricingParty({ name: '', number: '' });
+    };
+
+    // Desktop inline fields: save the customer when focus leaves both fields (or on Enter)
+    const commitInlineCustomer = () => {
+        const phone = customerDraft.phone.replace(/\D/g, '');
+        const name = customerDraft.name.trim();
+        if (!name && !phone) return;
+        if (phone && phone.length !== 10) return; // wait until the number is complete
+        setCustomerName(name);
+        setCustomerPhone(phone);
+        setPricingParty({ name, number: phone });
+        setShowCustomerSuggestions(false);
+        setCustomerSuggestions([]);
+    };
+
+    const searchCustomer = async (term: string, field: 'name' | 'number') => {
+        if (!term || term.length < 2 || !currentUser?.companyId) {
+            setCustomerSuggestions([]);
+            setShowCustomerSuggestions(false);
+            return;
+        }
+        try {
+            const hits = await searchParties(currentUser.companyId, 'customers', term, field);
+            const results: CustomerSuggestion[] = hits.map(h => ({
+                name: h.name,
+                number: h.number,
+                creditBalance: h.data.creditBalance,
+            }));
+            setCustomerSuggestions(results);
+            setShowCustomerSuggestions(results.length > 0);
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    const handleCustomerDraftChange = (value: string, field: 'name' | 'number') => {
+        setActiveSuggestField(field);
+        if (field === 'name') setCustomerDraft(d => ({ ...d, name: value }));
+        else setCustomerDraft(d => ({ ...d, phone: value }));
+
+        if (customerSearchTimeout.current) clearTimeout(customerSearchTimeout.current);
+        customerSearchTimeout.current = setTimeout(() => searchCustomer(value, field), 400);
+    };
+
+    const selectCustomerSuggestion = (c: CustomerSuggestion) => {
+        const name = (c.name || '').trim();
+        const phone = (c.number || '').replace(/\D/g, '').slice(0, 10);
+        setCustomerDraft({ name, phone });
+        setCustomerName(name);
+        setCustomerPhone(phone.length === 10 ? phone : '');
+        setPricingParty({ name, number: phone.length === 10 ? phone : '' });
+        closeCustomerModal();
+    };
+    // Payment drawer me jo bhi fill ho, drawer band hone par yahan wapas dikhe
+    const handleDrawerPartyChange = (name: string, number: string) => {
+        setCustomerName(name);
+        setCustomerPhone(number);
+        setPricingParty({ name, number });
+    };
+    // Customer typed/picked in the payment drawer — customer-wise pricing looks this one up
+    const [pricingParty, setPricingParty] = useState({ name: prefillParty?.name ?? '', number: prefillParty?.number ?? '' });
+    const handleDrawerPartyInput = (name: string, number: string) =>
+        setPricingParty(prev => (prev.name === name && prev.number === number ? prev : { name, number }));
+    // After the editor saves, re-pick the same customer so the hook reads the new prices
+    const refreshCustomerPricing = () => {
+        const p = pricingParty;
+        setPricingParty({ name: '', number: '' });
+        setTimeout(() => setPricingParty(p), 0);
+    };
+    useEffect(() => {
+        if (!showCustomerSuggestions) return;
+        const onDown = (e: MouseEvent) => {
+            const t = e.target as Node;
+            if (
+                customerSuggestionsRef.current?.contains(t) ||
+                customerPhoneWrapRef.current?.contains(t) ||
+                customerNameWrapRef.current?.contains(t)
+            ) return;
+            setShowCustomerSuggestions(false);
+        };
+        document.addEventListener('mousedown', onDown);
+        return () => document.removeEventListener('mousedown', onDown);
+    }, [showCustomerSuggestions]);
+    // // Edit mode me invoice ki party dikhani hai
+    // const customerDisplayName = isEditMode ? (invoiceToEdit?.partyName || '') : customerName;
+    // const customerDisplayPhone = isEditMode ? (invoiceToEdit?.partyNumber || '') : customerPhone;
+
+    const {
+        salesSettings,
+        activeTaxMode,
+        invoiceNumber, setInvoiceNumber,
+        isInvoiceNumberManuallyEdited,
+        invoiceDate, setInvoiceDate,
+        availableItems, setAvailableItems,
+        pageIsLoading,
+        error,
+        workers,
+        selectedWorker, setSelectedWorker,
+        settingsDocId,
+        itemGroupMap,
+    } = useSalesCatalogueAndSettings({
+        currentUser,
+        authLoading,
+        dbOperations,
+        rawSettings,
+        loadingSettings,
+        isEditMode,
+        invoiceToEdit,
+    });
+
+    // Category images for the phone category rail (group id → compressed data URL)
+    const [groupImageMap, setGroupImageMap] = useState<Record<string, string>>({});
+    useEffect(() => {
+        if (!dbOperations) return;
+        let cancelled = false;
+        dbOperations.getItemGroups()
+            .then((groups) => {
+                if (cancelled) return;
+                const map: Record<string, string> = {};
+                groups.forEach((g) => { if (g.id && g.imageUrl) map[g.id] = g.imageUrl; });
+                setGroupImageMap(map);
+            })
+            .catch((err) => console.error('Failed to load category images:', err));
+        return () => { cancelled = true; };
+    }, [dbOperations]);
+
+    const {
+        items, setItems,
+        longPressTimer,
+        cartListRef,
+        isDiscountLocked,
+        discountInfo,
+        isPriceLocked,
+        priceInfo,
+        duplicateItemPrompt, setDuplicateItemPrompt,
+        isScannerOpen, setIsScannerOpen,
+        barcodeToLink,
+        isBarcodeLinkModalOpen,
+        isLinkingBarcode,
+        selectedCategory, setSelectedCategory,
+        gridSearchQuery, setGridSearchQuery,
+        setCartSearchQuery,
+        sortOrder, setSortOrder,
+        selectedItemForEdit,
+        isItemDrawerOpen,
+        showClearCartConfirm, setShowClearCartConfirm,
+        categories,
+        sortedGridItems,
+        displayItems,
+        addItemToCart,
+        addItemWithAddOns,
+        handleQuickAddItem,
+        handleNewItemFieldChange,
+        applyNewItemDetails,
+        handleClearCart,
+        handleConfirmClearCart,
+        handleItemSelected,
+        handleIncreaseExistingQuantity,
+        handleAddAsNewLine,
+        closeBarcodeLinkModal,
+        handleLinkScannedBarcode,
+        handleBarcodeScanned,
+        handleQuantityChange,
+        handleDeleteItem,
+        handleDiscountPressStart,
+        handleDiscountPressEnd,
+        handleDiscountClick,
+        handlePricePressStart,
+        handlePricePressEnd,
+        handlePriceClick,
+        handleDiscountChange,
+        handleDiscount2Change,
+        handleCustomPriceChange,
+        handleCustomPriceBlur,
+        handleOpenEditDrawer,
+        handleCloseEditDrawer,
+        handleSaveSuccess,
+    } = useSalesCart({
+        salesSettings,
+        loadingSettings,
+        isEditMode,
+        invoiceToEdit,
+        pageIsLoading,
+        availableItems,
+        setAvailableItems,
+        dbOperations,
+        setModal,
+        companyId: currentUser?.companyId,
+    });
+    // --- QUICK-ADD (item not in the catalogue yet; created when the bill is saved) ---
+    // List view: typed in the search box, details filled in the cart row.
+    // Card view / bill sheet: details filled in QuickItemSheet (bottom sheet on phone).
+    const [quickSheet, setQuickSheet] = useState<{ mode: 'create'; name: string } | { mode: 'edit'; lineId: string } | null>(null);
+    const [focusLineId, setFocusLineId] = useState<string | null>(null);
+    const catalogueNameSet = useMemo(() => new Set(availableItems.map(a => normalizeItemName(a.name))), [availableItems]);
+    const isCatalogueName = (name: string) => catalogueNameSet.has(normalizeItemName(name));
+    const gridQuickAddName = gridSearchQuery.trim();
+    const canGridQuickAdd = !!gridQuickAddName && !isCatalogueName(gridQuickAddName);
+
+    const handleListQuickAdd = (name: string) => {
+        const lineId = handleQuickAddItem(name);
+        if (lineId) setFocusLineId(lineId);
+    };
+    const openGridQuickAdd = () => {
+        if (canGridQuickAdd) setQuickSheet({ mode: 'create', name: gridQuickAddName });
+    };
+    // Card-view search: Enter with no matching item opens the new-item sheet
+    const handleGridSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key !== 'Enter' || !canGridQuickAdd || looksLikeBarcode(gridQuickAddName)) return;
+        if (sortedGridItems.length > 0) return;
+        e.preventDefault();
+        openGridQuickAdd();
+    };
+    const quickSheetLine: SalesItem | null | undefined = quickSheet?.mode === 'edit' ? items.find(i => i.id === quickSheet.lineId) : null;
+    const handleQuickSheetSubmit = (d: QuickItemDetails) => {
+        if (quickSheet?.mode === 'edit') applyNewItemDetails(quickSheet.lineId, d);
+        else handleQuickAddItem(d.name, d);
+        setQuickSheet(null);
+    };
+    const renderQuickItemSheet = () => (
+        <QuickItemSheet
+            isOpen={!!quickSheet && (quickSheet.mode === 'create' || !!quickSheetLine)}
+            mode={quickSheet?.mode ?? 'create'}
+            initial={quickSheet?.mode === 'edit' && quickSheetLine
+                ? {
+                    name: quickSheetLine.name,
+                    price: Number(quickSheetLine.customPrice) || 0,
+                    mrp: Number(quickSheetLine.mrp) || 0,
+                    tax: Number(quickSheetLine.tax) || 0,
+                    extraPrice: Number(quickSheetLine.purchasePrice) || 0,
+                    quantity: Number(quickSheetLine.quantity) || 1,
+                }
+                : { name: quickSheet?.mode === 'create' ? quickSheet.name : '', tax: Number(salesSettings?.defaultTaxRate ?? 0) || 0, quantity: 1 }}
+            priceLabel="Selling price"
+            extraLabel="Purchase price"
+            isNameTaken={isCatalogueName}
+            onSubmit={handleQuickSheetSubmit}
+            onClose={() => setQuickSheet(null)}
+        />
+    );
+    // Card view: "add as new item" tile, first in the grid while searching
+    const renderGridQuickAddTile = () => canGridQuickAdd && !isTutorialActive ? (
+        <button
+            type="button"
+            onClick={openGridQuickAdd}
+            className="flex flex-col items-center justify-center gap-1.5 min-h-[132px] p-3 rounded-sm border-2 border-dashed border-[#155dfc] bg-white text-[#155dfc] hover:bg-[#e6eeff] transition-colors text-center"
+        >
+            <FiPlus size={22} />
+            <span className="text-[13px] font-semibold leading-4 break-words [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden">Add "{gridQuickAddName}"</span>
+            <span className="text-[11px] text-[#45556c] leading-4">New item · set price</span>
+        </button>
+    ) : null;
+
+    // allowNegative: yahan apni sales setting ka asli naam lagao jo negative stock allow karti hai
+    const groupsOf = (item: Item) => resolveAddOnGroups(item, addOnLibrary, {
+        items: availableItems,
+        allowNegative: !!(salesSettings as any)?.allowNegativeStock,
+    });
+    const itemHasAddOns = (item: Item) => addOnsEnabled && groupsOf(item).length > 0;
+
+    // Selection order matters: choices beyond the group's limit carry the extra price
+    const getPickedAddOns = (item: Item): any[] =>
+        groupsOf(item).flatMap((g: AddOnGroup) => {
+            const limit = g.multiple ? Number(g.maxSelect) || 0 : 0;
+            return (addOnSelection[g.id] ?? []).flatMap((id, idx) => {
+                const o = g.options.find(x => x.id === id);
+                if (!o) return [];
+                // Limit + extra set: included picks are free, picks beyond the limit pay their extra charge
+                if (limit > 0 && g.extraPrice != null) {
+                    return [{ ...o, price: idx >= limit ? extraChargeOf(g, o) : 0 }];
+                }
+                return [o];
+            });
+        });
+
+    // Price shown on an option: choices beyond the group's limit carry the extra price
+    const optionPriceFor = (group: AddOnGroup, optId: string): number => {
+        const o = group.options.find(x => x.id === optId);
+        const base = Number(o?.price) || 0;
+        const limit = group.multiple ? Number(group.maxSelect) || 0 : 0;
+        if (limit <= 0 || group.extraPrice == null) return base;
+        const sel = addOnSelection[group.id] ?? [];
+        const idx = sel.indexOf(optId);
+        const isExtra = idx >= 0 ? idx >= limit : sel.length >= limit; // selected: its position, not selected: the next pick
+        return o ? (isExtra ? extraChargeOf(group, o) : 0) : base;
+    };
+
+    const toggleAddOn = (group: AddOnGroup, optionId: string) => {
+        setAddOnSelection(prev => {
+            const cur = prev[group.id] ?? [];
+            const has = cur.includes(optionId);
+            // "Choose up to N": ignore taps beyond the limit
+            const limit = group.multiple ? Number(group.maxSelect) || 0 : 0;
+            if (!has && limit > 0 && cur.length >= limit && group.extraPrice == null) return prev;
+            if (!has && group.options.find(o => o.id === optionId)?.soldOut) return prev;
+            const next = group.multiple
+                ? (has ? cur.filter(id => id !== optionId) : [...cur, optionId])
+                : (has ? [] : [optionId]);
+            return { ...prev, [group.id]: next };
+        });
+    };
+
+    const closeAddOnPopup = () => {
+        setAddOnItem(null);
+        setAddOnSelection({});
+        setEditingLineId(null);
+    };
+
+    // List view: click on a line's name reopens the popup with that line's add-ons already ticked
+    const openAddOnEdit = (line: any): boolean => {
+        const base = availableItems.find(a => a.id === (line.productId || line.id));
+        if (!base || !itemHasAddOns(base)) return false;
+        const chosen = new Set((line.addOns ?? []).map((o: { id: string }) => o.id));
+        const sel: Record<string, string[]> = {};
+        groupsOf(base).forEach((g: AddOnGroup) => {
+            const ids = g.options.filter(o => chosen.has(o.id)).map(o => o.id);
+            if (ids.length) sel[g.id] = ids;
+        });
+        setAddOnSelection(sel);
+        setAddOnItem(base);
+        setEditingLineId(line.id);
+        return true;
+    };
+
+    const applyAddOnEdit = (lineId: string, picked: any[]) => {
+        const amount = picked.reduce((s, o) => s + (Number(o.price) || 0), 0);
+        const stock = addOnStockOf({ addOns: picked });
+        setItems((prev: any[]) => prev.map(l => l.id !== lineId ? l : {
+            ...l,
+            addOns: picked.length > 0 ? picked : undefined,
+            addOnKey: picked.length > 0 ? picked.map(o => o.id).sort().join('|') : undefined,
+            addOnStock: stock.length > 0 ? stock : undefined,
+            addOnAmount: amount > 0 ? amount : undefined,
+        }));
+    };
+
+    const confirmAddOns = (withAddOns: boolean) => {
+        const item = addOnItem;
+        if (!item) return;
+        const picked = withAddOns ? getPickedAddOns(item) : [];
+        if (editingLineId) {
+            applyAddOnEdit(editingLineId, picked);
+            closeAddOnPopup();
+            return;
+        }
+        closeAddOnPopup();
+        addItemWithAddOns(item, picked, !isCardView);
+    };
+
+    const handleAddOrPickTier = (item: Item) => {
+        if (itemHasAddOns(item)) {
+            setAddOnSelection({});
+            setAddOnItem(item);
+            return;
+        }
+        if (hasMultiplePricing(item)) {
+            setTierPickerItem(item);
+        } else {
+            addItemToCart(item);
+        }
+    };
+    const handleItemSelectedWrapper = (item: Item | null) => {
+        // Add-on items always open the popup (same as card view)
+        if (item && itemHasAddOns(item)) {
+            setAddOnSelection({});
+            setAddOnItem(item);
+            return;
+        }
+        if (item && hasMultiplePricing(item)) {
+            setTierPickerItem(item);
+            return;
+        }
+        handleItemSelected(item);
+    };
+
+    // Duplicate popup ka "Add as new item": add-on wale item par pehle add-ons popup kholo
+    const handleAddAsNewLineWrapper = () => {
+        const dup = duplicateItemPrompt;
+        const base = dup ? availableItems.find(a => a.id === dup.item.id) ?? dup.item : null;
+
+        if (base && itemHasAddOns(base)) {
+            setDuplicateItemPrompt(null);   // duplicate popup band
+            setEditingLineId(null);         // edit mode nahi, naya line ban raha hai
+            setAddOnSelection({});          // fresh selection
+            setAddOnItem(base);             // add-ons popup open
+            return;
+        }
+        // Add-ons nahi hain: pehle jaisa
+        handleAddAsNewLine();
+    };
+    const userRole = currentUser?.role || '';
+    const isManager = userRole === ROLES.MANAGER || userRole === ROLES.OWNER;
+    const hideMrp = (salesSettings as any)?.hideMrp ?? false;
+
+    const [showPhotos, setShowPhotos] = useState<boolean | null>(null);
+    const isCardView = salesSettings?.salesViewType === 'card';
+    const selectedOnTop = isCardView && !!(salesSettings as any)?.cardSelectedOnTop;
+    const isCardImageView = isCardView && (showPhotos ?? (salesSettings?.cardViewWithPhoto !== false));
+    const isCalculatorView = salesSettings?.salesViewType === 'calculator';
+
+    // Tutorial state lives here so the totals / lists below can show sample data
+    const [tutorialStep, setTutorialStep] = useState(0);
+    // No tutorial while editing a bill or in calculator view
+    const activeStep = isEditMode || isCalculatorView ? 0 : tutorialStep;
+    const isTutorialActive = activeStep > 0 && activeStep <= TOTAL_STEPS;
+    // Sample cart only when the real cart is empty
+    const showSampleCart = isTutorialActive && items.length === 0;
+    const cartItems: any[] = showSampleCart ? TUTORIAL_SAMPLE_LINES : items;
+    // Filter button par blue dot: Photos/Compact ya sort default se alag ho
+    const hasViewChanges =
+        isCardImageView !== (salesSettings?.cardViewWithPhoto !== false) ||
+        sortOrder !== SORT_OPTIONS[0].value;
+    const showTaxRow = (activeTaxMode !== 'exempt');
+
+    const [isMoreOpen, setIsMoreOpen] = useState(false);
+    const [isFilterOpen, setIsFilterOpen] = useState(false);
+    const [isFooterExpanded, setIsFooterExpanded] = useState(false);
+    const [isBillOpen, setIsBillOpen] = useState(false); // phone/tablet bill sheet (card view)
+    useEffect(() => { if (items.length === 0) setIsBillOpen(false); }, [items.length]);
+    const [isTabletBreakdownOpen, setIsTabletBreakdownOpen] = useState(false);
+
+    const gstSchemeDisplay = salesSettings?.gstScheme;
+
+    const realTotals = useMemo(
+        () => calculateSaleTotals(items, salesSettings, activeTaxMode, gstSchemeDisplay),
+        [items, salesSettings, activeTaxMode, gstSchemeDisplay]
+    );
+    const sampleTotals = useMemo(() => {
+        const net = 550;
+        const tax = activeTaxMode === 'exempt' ? 0 : Math.round(net * 0.05 * 100) / 100;
+        return {
+            subtotal: 620, totalDiscount: 70, totalMrp: 620, totalQuantity: 5,
+            taxAmount: tax,
+            finalAmount: activeTaxMode === 'exclusive' ? net + tax : net,
+        };
+    }, [activeTaxMode]);
+    const { subtotal, totalDiscount, taxAmount, finalAmount, totalQuantity, totalMrp } =
+        showSampleCart ? sampleTotals : realTotals;
+
+    const amountToPayNow = useMemo(() => finalAmount, [finalAmount]);
+    const netAmount = subtotal - totalDiscount;
+
+    // Card view: optionally pull items that are already in the cart to the top.
+    // Array.sort is stable, so the rest keep the A-Z / price order the user chose.
+    const gridItemsToShow = useMemo(() => {
+        if (!selectedOnTop) return sortedGridItems;
+        const inCart = new Set(items.map((l: any) => l.productId || l.id));
+        const picked = sortedGridItems.filter(it => inCart.has(it.id));
+        const rest = sortedGridItems.filter(it => !inCart.has(it.id));
+        return [...picked, ...rest];
+    }, [sortedGridItems, items, selectedOnTop]);
+
+    // Card view: a new category should always start from the top of the grid
+    const gridScrollRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        gridScrollRef.current?.scrollTo({ top: 0 });
+    }, [selectedCategory]);
+    // const taxableValue = activeTaxMode === 'inclusive' ? netAmount - taxAmount : netAmount;
+    // const roundOff = finalAmount - (activeTaxMode === 'inclusive' ? netAmount : netAmount + taxAmount);
+
+    const {
+        savedBillData, setSavedBillData,
+        sendingPdf,
+        printingPdf,
+        showPrintSubMenu, setShowPrintSubMenu,
+        enableTriplicate,
+        upiPayee,
+        isDrawerOpen, setIsDrawerOpen,
+        handleSendWhatsapp,
+        handleSendWhatsappSnapto,
+        handlePrintAction,
+        showSuccessModal,
+        handleCloseQrModal,
+    } = useSalesCommunication({
+        currentUser,
+        salesSettings,
+        setModal,
+        navigate,
+        setItems,
+    });
+
+    const {
+        calcInput, setCalcInput,
+        stagedCalcInput, setStagedCalcInput,
+        displayRef,
+        handlePointerDown,
+        handlePointerUp,
+        handlePointerLeave,
+        liveTotal,
+        liveItemCount,
+        handleKeypadPress,
+        handleCheckoutClick,
+    } = useSalesCalculator({
+        items,
+        setItems,
+        salesSettings,
+        setModal,
+        isCalculatorView,
+        setIsDrawerOpen,
+        longPressTimer,
+        isDrawerOpen,
+        finalAmount,
+    });
+
+    // Loyalty points: shown in every sale drawer when Loyalty settings are on.
+    const { loyaltySettings } = useLoyaltySettings();
+    const loyaltyEnabled = !!loyaltySettings?.enabled;
+    // Memoised: the drawer resets its points state when this object changes identity.
+    const initialLoyalty = useMemo(() => (isEditMode ? readSaleLoyalty(invoiceToEdit) : null), [isEditMode, invoiceToEdit]);
+    // Bills saved before loyalty existed have no `loyalty` key at all — editing them never earns.
+    const loyaltyNoEarn = isEditMode && !!invoiceToEdit && invoiceToEdit.loyalty === undefined;
+    const loyaltyDrawerProps = { enableLoyalty: loyaltyEnabled, initialLoyalty, loyaltyNoEarn };
+
+    const {
+        isSaving: isSavingBill,
+        validateBeforePayment,
+        handleProceedToPayment,
+        handleSavePayment,
+    } = useSalesPayment({
+        currentUser,
+        companyId: currentUser?.companyId,
+        salesSettings,
+        activeTaxMode,
+        items,
+        setItems,
+        availableItems,
+        setAvailableItems,
+        selectedWorker,
+        workers,
+        isEditMode,
+        invoiceToEdit,
+        invoiceDate,
+        invoiceNumber,
+        setInvoiceNumber,
+        isInvoiceNumberManuallyEdited,
+        settingsDocId,
+        subtotal,
+        totalDiscount,
+        finalAmount,
+        setModal,
+        setStagedCalcInput,
+        setCalcInput,
+        isDrawerOpen,
+        setIsDrawerOpen,
+        setSavedBillData,
+        showSuccessModal,
+        loyaltyEnabled,
+    });
+
+    // ── Customer-wise fixed pricing ──
+    // Customer picked at the top of the bill or in the payment drawer: their fixed price is
+    // applied automatically where it is lower (Busy-style). Revert on a line undoes it;
+    // editing a saved bill never re-prices automatically.
+    const customerPricingEnabled = !!salesSettings?.enableCustomerPricing && !isCalculatorView;
+    const customerPricing = useCustomerPricing({
+        enabled: customerPricingEnabled,
+        auto: !isEditMode,
+        companyId: currentUser?.companyId,
+        customerName: isEditMode ? (invoiceToEdit?.partyName || '') : pricingParty.name,
+        customerPhone: isEditMode ? (invoiceToEdit?.partyNumber || '') : pricingParty.number,
+        items,
+        setItems,
+        salesSettings,
+        canOverride: hasPermission(Permissions.OverrideCustomerDiscount),
+    });
+    const decorateLine = <T extends SalesItem>(line: T): T =>
+        customerPricingEnabled ? { ...line, ...customerPricing.decorate(line) } : line;
+
+    // Print / WhatsApp ticks from PaymentDrawer — fire once the bill is saved
+    const postSaveOptionsRef = useRef<{ printBill?: boolean; sendWhatsApp?: boolean } | null>(null);
+
+    // Item tile long-press (touch) → opens edit drawer
+    const tileHoldTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+    const tileHoldFired = useRef(false);
+
+    const handleSavePaymentWithOptions = async (data: PaymentCompletionData) => {
+        postSaveOptionsRef.current = isEditMode ? null : { printBill: data.printBill, sendWhatsApp: data.sendWhatsApp };
+        try {
+            await handleSavePayment(data);
+        } catch (err) {
+            postSaveOptionsRef.current = null;
+            throw err;
+        }
+    };
+
+    // ── Fast billing: Print → Cash / UPI / Card → bill saved fully paid and printed ──
+    // For walk-in counter sales (e.g. a thela). Anything that needs the full drawer —
+    // a customer on the bill (customer record, points, due) or settings that require
+    // the customer's name / mobile — goes to the normal payment drawer instead.
+    const [isQuickPayOpen, setIsQuickPayOpen] = useState(false);
+    const needsFullDrawer = !!(customerName.trim() || customerPhone.trim()
+        || salesSettings?.requireCustomerName || salesSettings?.requireCustomerMobile);
+    const showQuickPrint = !isEditMode && !isCalculatorView;
+    const startQuickPrint = () => {
+        if (needsFullDrawer) { handleProceedToPayment(); return; }
+        if (validateBeforePayment()) setIsQuickPayOpen(true);
+    };
+    const handleQuickPay = async (method: 'cash' | 'upi' | 'card') => {
+        setIsQuickPayOpen(false);
+        const total = Math.round(Math.max(0, amountToPayNow));   // same rounding as the drawer's netPayable
+        try {
+            await handleSavePaymentWithOptions({
+                paymentDetails: { cash: 0, upi: 0, card: 0, due: 0, [method]: total },
+                partyName: '',
+                partyNumber: '',
+                discount: 0,
+                finalAmount: total,
+                appliedCredit: 0,
+                appliedDebit: 0,
+                revDiscount: 0,
+                expenses: [],
+                narration: '',
+                printBill: true,
+                sendWhatsApp: false,
+            });
+        } catch (err) {
+            setModal({ message: err instanceof Error ? err.message : 'Could not save the bill. Please try again.', type: State.ERROR });
+        }
+    };
+
+    useEffect(() => {
+        const opts = postSaveOptionsRef.current;
+        if (!savedBillData || !opts) return;
+        postSaveOptionsRef.current = null;
+        const invoice = savedBillData.invoiceData;
+        if (opts.sendWhatsApp && invoice?.partyNumber) {
+            if (whatsappProvider === 'botmaster') handleSendWhatsapp(invoice);
+            else if (whatsappProvider === 'snapto' || whatsappProvider === 'sellar') handleSendWhatsappSnapto(invoice);
+        }
+        if (opts.printBill) handlePrintAction(invoice, false);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [savedBillData]);
+
+    // Bill save hone ke baad customer reset — naya bill fresh shuru ho
+    useEffect(() => {
+        if (savedBillData && !isEditMode) {
+            setCustomerName('');
+            setCustomerPhone('');
+            setCustomerDraft({ name: '', phone: '' });
+            setPricingParty({ name: '', number: '' });
+            setShowPricingInfo(false);
+        }
+    }, [savedBillData, isEditMode]);
+    // ---------- Tutorial ----------
+
+    // A step counts only if its element is really on screen.
+    // Hidden on this screen size, or turned off in settings = skipped.
+    const isStepVisible = (s: number) =>
+        Array.from(document.querySelectorAll<HTMLElement>(`[data-tour="${s}"]`)).some(el => {
+            const r = el.getBoundingClientRect();
+            return r.width > 0 && r.height > 0;
+        });
+
+    const finishTutorial = useCallback(() => {
+        completeTutorial(currentUser, TUTORIAL_KEY, setTutorialStep);
+    }, [currentUser]);
+
+    const nextStep = (from: number) => {
+        let n = from;
+        while (n <= TOTAL_STEPS && !isStepVisible(n)) n++;
+        if (n > TOTAL_STEPS) finishTutorial();
+        else setTutorialStep(n);
+    };
+
+    useTutorial(currentUser, setTutorialStep, TUTORIAL_KEY);
+
+    // If the current step's element is not on screen, jump to the next one that is
+    useEffect(() => {
+        if (activeStep === 0 || pageIsLoading) return;
+        const t = setTimeout(() => {
+            if (!isStepVisible(activeStep)) nextStep(activeStep + 1);
+        }, 200);
+        return () => clearTimeout(t);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeStep, pageIsLoading]);
+
+    const tour = { currentStep: activeStep, onSkip: finishTutorial };
+    if (pageIsLoading) return <div className="flex items-center justify-center h-screen"><Spinner /> <p className="ml-2">Loading...</p></div>;
+    if (error) return <div className="flex flex-col items-center justify-center h-screen text-red-600"><p>{error}</p><button onClick={() => navigate(-1)} className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-sm hover:bg-blue-600">Go Back</button></div>;
+    const fmtINR = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const ICON_BTN_CLS = 'inline-flex items-center justify-center w-10 h-10 rounded-sm text-[#45556c] hover:bg-[#f5f7ff] transition-colors flex-shrink-0';
+
+    // MOQ of a cart line (looked up from the catalogue item, same as the card view)
+    const getLineMoq = (lineId: string): number => {
+        const line = items.find((l: any) => l.id === lineId);
+        if (!line) return 1;
+        const base = availableItems.find(a => a.id === ((line as any).productId || line.id));
+        return Number((base as any)?.moq) || 1;
+    };
+
+    // Bill panel: never let quantity go below MOQ (list view already locks this).
+    // "+" ek hi item dobara add karne jaisa hai, isliye list view jaisa popup puchta hai.
+    const handleBillQuantityChange = (lineId: string, newQty: number) => {
+        if (newQty < getLineMoq(lineId)) return;
+
+        const line: any = items.find((l: any) => l.id === lineId);
+        const isPlusTap = !!line && newQty === (Number(line.quantity) || 0) + 1;
+
+        if (isPlusTap) {
+            const base = availableItems.find(a => a.id === (line.productId || line.id));
+            // Popup sirf add-on wale item par: baaki items par seedha quantity badhe
+            if (base && itemHasAddOns(base)) {
+                const existingCount = items.filter((l: any) => (l.productId || l.id) === base.id).length;
+                setDuplicateItemPrompt({
+                    item: base,
+                    addOns: line.addOns,
+                    existingCount,
+                } as any);
+                return;
+            }
+        }
+
+        handleQuantityChange(lineId, newQty);
+    };
+
+    const renderMobileHeader = () => (
+        <header className="md:hidden flex-shrink-0 bg-white border-b border-[#dfe6fb]">
+            {/* Row 1: back + centered title */}
+            <div className="flex items-center gap-1 h-14 px-2">
+                <div className="flex-shrink-0">
+                    <BackButton />
+                </div>
+                <TutorialStep step={1} {...tour} text="Your bill number and date are shown here. To change them, tap the three dots (More) at the top." onNext={() => nextStep(2)} mobileArrowAlign="left">
+                    <div data-tour="1" className="flex-1 min-w-0 flex items-baseline gap-2">
+                        <h1 className="m-0 text-lg font-semibold leading-tight text-[#0f172b] whitespace-nowrap">
+                            {isEditMode ? 'Edit sale' : 'New sale'}
+                        </h1>
+                        <span className="text-xs font-normal text-[#5b6b86] truncate">
+                            {invoiceNumber}{invoiceDate ? ` · ${new Date(`${invoiceDate}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''}
+                        </span>
+                    </div>
+                </TutorialStep>
+                {/* Card view has no cart bar on phones, so the salesman name sits here instead */}
+                {isCardView && salesSettings?.enableSalesmanSelection && (selectedWorker || isTutorialActive) && (
+                    <span className={`max-w-[90px] ${SALESMAN_NAME_CLS}`}>{selectedWorker?.name ?? TUTORIAL_SAMPLE_SALESMAN}</span>
+                )}
+                {renderSalesmanButton()}
+                {/* List view has no second row, so the three dots stay here */}
+                {!isCardView && (
+                    <button type="button" onClick={() => setIsMoreOpen(true)} aria-label="More" className={`${ICON_BTN_CLS} ml-auto`}>
+                        <FiMoreVertical size={20} />
+                    </button>
+                )}
+            </div>
+
+            {/* Row 2 (card view): sort/filter | search + camera | clear cart | three dots
+                (the More sheet is the only place to change bill no./date on phones) */}
+            {isCardView && (
+                <TutorialStep step={2} {...tour} text="Search for an item by name or barcode, or tap the camera to scan it." onNext={() => nextStep(3)} mobileArrowAlign="left">
+                    <div data-tour="2" className="flex items-center gap-2 px-2 pb-3">
+                        <button type="button" aria-label="View options" onClick={() => setIsFilterOpen(true)}
+                            className="relative inline-flex items-center justify-center w-10 h-10 flex-shrink-0 rounded-sm border border-[#7a8aa3] bg-white text-[#0f172b]">
+                            <FiSliders size={18} />
+                            {hasViewChanges && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#155dfc] ring-2 ring-white" />}
+                        </button>
+
+                        <div className="flex flex-1 min-w-0 items-center h-10 rounded-sm border border-[#7a8aa3] bg-white overflow-hidden transition-all focus-within:border-[#155dfc] focus-within:ring-4 focus-within:ring-[#e6eeff]">
+                            <FiSearch size={18} className="ml-3 text-[#5b6b86] flex-shrink-0" />
+                            <input
+                                type="text"
+                                value={gridSearchQuery}
+                                onChange={(e) => setGridSearchQuery(e.target.value)}
+                                onKeyDown={handleGridSearchKeyDown}
+                                enterKeyHint="search"
+                                placeholder="Search item name or barcode"
+                                className="flex-1 min-w-0 h-full px-2.5 bg-transparent border-0 outline-none text-[14px] font-medium text-[#0f172b] placeholder:text-[#5b6b86]"
+                                autoComplete="off"
+                            />
+                            {gridSearchQuery && (
+                                <button type="button" onClick={() => setGridSearchQuery('')} aria-label="Clear search"
+                                    className="p-1 mr-1 rounded-full text-[#5b6b86] hover:text-[#0f172b] hover:bg-[#f5f7ff] flex-shrink-0">
+                                    <FiX size={16} />
+                                </button>
+                            )}
+                            <button type="button" aria-label="Scan barcode" onClick={() => setIsScannerOpen(true)}
+                                className="h-full w-11 flex-shrink-0 inline-flex items-center justify-center bg-[#155dfc] text-white hover:bg-[#1447e6] transition-colors">
+                                <IconScanCircle width={20} height={20} />
+                            </button>
+                        </div>
+
+                        {items.length > 0 && (
+                            <button
+                                type="button"
+                                onClick={handleClearCart}
+                                aria-label="Clear cart"
+                                className="inline-flex items-center justify-center w-10 h-10 flex-shrink-0 rounded-sm text-[#d5000c] bg-[#ffeef0] hover:bg-[#ffdde1] transition-colors"
+                            >
+                                <FiTrash2 size={18} />
+                            </button>
+                        )}
+
+                        <button type="button" onClick={() => setIsMoreOpen(true)} aria-label="More" className={ICON_BTN_CLS}>
+                            <FiMoreVertical size={20} />
+                        </button>
+                    </div>
+                </TutorialStep>
+            )}
+        </header>
+    );
+    // ───────────────────────── Header ─────────────────────────
+    const renderHeader = () => (
+        <div className="flex-shrink-0 bg-white border-b border-[#dfe6fb] px-4 py-3 md:px-6 md:py-4">
+            <div className="flex flex-wrap items-center gap-2 md:gap-3">
+                <h1 className="m-0 mr-1 text-lg md:text-[22px] md:leading-[30px] font-semibold text-[#0f172b]">
+                    {isEditMode ? 'Edit sale' : 'New sale'}
+                </h1>
+
+                <TutorialStep step={1} {...tour} text="The bill number and date are filled in automatically. You can change them here if you need to." onNext={() => nextStep(2)}>
+                    <div data-tour="1" className="flex flex-wrap items-center gap-2 md:gap-3">
+                        <label className="inline-flex items-center gap-2 h-9 px-3 bg-white border border-[#7a8aa3] rounded-sm text-[13px] transition-all focus-within:border-[#155dfc] focus-within:ring-4 focus-within:ring-[#e6eeff]">
+                            <span className="text-[11px] font-semibold tracking-[.06em] uppercase text-[#5b6b86]">Bill no.</span>
+                            <input
+                                type="text"
+                                value={invoiceNumber}
+                                aria-label="Invoice number"
+                                onChange={(e) => {
+                                    isInvoiceNumberManuallyEdited.current = true;
+                                    setInvoiceNumber(e.target.value);
+                                }}
+                                className="w-24 bg-transparent border-0 outline-none font-semibold text-[#0f172b] tabular-nums"
+                            />
+                        </label>
+
+                        <label className="inline-flex items-center gap-2 h-9 px-3 bg-white border border-[#7a8aa3] rounded-sm text-[13px] cursor-pointer transition-all focus-within:border-[#155dfc] focus-within:ring-4 focus-within:ring-[#e6eeff]">
+                            <FiCalendar size={14} className="text-[#5b6b86] flex-shrink-0" />
+                            <input
+                                type="date"
+                                value={invoiceDate}
+                                aria-label="Invoice date"
+                                onChange={(e) => setInvoiceDate(e.target.value)}
+                                className="bg-transparent border-0 outline-none font-semibold text-[#0f172b] cursor-pointer"
+                            />
+                        </label>
+                    </div>
+                </TutorialStep>
+                {isCardView && (
+                    <div role="group" aria-label="Photos" className="ml-auto inline-flex p-[3px] gap-0.5 bg-[#f5f7ff] border border-[#dfe6fb] rounded-sm">
+                        {([[true, 'Photos'], [false, 'Compact']] as const).map(([val, label]) => (
+                            <button
+                                key={label}
+                                type="button"
+                                aria-pressed={isCardImageView === val}
+                                onClick={() => setShowPhotos(val)}
+                                className={`h-7 px-3 rounded-sm text-xs font-medium transition-colors ${isCardImageView === val ? 'bg-white text-[#155dfc] shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]' : 'text-[#45556c] hover:text-[#0f172b]'}`}
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+
+    // Grid-view search + scan (card view)
+    const renderGridSearch = (autoFocus = false) => (
+        <div className="flex gap-2 items-center">
+            <div className="relative flex-1">
+                <FiSearch size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#5b6b86] pointer-events-none" />
+                <input
+                    type="text"
+                    value={gridSearchQuery}
+                    onChange={(e) => setGridSearchQuery(e.target.value)}
+                    onKeyDown={handleGridSearchKeyDown}
+                    placeholder="Search item name or barcode"
+                    className={FIELD_CLS}
+                    autoComplete="off"
+                    autoFocus={autoFocus}
+                />
+                {gridSearchQuery && (
+                    <button
+                        type="button"
+                        onClick={() => setGridSearchQuery('')}
+                        aria-label="Clear search"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full text-[#5b6b86] hover:text-[#0f172b] hover:bg-[#f5f7ff] transition-colors"
+                    >
+                        <FiX size={16} />
+                    </button>
+                )}
+            </div>
+            <button type="button" onClick={() => setIsScannerOpen(true)} title="Scan barcode" aria-label="Scan barcode" className={SCAN_BTN_CLS}>
+                <IconScanCircle width={20} height={20} />
+                <span className="hidden md:inline">Scan</span>
+            </button>
+        </div>
+    );
+
+    // Phone only: Blinkit-style vertical category rail
+    const renderCategoryRail = () => (
+        <nav
+            aria-label="Categories"
+            className="md:hidden w-[88px] flex-shrink-0 overflow-y-auto bg-white border-r border-[#dfe6fb] scrollbar-hide"
+        >
+            {categories.map(cat => {
+                const label = cat === 'All' ? 'All' : (itemGroupMap[cat] || cat);
+                const imageUrl = cat === 'All' ? undefined : groupImageMap[cat];
+                const active = selectedCategory === cat;
+                return (
+                    <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setSelectedCategory(cat)}
+                        className={`relative w-full flex flex-col items-center gap-1 px-1 py-3 text-center border-0 cursor-pointer transition-colors ${active ? 'bg-[#e6eeff]' : 'bg-white hover:bg-[#f5f7ff]'}`}
+                    >
+                        {active && <span className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-[#155dfc]" />}
+                        <span className={`w-11 h-11 rounded-sm overflow-hidden flex items-center justify-center text-base font-semibold ${active ? 'bg-white text-[#155dfc]' : 'bg-[#f5f7ff] text-[#45556c]'}`}>
+                            {imageUrl
+                                ? <img src={imageUrl} alt="" loading="lazy" className="w-full h-full object-cover" />
+                                : label.charAt(0).toUpperCase()}
+                        </span>
+                        <span className={`text-[11px] leading-[14px] [overflow-wrap:anywhere] line-clamp-2 ${active ? 'font-semibold text-[#155dfc]' : 'font-medium text-[#45556c]'}`}>
+                            {label}
+                        </span>
+                    </button>
+                );
+            })}
+        </nav>
+    );
+    const isSalesmanLocked = !hasPermission(Permissions.ViewTransactions) || (isEditMode && !isManager);
+    const renderSalesmanSelect = (extraCls = '') => {
+        // Tutorial ke dauran, agar koi salesman select nahi hai to sample dikhao
+        const showSampleSalesman = isTutorialActive && !selectedWorker;
+        return salesSettings?.enableSalesmanSelection ? (
+            <select
+                value={showSampleSalesman ? '__sample__' : (selectedWorker?.uid || '')}
+                onChange={(e) => {
+                    if (e.target.value === 'ADD_NEW_SALESMAN') setIsAddUserModalOpen(true);
+                    else setSelectedWorker(workers.find(w => w.uid === e.target.value) || null);
+                }}
+                aria-label="Salesman"
+                className={`h-10 px-2 bg-white border border-[#7a8aa3] rounded-sm text-sm font-medium text-[#0f172b] outline-none focus:border-[#155dfc] focus:ring-4 focus:ring-[#e6eeff] disabled:opacity-[.45] ${extraCls}`}
+                disabled={isSalesmanLocked}
+            >
+                <option value="">Salesman</option>
+                {showSampleSalesman && <option value="__sample__">{TUTORIAL_SAMPLE_SALESMAN}</option>}
+                {workers.map(w => <option key={w.uid} value={w.uid}>{w.name}</option>)}
+                <option value="ADD_NEW_SALESMAN">+ Add New Salesman</option>
+            </select>
+        ) : null;
+    };
+
+    // Phone: square icon button. An invisible native select covers it, so a tap opens the picker directly.
+    const renderSalesmanButton = () =>
+        salesSettings?.enableSalesmanSelection ? (
+            <TutorialStep step={3} {...tour} text="Tap here to choose which salesman is making this sale." onNext={() => nextStep(4)}>
+                <div
+                    data-tour="3"
+                    title="Salesman"
+                    className={`relative inline-flex items-center justify-center w-10 h-10 flex-shrink-0 rounded-sm border border-[#7a8aa3] bg-white text-[#0f172b] transition-all focus-within:border-[#155dfc] focus-within:ring-4 focus-within:ring-[#e6eeff] ${isSalesmanLocked ? 'opacity-[.45]' : ''}`}
+                >
+                    <FiUser size={18} />
+                    {renderSalesmanSelect('absolute inset-0 w-full !h-full !opacity-0 cursor-pointer disabled:cursor-not-allowed')}
+                </div>
+            </TutorialStep>
+        ) : null;
+
+    // // Walk-in customer / filled customer card — "Add" ab popup kholta hai
+    // const renderCustomerBlock = (showSalesman = true) => (
+    //     <>
+    //         <div className="flex items-center gap-2.5">
+    //             <span className="w-9 h-9 rounded-sm bg-[#e6eeff] text-[#155dfc] flex items-center justify-center flex-shrink-0"><FiUser size={16} /></span>
+    //             <div className="flex-1 min-w-0">
+    //                 {customerDisplayName || customerDisplayPhone ? (
+    //                     <>
+    //                         <div className="text-sm font-medium text-[#0f172b] truncate">{customerDisplayName || 'Customer'}</div>
+    //                         {customerDisplayPhone && <div className="text-xs text-[#5b6b86] truncate">{customerDisplayPhone}</div>}
+    //                     </>
+    //                 ) : (
+    //                     <>
+    //                         <div className="text-sm font-medium text-[#0f172b]">Walk-in customer</div>
+    //                         <div className="text-xs text-[#5b6b86]">Add phone to send bill on WhatsApp</div>
+    //                     </>
+    //                 )}
+    //             </div>
+    //             {!isEditMode && (
+    //                 <button type="button" onClick={openCustomerModal}
+    //                     className="inline-flex items-center gap-1.5 h-8 px-3 rounded-sm border border-[#7a8aa3] bg-white text-[13px] font-medium text-[#0f172b] hover:bg-[#f5f7ff] flex-shrink-0">
+    //                     <FiUserPlus size={14} /> {customerName || customerPhone ? 'Change' : 'Add'}
+    //                 </button>
+    //             )}
+    //         </div>
+    //         {showSalesman && renderSalesmanSelect('w-full')}
+    //     </>
+    // );
+    const renderCustomerSuggestions = () => {
+        if (!showCustomerSuggestions || customerSuggestions.length === 0) return null;
+        // Rendered inside the popup, right under the field: a portal outside the popup could
+        // lose the click. Selected on mouse-down so the field's blur can't swallow it.
+        return (
+            <div
+                ref={customerSuggestionsRef}
+                role="listbox"
+                className="absolute left-0 right-0 top-full mt-1 z-20 bg-white border border-[#dfe6fb] shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)] rounded-sm p-1.5 max-h-48 overflow-y-auto"
+                onClick={(e) => e.stopPropagation()}
+            >
+                {customerSuggestions.map((c, idx) => (
+                    <div
+                        key={idx}
+                        role="option"
+                        aria-selected={false}
+                        className="px-2.5 py-2 hover:bg-[#e6eeff] rounded-sm cursor-pointer flex justify-between items-center gap-2"
+                        onMouseDown={(e) => { e.preventDefault(); selectCustomerSuggestion(c); }}
+                    >
+                        <div className="min-w-0">
+                            <div className="font-semibold text-xs text-[#0f172b] truncate">{c.name}</div>
+                            <div className="text-[10px] text-[#5b6b86]">{c.number}</div>
+                        </div>
+                        {(c.creditBalance ?? 0) > 0 && (
+                            <span className="text-[11px] font-medium text-[#008236] bg-[#e9faef] px-2 py-0.5 rounded-full whitespace-nowrap">
+                                Credit: ₹{c.creditBalance}
+                            </span>
+                        )}
+                    </div>
+                ))}
+            </div>
+        );
+    };
+    const renderCustomerModal = () =>
+        !showCustomerModal ? null : (
+            // z-[2100]: above the bill sheet / more sheet (z-[2000]) and the phone bottom nav
+            <div className="fixed inset-0 z-[2100] flex items-center justify-center bg-[#020618]/45 p-4" onClick={closeCustomerModal}>
+                <div
+                    role="dialog" aria-modal="true" aria-labelledby="sale-customer-title"
+                    className={`w-full max-w-md bg-white text-[#0f172b] rounded-sm border border-[#dfe6fb] ${SHADOW_FLOAT} p-4`}
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <div className="flex items-center gap-2 mb-3">
+                        <h3 id="sale-customer-title" className="m-0 flex-1 text-base font-semibold">Add customer</h3>
+                        <button type="button" aria-label="Close" onClick={closeCustomerModal}
+                            className="inline-grid place-items-center w-8 h-8 -mr-1 rounded-sm text-[#45556c] hover:bg-[#f5f7ff]">
+                            <FiX size={16} aria-hidden />
+                        </button>
+                    </div>
+                    {/* Mobile + name side by side (mobile first, like PaymentDrawer) */}
+                    <div className="relative grid grid-cols-2 gap-2.5">
+                        <div ref={customerPhoneWrapRef} className="min-w-0">
+                            <label htmlFor="sale-customer-phone" className={`block mb-1 ${LABEL_CLS}`}>Mobile</label>
+                            <input
+                                id="sale-customer-phone"
+                                type="tel"
+                                inputMode="tel"
+                                maxLength={10}
+                                value={customerDraft.phone}
+                                onChange={(e) => handleCustomerDraftChange(e.target.value.replace(/\D/g, '').slice(0, 10), 'number')}
+                                onFocus={() => {
+                                    setActiveSuggestField('number');
+                                    if (customerDraft.phone.length >= 3) searchCustomer(customerDraft.phone, 'number');
+                                }}
+                                placeholder="9000000000"
+                                className={POPUP_INPUT_CLS}
+                                autoComplete="off"
+                                autoFocus
+                            />
+                            {activeSuggestField === 'number' && renderCustomerSuggestions()}
+                        </div>
+                        <div ref={customerNameWrapRef} className="min-w-0">
+                            <label htmlFor="sale-customer-name" className={`block mb-1 ${LABEL_CLS}`}>Name</label>
+                            <input
+                                id="sale-customer-name"
+                                type="text"
+                                value={customerDraft.name}
+                                onChange={(e) => handleCustomerDraftChange(e.target.value, 'name')}
+                                onFocus={() => {
+                                    setActiveSuggestField('name');
+                                    if (customerDraft.name.length >= 3) searchCustomer(customerDraft.name, 'name');
+                                }}
+                                placeholder="Customer name…"
+                                className={POPUP_INPUT_CLS}
+                                autoComplete="off"
+                                spellCheck={false}
+                            />
+                            {activeSuggestField === 'name' && renderCustomerSuggestions()}
+                        </div>
+                    </div>
+                    <p className="mt-2 mb-0 text-xs text-[#5b6b86]">Type 3+ letters or digits to pick a saved customer. Also filled in at payment.</p>
+                    <div className="grid grid-cols-2 gap-2.5 mt-4">
+                        <CustomButton variant={Variant.Outline} onClick={closeCustomerModal}>Cancel</CustomButton>
+                        <CustomButton variant={Variant.Filled} onClick={saveCustomer}>Save</CustomButton>
+                    </div>
+                </div>
+            </div>
+        );
+
+    // ── Customer bar (customer-wise pricing on): pick the customer before billing ──
+    const renderCustomerBar = (inPanel = false, inlineFields = false) => {
+        if (!customerPricingEnabled) return null;
+        const showSampleCustomer = isTutorialActive && !isEditMode && !customerName && !customerPhone;
+        const shownName = showSampleCustomer ? TUTORIAL_SAMPLE_CUSTOMER.name : isEditMode ? (invoiceToEdit?.partyName || '') : customerName;
+        const shownPhone = showSampleCustomer ? TUTORIAL_SAMPLE_CUSTOMER.phone : isEditMode ? (invoiceToEdit?.partyNumber || '') : customerPhone;
+        const hasCustomer = !!(shownName || shownPhone);
+        const hasRule = showSampleCustomer || !!customerPricing.rule;
+        const offer = showSampleCustomer ? null : customerPricing.offer;
+        const status = !hasCustomer
+            ? 'Add a customer to see their fixed prices'
+            : !showSampleCustomer && customerPricing.loading
+                ? 'Checking customer prices…'
+                : hasRule
+                    ? 'Has fixed prices'
+                    : 'No fixed prices for this customer';
+        const offerCls = offer?.tone === 'warn'
+            ? 'bg-[#fff3dd] text-[#bb4d00]'
+            : offer?.tone === 'applied' ? 'bg-[#e9faef] text-[#008236]' : 'bg-[#e6eeff] text-[#155dfc]';
+        return (
+            <TutorialStep step={5} {...tour} text="Add the customer here to apply their fixed prices. You can also add them later at payment." onNext={() => nextStep(6)}>
+                <div data-tour="5" className={inPanel ? 'flex flex-col gap-2' : 'flex-shrink-0 flex flex-col gap-2 px-4 md:px-5 py-2 bg-white border-b border-[#dfe6fb]'}>
+                    {!hasCustomer && !isEditMode ? (
+                        inlineFields ? (
+                            // Desktop: fields shown directly, no button
+                            <div
+                                className="relative grid grid-cols-2 gap-2.5"
+                                onBlur={(e) => {
+                                    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) commitInlineCustomer();
+                                }}
+                            >
+                                <div ref={customerPhoneWrapRef} className="min-w-0">
+                                    <label htmlFor="bill-customer-phone" className={`block mb-1 ${LABEL_CLS}`}>Mobile</label>
+                                    <input
+                                        id="bill-customer-phone"
+                                        type="tel"
+                                        inputMode="tel"
+                                        maxLength={10}
+                                        value={customerDraft.phone}
+                                        onChange={(e) => handleCustomerDraftChange(e.target.value.replace(/\D/g, '').slice(0, 10), 'number')}
+                                        onFocus={() => {
+                                            setActiveSuggestField('number');
+                                            if (customerDraft.phone.length >= 3) searchCustomer(customerDraft.phone, 'number');
+                                        }}
+                                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitInlineCustomer(); } }}
+                                        placeholder="9000000000"
+                                        className={POPUP_INPUT_CLS}
+                                        autoComplete="off"
+                                    />
+                                    {activeSuggestField === 'number' && renderCustomerSuggestions()}
+                                </div>
+                                <div ref={customerNameWrapRef} className="min-w-0">
+                                    <label htmlFor="bill-customer-name" className={`block mb-1 ${LABEL_CLS}`}>Name</label>
+                                    <input
+                                        id="bill-customer-name"
+                                        type="text"
+                                        value={customerDraft.name}
+                                        onChange={(e) => handleCustomerDraftChange(e.target.value, 'name')}
+                                        onFocus={() => {
+                                            setActiveSuggestField('name');
+                                            if (customerDraft.name.length >= 3) searchCustomer(customerDraft.name, 'name');
+                                        }}
+                                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitInlineCustomer(); } }}
+                                        placeholder="Customer name…"
+                                        className={POPUP_INPUT_CLS}
+                                        autoComplete="off"
+                                        spellCheck={false}
+                                    />
+                                    {activeSuggestField === 'name' && renderCustomerSuggestions()}
+                                </div>
+                            </div>
+                        ) : (
+                            // Phone / tablet: same "Add customer" button as before
+                            <button type="button" onClick={openCustomerModal}
+                                className="flex items-center gap-2.5 w-full min-h-10 px-2.5 py-1.5 rounded-sm border border-dashed border-[#a9b8de] bg-[#f8faff] text-left hover:bg-[#eef2ff] hover:border-[#155dfc]">
+                                <span className="w-7 h-7 rounded-sm bg-[#e6eeff] text-[#155dfc] flex items-center justify-center flex-shrink-0"><FiUserPlus size={14} aria-hidden /></span>
+                                <span className="text-sm font-medium text-[#155dfc] flex-shrink-0">Add customer</span>
+                                <span className="flex-1 min-w-0 text-xs text-[#5b6b86] truncate text-right">for their fixed prices</span>
+                            </button>
+                        )
+                    ) : (
+                        <div className="flex items-center gap-2.5">
+                            <span className="w-7 h-7 rounded-sm bg-[#e6eeff] text-[#155dfc] flex items-center justify-center flex-shrink-0"><FiUser size={14} aria-hidden /></span>
+                            <div className="flex-1 min-w-0">
+                                <div className="text-sm font-medium text-[#0f172b] truncate">
+                                    {hasCustomer ? (shownName || shownPhone) : 'No customer'}
+                                    {hasCustomer && shownName && shownPhone && <span className="font-normal text-[#5b6b86]"> · {shownPhone}</span>}
+                                </div>
+                                {hasCustomer && hasRule ? (
+                                    <button type="button" onClick={() => { if (!showSampleCustomer) setShowPricingInfo(true); }}
+                                        className="inline-flex items-center gap-1 p-0 border-0 bg-transparent text-xs font-medium text-[#008236] underline underline-offset-2 cursor-pointer">
+                                        <FiTag size={12} aria-hidden /> {status} · View / edit
+                                    </button>
+                                ) : (
+                                    <div className="text-xs truncate text-[#5b6b86]">{status}</div>
+                                )}
+                            </div>
+                            {!isEditMode && !showSampleCustomer && (
+                                <button type="button" onClick={openCustomerModal}
+                                    className="inline-flex items-center h-8 px-2.5 rounded-sm text-[13px] font-medium text-[#155dfc] hover:bg-[#e6eeff] flex-shrink-0">
+                                    Change
+                                </button>
+                            )}
+                            {!isEditMode && !showSampleCustomer && (
+                                <button type="button" aria-label="Remove customer" onClick={clearCustomer}
+                                    className="inline-flex items-center justify-center w-8 h-8 rounded-sm text-[#45556c] hover:bg-[#f5f7ff] flex-shrink-0">
+                                    <FiX size={16} aria-hidden />
+                                </button>
+                            )}
+                        </div>
+                    )}
+                    {offer && (
+                        <div className={`flex items-center gap-2 px-3 py-2 rounded-sm text-[13px] font-medium ${offerCls}`} role="status">
+                            <span className="flex-1 min-w-0">{offer.text}</span>
+                            <button type="button" onClick={offer.onAction}
+                                className={`flex-shrink-0 h-8 px-3 rounded-sm text-xs font-semibold ${offer.tone === 'info' ? 'bg-[#155dfc] text-white hover:bg-[#1447e6]' : 'bg-white border border-current hover:opacity-80'}`}>
+                                {offer.actionLabel}
+                            </button>
+                        </div>
+                    )}
+                </div>
+            </TutorialStep>
+        );
+    };
+
+    // /** The "fixed prices applied · Undo" message, on its own (used under the cart bar). */
+    // const renderCustomerOffer = () => {
+    //     const offer = customerPricingEnabled ? customerPricing.offer : null;
+    //     if (!offer) return null;
+    //     const offerCls = offer.tone === 'warn'
+    //         ? 'bg-[#fff3dd] text-[#bb4d00]'
+    //         : offer.tone === 'applied' ? 'bg-[#e9faef] text-[#008236]' : 'bg-[#e6eeff] text-[#155dfc]';
+    //     return (
+    //         <div className="flex-shrink-0 px-4 md:px-5 pt-2">
+    //             <div className={`flex items-center gap-2 pl-3 pr-1 py-1 rounded-sm text-xs font-medium ${offerCls}`} role="status">
+    //                 <span className="flex-1 min-w-0">{offer.text}</span>
+    //                 <button type="button" onClick={offer.onAction}
+    //                     className={`flex-shrink-0 h-7 px-2.5 rounded-sm text-xs font-semibold ${offer.tone === 'info' ? 'bg-[#155dfc] text-white hover:bg-[#1447e6]' : 'bg-white border border-current hover:opacity-80'}`}>
+    //                     {offer.actionLabel}
+    //                 </button>
+    //             </div>
+    //         </div>
+    //     );
+    // };
+
+    /** Small customer chip for the cart bar: "+ Customer", or the picked name with ✕. */
+    const renderCustomerChip = () => {
+        if (!customerPricingEnabled) return null;
+        const showSampleCustomer = isTutorialActive && !isEditMode && !customerName && !customerPhone;
+        const shownName = showSampleCustomer ? TUTORIAL_SAMPLE_CUSTOMER.name : isEditMode ? (invoiceToEdit?.partyName || '') : customerName;
+        const shownPhone = showSampleCustomer ? TUTORIAL_SAMPLE_CUSTOMER.phone : isEditMode ? (invoiceToEdit?.partyNumber || '') : customerPhone;
+        const label = shownName || shownPhone;
+        if (!label) {
+            if (isEditMode) return null;
+            return (
+                <button type="button" onClick={openCustomerModal} title="Add a customer to apply their fixed prices"
+                    className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-sm border border-[#c9d3ea] bg-white text-[13px] font-medium text-[#155dfc] hover:bg-[#e6eeff] hover:border-[#155dfc]">
+                    <FiUserPlus size={14} aria-hidden /> Customer
+                </button>
+            );
+        }
+        const hasRule = showSampleCustomer || !!customerPricing.rule;
+        const tone = hasRule ? 'border-[#b9e8c9] bg-[#e9faef] text-[#008236]' : 'border-[#c9d3ea] bg-white text-[#0f172b]';
+        const hint = !showSampleCustomer && customerPricing.loading ? 'Checking customer prices…'
+            : hasRule ? 'Has fixed prices' : 'No fixed prices for this customer';
+        return (
+            <span className={`inline-flex items-center h-8 max-w-[170px] sm:max-w-[240px] rounded-sm border ${tone}`} title={`${label}${shownName && shownPhone ? ` · ${shownPhone}` : ''} — ${hint}`}>
+                <button type="button" onClick={isEditMode ? undefined : openCustomerModal} disabled={isEditMode}
+                    aria-label={isEditMode ? `Customer ${label}` : `Change customer ${label}`}
+                    className="inline-flex items-center gap-1.5 min-w-0 h-full pl-2.5 pr-1.5 text-[13px] font-medium disabled:cursor-default">
+                    <FiUser size={14} aria-hidden className="flex-shrink-0" />
+                    <span className="truncate">{label}</span>
+                </button>
+                {!isEditMode && !showSampleCustomer && (
+                    <button type="button" aria-label="Remove customer" onClick={clearCustomer}
+                        className="inline-grid place-items-center w-7 h-full flex-shrink-0 opacity-70 hover:opacity-100">
+                        <FiX size={14} aria-hidden />
+                    </button>
+                )}
+            </span>
+        );
+    };
+
+    const renderSaveBox = (suffix = '') =>
+        totalDiscount > 0 ? (
+            <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-sm bg-[#e9faef] text-[#008236] text-[13px] font-medium">
+                Customer saves ₹{fmtINR(totalDiscount)}{suffix}
+            </div>
+        ) : null;
+    // Tablet (768–1279): same bottom checkout bar as the mobile footer
+    const renderTabletCheckoutBar = (actionLabel: string, onAction: () => void = handleProceedToPayment) => (
+        <TutorialStep step={6} {...tour} text="Check the total here, then tap View bill and Pay to complete the sale." onNext={finishTutorial} isLast position="top">
+            <div data-tour="6" className="hidden md:block xl:hidden flex-shrink-0 z-20 bg-white border-t border-[#dfe6fb]">
+                {isTabletBreakdownOpen && (
+                    <div className="px-4 pt-3 space-y-1.5 text-sm">
+                        <div className="flex justify-between gap-4"><span className="text-[#45556c]">MRP total</span><span className="font-medium tabular-nums text-[#0f172b]">₹{fmtINR(subtotal)}</span></div>
+                        {totalDiscount > 0 && (
+                            <div className="flex justify-between gap-4 text-[#008236]"><span>Discount</span><span className="font-medium tabular-nums">− ₹{fmtINR(totalDiscount)}</span></div>
+                        )}
+                        <div className="flex justify-between gap-4 border-t border-[#dfe6fb] pt-1.5"><span className="font-medium text-[#0f172b]">Net sale price</span><span className="font-semibold tabular-nums text-[#0f172b]">₹{fmtINR(netAmount)}</span></div>
+                        {showTaxRow && (
+                            <div className="flex justify-between gap-4"><span className="text-[#45556c]">Tax ({activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})</span><span className="font-medium tabular-nums text-[#155dfc]">+ ₹{fmtINR(taxAmount)}</span></div>
+                        )}
+                    </div>
+                )}
+                <div className="flex items-center gap-3 px-4 pt-3 pb-4">
+                    <button type="button" onClick={() => setIsTabletBreakdownOpen(v => !v)} aria-expanded={isTabletBreakdownOpen}
+                        className="flex-1 min-w-0 text-left bg-transparent border-0 p-0 cursor-pointer">
+                        <span className="flex items-center gap-1 text-xs text-[#45556c]">
+                            <span className="truncate">
+                                {totalQuantity} {totalQuantity === 1 ? 'item' : 'items'}
+                                {totalDiscount > 0 && ` · saves ₹${fmtINR(totalDiscount)}`}
+                            </span>
+                            <FiChevronUp size={14} className={`flex-shrink-0 transition-transform ${isTabletBreakdownOpen ? 'rotate-180' : ''}`} />
+                        </span>
+                        <b className="block text-xl leading-[26px] font-semibold tabular-nums text-[#0f172b] truncate">₹{fmtINR(finalAmount)}</b>
+                    </button>
+                    {showQuickPrint && (
+                        <button type="button" onClick={startQuickPrint} disabled={items.length === 0}
+                            className="inline-flex items-center justify-center gap-1.5 h-12 px-4 rounded-sm border border-[#155dfc] bg-white text-[#155dfc] text-[15px] font-medium whitespace-nowrap hover:bg-[#e6eeff] transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed">
+                            <IconPrint /> Print
+                        </button>
+                    )}
+                    <button type="button" onClick={onAction} disabled={items.length === 0}
+                        className="inline-flex items-center justify-center gap-2 h-12 px-4 rounded-sm border border-transparent text-[15px] font-medium whitespace-nowrap bg-[#155dfc] text-white hover:bg-[#1447e6] transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed">
+                        {actionLabel}
+                        <FiChevronRight size={16} />
+                    </button>
+                </div>
+            </div>
+        </TutorialStep>
+    );
+    const renderMoreSheet = () =>
+        !isMoreOpen ? null : (
+            <div className="md:hidden fixed inset-0 z-[2000] flex items-end bg-[#020618]/45" onClick={() => setIsMoreOpen(false)}>
+                <div className={`w-full bg-white rounded-t-sm p-4 pb-6 flex flex-col gap-4 ${SHADOW_FLOAT}`} onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-between">
+                        <h3 className="m-0 text-base font-semibold text-[#0f172b]">More</h3>
+                        <button type="button" onClick={() => setIsMoreOpen(false)} aria-label="Close" className={ICON_BTN_CLS}><FiX size={18} /></button>
+                    </div>
+
+                    {/* Invoice number + Date — 2 columns */}
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="min-w-0">
+                            <span className={LABEL_CLS}>Bill no.</span>
+                            <input
+                                type="text"
+                                value={invoiceNumber}
+                                aria-label="Invoice number"
+                                onChange={(e) => { isInvoiceNumberManuallyEdited.current = true; setInvoiceNumber(e.target.value); }}
+                                className={`mt-2 ${POPUP_INPUT_CLS} font-semibold`}
+                            />
+                        </div>
+                        <div className="min-w-0">
+                            <span className={LABEL_CLS}>Date</span>
+                            <input
+                                type="date"
+                                value={invoiceDate}
+                                aria-label="Invoice date"
+                                onChange={(e) => setInvoiceDate(e.target.value)}
+                                className={`mt-2 ${POPUP_INPUT_CLS} font-semibold`}
+                            />
+                        </div>
+                    </div>
+
+                    {items.length > 0 && (
+                        <button
+                            type="button"
+                            onClick={() => { setIsMoreOpen(false); handleClearCart(); }}
+                            className="inline-flex items-center justify-center gap-2 h-11 rounded-sm text-sm font-medium text-[#d5000c] bg-[#ffeef0]"
+                        >
+                            <FiTrash2 size={16} /> Clear
+                        </button>
+                    )}
+                </div>
+            </div>
+        );
+    // Phone: filter button sheet — only Photos/Compact + Sort
+    const renderFilterSheet = () =>
+        !isFilterOpen ? null : (
+            <div className="md:hidden fixed inset-0 z-[2000] flex items-end bg-[#020618]/45" onClick={() => setIsFilterOpen(false)}>
+                <div className={`w-full bg-white rounded-t-sm p-4 pb-6 flex flex-col gap-4 ${SHADOW_FLOAT}`} onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-between">
+                        <h3 className="m-0 text-base font-semibold text-[#0f172b]">View options</h3>
+                        <button type="button" onClick={() => setIsFilterOpen(false)} aria-label="Close" className={ICON_BTN_CLS}><FiX size={18} /></button>
+                    </div>
+
+                    <div>
+                        <span className={LABEL_CLS}>Cards</span>
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                            {([[true, 'Photos'], [false, 'Compact']] as const).map(([val, label]) => (
+                                <button
+                                    key={label}
+                                    type="button"
+                                    onClick={() => setShowPhotos(val)}
+                                    className={`h-10 rounded-sm text-[13px] font-medium border transition-colors ${isCardImageView === val ? 'bg-[#e6eeff] border-[#155dfc] text-[#155dfc]' : 'bg-white border-[#7a8aa3] text-[#45556c]'}`}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div>
+                        <span className={LABEL_CLS}>Sort</span>
+                        <div className="mt-2 grid grid-cols-4 gap-1.5">
+                            {SORT_OPTIONS.map(opt => (
+                                <button
+                                    key={opt.value}
+                                    type="button"
+                                    onClick={() => setSortOrder(opt.value)}
+                                    className={`h-9 rounded-sm text-[13px] font-medium border transition-colors ${sortOrder === opt.value ? 'bg-[#e6eeff] border-[#155dfc] text-[#155dfc]' : 'bg-white border-[#7a8aa3] text-[#45556c]'}`}
+                                >
+                                    {opt.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+
+    const renderCartBar = () => (
+        <div className="flex-shrink-0 grid grid-cols-[1fr_auto_1fr] md:flex md:flex-wrap items-center gap-x-2 gap-y-2 px-4 md:px-5 py-2.5 bg-white border-b border-[#dfe6fb]">
+            {/* Left */}
+            <div className="md:flex-1 md:min-w-fit flex items-center gap-2 min-w-0">
+                <span className={LABEL_CLS}>Cart</span>
+                {totalQuantity > 0 && (
+                    <span className="inline-flex items-center h-[22px] px-2 rounded-full bg-[#e6eeff] text-[#155dfc] text-[11px] font-semibold whitespace-nowrap">
+                        <span className="md:hidden">{totalQuantity} {totalQuantity === 1 ? 'item' : 'items'}</span>
+                        <span className="hidden md:inline">
+                            {cartItems.length} {cartItems.length === 1 ? 'line' : 'lines'} · {totalQuantity} {totalQuantity === 1 ? 'item' : 'items'}
+                        </span>
+                    </span>
+                )}
+            </div>
+
+            {/* Center — Salesman name (phone) / select (tablet+) */}
+            <div className="flex justify-center min-w-0">
+                {salesSettings?.enableSalesmanSelection && (selectedWorker || isTutorialActive) && (
+                    <span className={`md:hidden max-w-[110px] ${SALESMAN_NAME_CLS}`}>{selectedWorker?.name ?? TUTORIAL_SAMPLE_SALESMAN}</span>
+                )}
+                <TutorialStep step={3} {...tour} text="Choose which salesman is making this sale." onNext={() => nextStep(4)}>
+                    <div data-tour="3" className="hidden md:block">
+                        {renderSalesmanSelect('!h-8 !text-xs min-w-[160px]')}
+                    </div>
+                </TutorialStep>
+            </div>
+
+            {/* Right — customer chip pinned to the right end */}
+            <div className="md:flex-1 md:min-w-fit flex items-center justify-end gap-2 min-w-0">
+                <TutorialStep step={5} {...tour} text="Tap here to add the customer and apply their fixed prices." onNext={() => nextStep(6)} mobileArrowAlign="left">
+                    <span data-tour="5" className="xl:hidden inline-flex">{renderCustomerChip()}</span>
+                </TutorialStep>
+                {items.length > 0 && (
+                    <button
+                        type="button"
+                        onClick={handleClearCart}
+                        className="hidden md:inline-flex items-center gap-1.5 h-8 px-3 rounded-sm text-[13px] font-medium text-[#d5000c] bg-[#ffeef0] hover:bg-[#ffdde1] transition-colors"
+                    >
+                        <FiTrash2 size={14} />
+                        Clear
+                    </button>
+                )}
+            </div>
+        </div>
+    );
+
+    // ───────────────────────── Add-ons popup ─────────────────────────
+    const renderAddOnPopup = () => {
+        if (!addOnItem) return null;
+        const picked = getPickedAddOns(addOnItem);
+        const extra = picked.reduce((sum, o) => sum + (Number(o.price) || 0), 0);
+        const basePrice = Number(addOnItem.salesPrice || 0) || Number(addOnItem.mrp || 0);
+        return (
+            <div className="fixed inset-0 z-[2000] flex items-end sm:items-center justify-center bg-[#020618]/45 sm:p-4" onClick={closeAddOnPopup}>
+                <div
+                    className={`w-full sm:max-w-md max-h-[85dvh] flex flex-col bg-white border border-[#dfe6fb] rounded-sm ${SHADOW_FLOAT}`}
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <div className="flex items-start justify-between gap-3 px-5 pt-5 pb-3 border-b border-[#dfe6fb]">
+                        <div className="min-w-0">
+                            <h3 className="m-0 text-lg font-semibold text-[#0f172b] truncate">{addOnItem.name}</h3>
+                            <p className="m-0 mt-0.5 text-sm text-[#5b6b86]">Choose add-ons for this order</p>
+                        </div>
+                        <button type="button" onClick={closeAddOnPopup} aria-label="Close" className={ICON_BTN_CLS}><FiX size={18} /></button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+                        {groupsOf(addOnItem).map((group: AddOnGroup) => (
+                            <div key={group.id}>
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className={LABEL_CLS}>{group.name}</span>
+                                    <span className="text-[11px] text-[#5b6b86]">{group.multiple ? (Number(group.maxSelect) > 0 ? `Choose up to ${group.maxSelect}${group.extraPrice != null ? ' · more picks are paid' : ''}` : 'Choose any') : 'Choose one'}</span>
+                                </div>
+                                <div className="flex flex-col gap-2">
+                                    {/* plain options first, linked inventory items after, under their own heading */}
+                                    {[...group.options].sort((a, b) => Number(!!a.itemId) - Number(!!b.itemId)).map((opt, idx, arr) => {
+                                        const on = (addOnSelection[group.id] ?? []).includes(opt.id);
+                                        const firstLinked = !!opt.itemId && (idx === 0 || !arr[idx - 1].itemId);
+                                        return (
+                                            <React.Fragment key={opt.id}>
+                                                {firstLinked && <span className={`mt-1 ${LABEL_CLS}`}>Items</span>}
+                                                <button
+                                                    type="button"
+                                                    aria-pressed={on}
+                                                    onClick={() => toggleAddOn(group, opt.id)}
+                                                    disabled={!on && (!!opt.soldOut || (group.extraPrice == null && group.multiple && Number(group.maxSelect) > 0 && (addOnSelection[group.id] ?? []).length >= Number(group.maxSelect)))}
+                                                    className={`flex items-center justify-between gap-3 h-11 px-3 rounded-sm border text-sm font-medium transition-colors disabled:opacity-45 disabled:cursor-not-allowed ${on ? 'bg-[#e6eeff] border-[#155dfc] text-[#155dfc]' : 'bg-white border-[#7a8aa3] text-[#0f172b] hover:bg-[#f5f7ff]'}`}
+                                                >
+                                                    <span className="inline-flex items-center gap-2 min-w-0">
+                                                        <span className={`w-5 h-5 flex-shrink-0 grid place-items-center border rounded-sm ${on ? 'bg-[#155dfc] border-[#155dfc] text-white' : 'bg-white border-[#7a8aa3]'}`}>
+                                                            {on && <FiCheck size={12} strokeWidth={3} />}
+                                                        </span>
+                                                        <span className="truncate">{opt.name}</span>
+                                                    </span>
+                                                    <span className="tabular-nums flex-shrink-0">{opt.soldOut ? 'Out of stock' : optionPriceFor(group, opt.id) > 0 ? `+ ₹${fmtINR(optionPriceFor(group, opt.id))}` : 'Free'}</span>
+                                                </button>
+                                            </React.Fragment>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="px-5 pt-3 pb-5 border-t border-[#dfe6fb] flex flex-col gap-2">
+                        {basePrice > 0 && (
+                            <div className="flex justify-between text-sm">
+                                <span className="text-[#45556c]">{picked.length} add-on{picked.length === 1 ? '' : 's'} · + ₹{fmtINR(extra)}</span>
+                                <b className="tabular-nums text-[#0f172b]">₹{fmtINR(basePrice + extra)}</b>
+                            </div>
+                        )}
+                        <button
+                            type="button"
+                            onClick={() => confirmAddOns(true)}
+                            disabled={picked.length === 0}
+                            className="w-full h-12 rounded-sm bg-[#155dfc] text-white font-medium hover:bg-[#1447e6] transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed"
+                        >
+                            {editingLineId ? 'Update add-ons' : 'Add to Cart'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => confirmAddOns(false)}
+                            className="w-full h-12 rounded-sm bg-white border border-[#7a8aa3] text-[#0f172b] font-medium hover:bg-[#f5f7ff] transition-colors"
+                        >
+                            {editingLineId ? 'Remove all add-ons' : 'No add-ons'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    // ───────────────────────── Shared popups (card + list views) ─────────────────────────
+    const renderClearCartConfirm = () =>
+        showClearCartConfirm ? (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#020618]/45 p-4">
+                <div className={`bg-white border border-[#dfe6fb] rounded-sm p-5 w-full max-w-sm ${SHADOW_FLOAT}`}>
+                    <h3 className="m-0 text-lg font-semibold text-[#0f172b]">Clear cart</h3>
+                    <p className="mt-2 mb-5 text-sm text-[#45556c]">Are you sure you want to remove all items?</p>
+                    <div className="flex justify-end gap-2">
+                        <CustomButton variant={Variant.Outline} onClick={() => setShowClearCartConfirm(false)}>Cancel</CustomButton>
+                        <CustomButton variant={Variant.Filled} onClick={handleConfirmClearCart}>Clear</CustomButton>
+                    </div>
+                </div>
+            </div>
+        ) : null;
+
+    const renderDuplicateItemPrompt = () =>
+        duplicateItemPrompt ? (
+            <div className="fixed inset-0 bg-[#020618]/45 flex items-center justify-center z-[2000] p-4">
+                <div className={`bg-white border border-[#dfe6fb] rounded-sm p-6 w-full max-w-sm text-center ${SHADOW_FLOAT}`}>
+                    {/* Icon */}
+                    <div className="mx-auto mb-4 w-12 h-12 rounded-sm flex items-center justify-center bg-[#e6eeff]">
+                        <svg className="w-6 h-6 text-[#155dfc]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                    </div>
+
+                    <h3 className="m-0 mb-1 text-lg font-semibold text-[#0f172b]">Item already in cart</h3>
+                    <p className="text-sm text-[#45556c] mb-6">
+                        "<span className="font-medium">{duplicateItemPrompt.item.name}{duplicateItemPrompt.addOns?.length ? ` + ${duplicateItemPrompt.addOns.map(a => a.name).join(', ')}` : ''}</span>" is already in your cart
+                        {duplicateItemPrompt.existingCount > 1 ? ` (${duplicateItemPrompt.existingCount} times)` : ''}.
+                        What would you like to do?
+                    </p>
+
+                    <div className="flex flex-col gap-2">
+                        <button
+                            onClick={handleIncreaseExistingQuantity}
+                            className="w-full h-11 rounded-sm bg-[#155dfc] text-white font-medium hover:bg-[#1447e6] transition-colors"
+                        >
+                            Increase quantity
+                        </button>
+                        <button
+                            onClick={handleAddAsNewLineWrapper}
+                            className="w-full h-11 rounded-sm bg-white border border-[#7a8aa3] text-[#0f172b] font-medium hover:bg-[#f5f7ff] transition-colors"
+                        >
+                            Add as new item
+                        </button>
+                        <button
+                            onClick={() => setDuplicateItemPrompt(null)}
+                            className="w-full h-9 text-xs font-medium text-[#5b6b86] hover:text-[#0f172b] mt-1"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        ) : null;
+
+    // Amount to collect on the just-saved bill (the bill total), shown big + baked into the UPI QR
+    const savedBillAmount = Math.round((Number(savedBillData?.invoiceData?.amount) || 0) * 100) / 100;
+    const savedBillAmountLabel = savedBillAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    const renderSavedBillModals = () => (
+        <>
+            {savedBillData && (
+                <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-[#020618]/60 backdrop-blur-sm p-4">
+                    <div className={`bg-white border border-[#dfe6fb] rounded-sm ${SHADOW_FLOAT} w-full max-w-sm max-h-[92dvh] overflow-y-auto flex flex-col animate-in fade-in zoom-in duration-300`}>
+                        {/* Header: status + invoice number */}
+                        <div className="flex items-center gap-3 px-5 pt-5 pb-4 shrink-0">
+                            <div className="w-10 h-10 shrink-0 rounded-full bg-[#e9faef] text-[#008236] flex items-center justify-center">
+                                <FiCheck size={20} strokeWidth={3} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <h3 className="m-0 text-lg font-semibold leading-tight text-[#0f172b]">Bill saved</h3>
+                                <p className="m-0 text-sm text-[#5b6b86] truncate">Invoice #{savedBillData.number}</p>
+                            </div>
+                            <button onClick={handleCloseQrModal} aria-label="Close" className="shrink-0 self-start p-1.5 -mr-1.5 rounded-sm text-[#5b6b86] hover:text-[#0f172b] hover:bg-[#f5f7ff] transition-colors">
+                                <FiX size={20} />
+                            </button>
+                        </div>
+
+                        {/* Collect payment */}
+                        <div className="mx-5 shrink-0 rounded-sm border border-[#dfe6fb] bg-[#f5f7ff] p-4 flex flex-col items-center">
+                            <p className="m-0 text-[11px] font-semibold uppercase tracking-wider text-[#5b6b86]">Amount to collect</p>
+                            <p className="m-0 mt-0.5 text-3xl font-bold leading-tight text-[#0f172b] tabular-nums">{savedBillAmountLabel}</p>
+
+                            {upiPayee.upiId && savedBillAmount > 0 ? (
+                                <>
+                                    <div className="mt-3 bg-white p-2.5 rounded-sm border border-[#dfe6fb] shrink-0">
+                                        <QRCode
+                                            value={buildUpiUri(upiPayee.upiId, upiPayee.payeeName, savedBillAmount, `Bill ${savedBillData.number}`)}
+                                            size={168}
+                                            viewBox={`0 0 256 256`}
+                                        />
+                                    </div>
+                                    <p className="m-0 mt-3 text-sm font-medium text-[#0f172b]">Scan with any UPI app to pay</p>
+                                    <p className="m-0 mt-0.5 text-xs text-[#5b6b86] text-center break-all">
+                                        {upiPayee.payeeName ? `${upiPayee.payeeName} · ` : ''}{upiPayee.upiId}
+                                    </p>
+                                </>
+                            ) : !upiPayee.upiId ? (
+                                <p className="m-0 mt-3 text-xs text-[#5b6b86] text-center">
+                                    Add your UPI ID in Bill Settings to show a payment QR here.
+                                </p>
+                            ) : null}
+                        </div>
+
+                        {/* Actions */}
+                        <div className="px-5 pt-4 pb-5 flex flex-col gap-2.5 shrink-0">
+                            {savedBillData.invoiceData?.partyNumber ? (
+                                <>
+                                    {whatsappProvider === 'botmaster' && (
+                                        <button
+                                            onClick={() => handleSendWhatsapp(savedBillData.invoiceData)}
+                                            disabled={sendingPdf}
+                                            className="w-full h-11 shrink-0 rounded-sm bg-[#008236] text-white font-medium hover:bg-[#006b2c] transition-colors flex items-center justify-center gap-2 disabled:opacity-[.45]"
+                                        >
+                                            {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
+                                        </button>
+                                    )}
+                                    {(whatsappProvider === 'snapto' || whatsappProvider === 'sellar') && (
+                                        <button
+                                            onClick={() => handleSendWhatsappSnapto(savedBillData.invoiceData)}
+                                            disabled={sendingPdf}
+                                            className="w-full h-11 shrink-0 rounded-sm bg-[#008236] text-white font-medium hover:bg-[#006b2c] transition-colors flex items-center justify-center gap-2 disabled:opacity-[.45]"
+                                        >
+                                            {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
+                                        </button>
+                                    )}
+                                </>
+                            ) : (
+                                <p className="m-0 text-xs text-[#bb4d00] text-center">
+                                    No customer phone number — WhatsApp unavailable.
+                                </p>
+                            )}
+
+                            <div className="grid grid-cols-2 gap-2.5">
+                                <button
+                                    onClick={() => setShowPrintSubMenu(true)}
+                                    disabled={printingPdf}
+                                    className="h-11 rounded-sm bg-white border border-[#7a8aa3] text-[#0f172b] font-medium hover:bg-[#f5f7ff] transition-colors flex items-center justify-center gap-2 disabled:opacity-[.45]"
+                                >
+                                    {printingPdf ? <Spinner /> : <><IconPrint /> Print</>}
+                                </button>
+                                <button
+                                    onClick={handleCloseQrModal}
+                                    className="h-11 rounded-sm bg-[#155dfc] text-white font-medium hover:bg-[#1447e6] transition-colors"
+                                >
+                                    Done
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showPrintSubMenu && savedBillData && (
+                <div className="fixed inset-0 z-[2010] flex items-center justify-center bg-[#020618]/45" onClick={() => setShowPrintSubMenu(false)}>
+                    <div className={`bg-white border border-[#dfe6fb] rounded-sm p-6 w-full max-w-xs mx-4 ${SHADOW_FLOAT}`} onClick={e => e.stopPropagation()}>
+                        <h3 className={`${LABEL_CLS} mb-4 text-center`}>Print options</h3>
+                        <div className="flex flex-col gap-3">
+                            <button onClick={() => handlePrintAction(savedBillData.invoiceData, false)} className="w-full h-11 rounded-sm bg-white border border-[#7a8aa3] text-[#0f172b] text-sm font-medium hover:bg-[#f5f7ff] transition-colors">
+                                Print (Bill Only)
+                            </button>
+                            <button onClick={() => handlePrintAction(savedBillData.invoiceData, true)} className="w-full h-11 rounded-sm bg-[#e6eeff] border border-[#155dfc] text-[#155dfc] text-sm font-medium hover:bg-[#dbe6ff] transition-colors">
+                                {enableTriplicate ? 'Print (Bill + 2 Duplicates)' : 'Print (Bill + Duplicate)'}
+                            </button>
+                            <button onClick={() => setShowPrintSubMenu(false)} className="w-full h-9 text-xs font-medium text-[#5b6b86] hover:text-[#0f172b] mt-1">
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Fast billing: how was it paid? → saves fully paid and prints */}
+            {isQuickPayOpen && (
+                <div className="fixed inset-0 z-[2010] flex items-end md:items-center justify-center bg-[#020618]/45" onClick={() => setIsQuickPayOpen(false)}>
+                    <div role="dialog" aria-label="Paid by"
+                        className={`bg-white border border-[#dfe6fb] rounded-t-sm md:rounded-sm p-5 pb-[max(20px,env(safe-area-inset-bottom))] w-full md:max-w-sm md:mx-4 ${SHADOW_FLOAT}`}
+                        onClick={e => e.stopPropagation()}>
+                        <div className="text-center">
+                            <span className="block text-xs text-[#45556c]">Print bill · paid in full</span>
+                            <b className="block text-[26px] leading-8 font-semibold tabular-nums text-[#0f172b]">₹{fmtINR(Math.round(Math.max(0, amountToPayNow)))}</b>
+                        </div>
+                        <p className="mt-3 mb-2 text-xs font-medium text-[#45556c]">Paid by</p>
+                        <div className="grid grid-cols-3 gap-2">
+                            {([['cash', 'Cash'], ['upi', 'UPI'], ['card', 'Card']] as const).map(([id, label]) => (
+                                <button key={id} type="button" onClick={() => handleQuickPay(id)} disabled={isSavingBill}
+                                    className="h-14 rounded-sm bg-[#155dfc] text-white text-base font-semibold hover:bg-[#1447e6] transition-colors disabled:opacity-[.45]">
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
+                        <button type="button" onClick={() => { setIsQuickPayOpen(false); handleProceedToPayment(); }}
+                            className="mt-3 w-full h-10 rounded-sm border border-[#7a8aa3] bg-white text-sm font-medium text-[#0f172b] hover:bg-[#f5f7ff]">
+                            Customer, due or discount… open full payment
+                        </button>
+                        <button type="button" onClick={() => setIsQuickPayOpen(false)} className="mt-1 w-full h-9 text-xs font-medium text-[#5b6b86] hover:text-[#0f172b]">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            )}
+        </>
+    );
+
+    const oldTotalExpense = invoiceToEdit?.expenses
+        ? invoiceToEdit.expenses.reduce((sum: number, e: any) => sum + (Number(e.amount) || 0), 0)
+        : Number(invoiceToEdit?.extraExpenseAmount || 0);
+
+    const calculatedOriginalTotal = invoiceToEdit ?
+        (Number(invoiceToEdit.totalAmount ?? invoiceToEdit.amount ?? 0) +
+            Number(invoiceToEdit.manualDiscount || 0) -
+            oldTotalExpense)
+        : undefined;
+
+    // Bill panel: desktop right column and phone/tablet bill sheet share this
+    const renderBillPanel = (onCollect: () => void, onClose?: () => void) => (
+        <div className="flex-1 min-h-0 flex flex-col">
+            <div className={`flex-1 min-h-0 px-5 pb-5 flex flex-col gap-4 overflow-y-auto ${onClose ? 'pt-2' : 'pt-5'}`}>
+                {/* Customer above the bill. Desktop panel (no onClose) shows input fields; phone/tablet sheet keeps the button. */}
+                {renderCustomerBar(true, !onClose)}
+                <div className="flex items-center justify-between gap-2 -mb-2">
+                    <h2 className="m-0 text-base font-semibold text-[#0f172b]">Bill · {totalQuantity} {totalQuantity === 1 ? 'item' : 'items'}</h2>
+                    <div className="flex items-center gap-1">
+                        {items.length > 0 && (
+                            <button onClick={handleClearCart} className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-sm text-[13px] font-medium text-[#d5000c] bg-[#ffeef0] hover:bg-[#ffdde1] transition-colors"><FiTrash2 size={14} /> Clear</button>
+                        )}
+                        {onClose && (
+                            <button type="button" onClick={onClose} aria-label="Close" className="inline-flex items-center justify-center w-7 h-7 rounded-sm text-[#45556c] hover:bg-[#f5f7ff] transition-colors flex-shrink-0"><FiX size={16} /></button>
+                        )}
+                    </div>
+                </div>
+
+                <CartLinesCompact
+                    items={cartItems}
+                    getUnitPrice={(i: any) => Number(i.customPrice ?? i.salesPrice ?? i.mrp ?? 0) + (Number(i.addOnAmount) || 0)}
+                    onQuantityChange={handleBillQuantityChange}
+                    onDelete={handleDeleteItem}
+                    onEditAddOns={openAddOnEdit}
+                    getPriceFlag={customerPricingEnabled ? (i) => customerPricing.decorate(i).priceFlag : undefined}
+                    onEditNewItem={(i) => setQuickSheet({ mode: 'edit', lineId: i.id })}
+                />
+
+                <div className="space-y-1.5 text-sm">
+                    <div className="flex justify-between"><span className="text-[#45556c]">MRP total</span><span className="tabular-nums">₹{fmtINR(subtotal)}</span></div>
+                    {totalDiscount > 0 && <div className="flex justify-between text-[#008236]"><span>Discount</span><span className="tabular-nums">− ₹{fmtINR(totalDiscount)}</span></div>}
+                    {showTaxRow && <div className="flex justify-between"><span className="text-[#45556c]">Tax ({activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})</span><span className="tabular-nums">₹{fmtINR(taxAmount)}</span></div>}
+                </div>
+                {totalDiscount > 0 && (
+                    <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-sm bg-[#e9faef] text-[#008236] text-[13px] font-medium">Customer saves ₹{fmtINR(totalDiscount)}</div>
+                )}
+            </div>
+
+            {/* Pinned footer: grand total + pay button on one row */}
+            <TutorialStep step={6} {...tour} text="Check the grand total here, then press Pay to complete the sale." onNext={finishTutorial} isLast position="top">
+                <div data-tour="6" className="flex-shrink-0 flex items-center gap-3 px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] bg-white border-t border-[#dfe6fb]">
+                    <div className="min-w-0">
+                        <span className="block text-xs text-[#45556c]">Grand total</span>
+                        <b className="block text-[24px] leading-[30px] font-semibold tracking-tight tabular-nums text-[#0f172b] truncate">₹{fmtINR(finalAmount)}</b>
+                    </div>
+                    {showQuickPrint && (
+                        <button type="button" onClick={() => { onClose?.(); startQuickPrint(); }} disabled={items.length === 0}
+                            title="Pick Cash / UPI / Card, then the bill is saved and printed"
+                            className="ml-auto h-12 shrink-0 inline-flex items-center justify-center gap-1.5 px-3 rounded-sm border border-[#155dfc] bg-white text-[#155dfc] text-[15px] font-medium whitespace-nowrap hover:bg-[#e6eeff] transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed">
+                            <IconPrint /> Print
+                        </button>
+                    )}
+                    <button type="button" onClick={onCollect} disabled={items.length === 0}
+                        className={`${showQuickPrint ? '' : 'ml-auto '}h-12 min-w-0 flex-1 max-w-[220px] px-3 rounded-sm bg-[#155dfc] text-white text-[15px] font-medium whitespace-nowrap hover:bg-[#1447e6] transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed`}>
+                        {isEditMode ? 'Update invoice' : 'Pay'}
+                    </button>
+                </div>
+            </TutorialStep>
+        </div>
+    );
+
+    // Phone/tablet bill sheet: shared by card view and list view
+    const renderBillSheet = () =>
+        isBillOpen && items.length > 0 ? (
+            <div className="xl:hidden fixed inset-0 z-[2000] flex items-end justify-center bg-[#020618]/45" onClick={() => setIsBillOpen(false)}>
+                <div className={`w-full md:max-w-lg h-[88dvh] flex flex-col bg-white rounded-t-sm pt-2 ${SHADOW_FLOAT}`} onClick={(e) => e.stopPropagation()}>
+                    {renderBillPanel(() => { setIsBillOpen(false); handleProceedToPayment(); }, () => setIsBillOpen(false))}
+                </div>
+            </div>
+        ) : null;
+
+    // ═════════════════════════ CARD VIEW ═════════════════════════
+    if (isCardView) {
+        return (
+            <div className="flex flex-col h-full bg-[#eef2ff] w-full overflow-hidden pb-0">
+                {modal && (
+                    <Modal
+                        message={modal.message}
+                        onClose={() => {
+                            setModal(null);
+                            setShowClearCartConfirm(false);
+                        }}
+                        onConfirm={showClearCartConfirm ? () => {
+                            handleConfirmClearCart();
+                            setModal(null);
+                        } : undefined}
+                        showConfirmButton={showClearCartConfirm}
+                        type={modal.type}
+                    />
+                )}
+                {renderClearCartConfirm()}
+                <BarcodeScanner continuous isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
+                <BarcodeLinkModal
+                    isOpen={isBarcodeLinkModalOpen}
+                    barcode={barcodeToLink}
+                    items={availableItems}
+                    isLinking={isLinkingBarcode}
+                    onClose={closeBarcodeLinkModal}
+                    onLink={handleLinkScannedBarcode}
+                />
+                <AddUserModal isOpen={isAddUserModalOpen} onClose={() => setIsAddUserModalOpen(false)} />
+                {renderQuickItemSheet()}
+                <div className="hidden md:block">{renderHeader()}</div>
+                {renderMobileHeader()}
+                {renderMoreSheet()}
+                {renderFilterSheet()}
+                <div className="flex-1 flex flex-col xl:flex-row overflow-hidden">
+
+                    {/* LEFT PANEL */}
+                    <div className="flex flex-col w-full xl:flex-1 h-full relative min-w-0 overflow-hidden">
+
+                        <div className="flex-shrink-0 bg-white border-b border-[#dfe6fb]">
+                            <TutorialStep step={2} {...tour} text="Search for an item by name or barcode, or tap Scan to use the camera." onNext={() => nextStep(3)}>
+                                <div data-tour="2" className="hidden md:block px-5 pt-4">{renderGridSearch()}</div>
+                            </TutorialStep>
+                            <div className="hidden md:flex items-center gap-2 px-5 py-3">
+                                <div className="flex gap-1.5 overflow-x-auto flex-1 scrollbar-hide">
+                                    {categories.map(cat => (
+                                        <button key={cat} type="button" onClick={() => setSelectedCategory(cat)} className={chipCls(selectedCategory === cat)}>
+                                            {cat === 'All' ? 'All' : itemGroupMap[cat] || cat}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="hidden md:flex flex-wrap items-center gap-x-2 gap-y-2 px-5 pb-3">
+                                {/* Left */}
+                                <div className="flex-1 min-w-fit flex items-center gap-2">
+                                    <span className={LABEL_CLS}>Items · {sortedGridItems.length}</span>
+                                    {items.length > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={handleClearCart}
+                                            className="hidden md:inline-flex xl:hidden items-center gap-1.5 h-8 px-3 rounded-sm text-xs font-medium text-[#d5000c] bg-[#ffeef0] hover:bg-[#ffdde1] transition-colors flex-shrink-0 whitespace-nowrap"
+                                        >
+                                            <FiTrash2 size={14} /> Clear
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* Center — Salesman (mobile par header ka square button hai) */}
+                                <TutorialStep step={3} {...tour} text="Choose which salesman is making this sale." onNext={() => nextStep(4)}>
+                                    <div data-tour="3" className="hidden md:block">
+                                        {renderSalesmanSelect('!h-8 !text-xs min-w-[160px]')}
+                                    </div>
+                                </TutorialStep>
+
+                                {/* Right */}
+                                <div className="flex-1 min-w-fit flex items-center justify-end gap-2">
+                                    <select
+                                        value={sortOrder}
+                                        onChange={(e) => setSortOrder(e.target.value as typeof sortOrder)}
+                                        aria-label="Sort"
+                                        className="h-8 px-2 bg-white border border-[#7a8aa3] rounded-sm text-xs font-medium text-[#0f172b] outline-none focus:border-[#155dfc] focus:ring-4 focus:ring-[#e6eeff]"
+                                    >
+                                        {SORT_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Rail (left, phone) + card grid (right) */}
+                        <div className="flex-1 flex min-h-0 overflow-hidden">
+                            {renderCategoryRail()}
+
+                            <TutorialStep step={4} {...tour} text="Tap an item to add it to the bill. Use + and − on the card to change the quantity." onNext={() => nextStep(5)} mobileArrowAlign="left">
+                                <div ref={gridScrollRef} data-tour="4" className="flex-1 min-w-0 overflow-y-auto grid grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] auto-rows-max content-start gap-2 bg-[#eef2ff] px-2 pt-2.5 pb-20 md:px-3">
+                                    {/* sample: first two plain items look selected during the tutorial */}
+                                    {(() => { return null; })()}
+                                    {renderGridQuickAddTile()}
+                                    {gridItemsToShow.map(item => {
+                                        const tourIdx = showSampleCart && !itemHasAddOns(item)
+                                            ? gridItemsToShow.filter(it => !itemHasAddOns(it)).slice(0, 2).findIndex(it => it.id === item.id)
+                                            : -1;
+                                        const matchingCartItems: any[] = tourIdx >= 0
+                                            ? [{ id: `tour-${item.id}`, productId: item.id, quantity: tourIdx === 0 ? 2 : 1 }]
+                                            : items.filter(i => i.productId === item.id);
+                                        const lastAddedCartItem = matchingCartItems[matchingCartItems.length - 1];
+                                        const isSelected = matchingCartItems.length > 0;
+                                        const quantity = matchingCartItems.reduce((sum, i) => sum + i.quantity, 0);
+                                        const isRoundingEnabled = salesSettings?.enableRounding ?? true;
+                                        const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
+                                        const allowItemDiscount = salesSettings?.enableItemWiseDiscount ?? true;
+                                        const mrp = Number(item.mrp || 0);
+                                        const itemSalesPrice = Number(item.salesPrice || 0);
+                                        const presetDiscount = Number(item.discount || 0);
+                                        let baseDisplayPrice = 0;
+
+                                        // --- NEW 3-TIER LOGIC FOR GRID CARDS ---
+                                        if (mrp > 0 && itemSalesPrice > 0) {
+                                            // Case 1 — item discount comes off the sale price when the setting is on
+                                            baseDisplayPrice = salesSettings?.discountOnSalePrice && allowItemDiscount
+                                                ? itemSalesPrice * (1 - presetDiscount / 100)
+                                                : itemSalesPrice;
+                                        } else if (itemSalesPrice > 0) {
+                                            baseDisplayPrice = allowItemDiscount ? itemSalesPrice * (1 - presetDiscount / 100) : itemSalesPrice; // Case 2
+                                        } else if (mrp > 0) {
+                                            baseDisplayPrice = allowItemDiscount ? mrp * (1 - presetDiscount / 100) : mrp; // Case 3
+                                        }
+
+                                        baseDisplayPrice = applyLineRounding(baseDisplayPrice, isRoundingEnabled, roundingInterval, mrp);
+
+                                        const effectiveSp = (lastAddedCartItem?.customPrice !== undefined && lastAddedCartItem?.customPrice !== null && lastAddedCartItem?.customPrice !== '')
+                                            ? Number(lastAddedCartItem.customPrice)
+                                            : baseDisplayPrice;
+                                        const sp = effectiveSp;
+                                        const lineSubtotal = itemHasAddOns(item)
+                                            ? Math.round(matchingCartItems.reduce((s, i) => s + (Number(i.customPrice ?? 0) + (Number((i as any).addOnAmount) || 0)) * (i.quantity || 0), 0) * 100) / 100
+                                            : Math.round((Number(sp) * quantity) * 100) / 100;
+                                        const discPct = (!hideMrp && allowItemDiscount && mrp > 0 && Number(sp) < mrp && Number(sp) > 0)
+                                            ? Math.round(((mrp - Number(sp)) / mrp) * 100)
+                                            : 0;
+                                        const photoUrl: string | undefined = isCardImageView
+                                            ? ((item as any).image || (item as any).imageUrl || (item as any).thumbnail || (item as any).imageURL)
+                                            : undefined;
+                                        const moq = Number((item as any).moq) || 1;
+                                        const atMin = isSelected && quantity <= moq;
+
+                                        const openEdit = () => {
+                                            const orig = availableItems.find(a => a.id === item.id);
+                                            if (orig) handleOpenEditDrawer(orig);
+                                        };
+                                        // Add one: tile tap, ADD button aur "+" teeno yahi use karte hain
+                                        const handleAddOne = () => {
+                                            if (tourIdx >= 0) return;   // sample card, do nothing
+                                            if (isSelected && !itemHasAddOns(item)) handleQuantityChange(lastAddedCartItem.id, quantity + 1);
+                                            else handleAddOrPickTier(item);
+                                        };
+                                        const handleTileTap = () => {
+                                            if (tileHoldFired.current) { tileHoldFired.current = false; return; }
+                                            handleAddOne();
+                                        };
+                                        // "−" button: MOQ tak ghatao, MOQ par item hat jaye (pehle jaisa)
+                                        const handleMinusOne = () => {
+                                            if (tourIdx >= 0) return;
+                                            if (quantity > moq) handleQuantityChange(lastAddedCartItem.id, quantity - 1);
+                                            else handleDeleteItem(lastAddedCartItem.id);
+                                        };
+
+                                        // ───────── PHOTO CARD (naya Blinkit-style design) ─────────
+                                        if (isCardImageView) {
+                                            return (
+                                                <div
+                                                    key={item.id}
+                                                    className={`relative flex flex-col min-w-0 overflow-hidden rounded-sm border-2
+                ${isSelected ? 'bg-blue-50 border-blue-600' : 'bg-white border-transparent ring-1 ring-gray-200 hover:ring-gray-300'}`}
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        aria-label={`Add one ${item.name}${isSelected ? `, ${quantity} in bill` : ''}`}
+                                                        onClick={handleTileTap}
+                                                        onPointerDown={(e) => {
+                                                            if (e.pointerType !== 'touch' || !canEditItems) return;
+                                                            tileHoldFired.current = false;
+                                                            clearTimeout(tileHoldTimer.current);
+                                                            tileHoldTimer.current = setTimeout(() => { tileHoldFired.current = true; openEdit(); }, 450);
+                                                        }}
+                                                        onPointerUp={() => clearTimeout(tileHoldTimer.current)}
+                                                        onPointerLeave={() => clearTimeout(tileHoldTimer.current)}
+                                                        onPointerCancel={() => clearTimeout(tileHoldTimer.current)}
+                                                        onContextMenu={(e) => e.preventDefault()}
+                                                        className="flex flex-col w-full p-0 text-left bg-transparent border-0 select-none cursor-pointer [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent]"
+                                                    >
+                                                        {/* Top: photo mode = Blinkit-style square box, compact mode = slim header */}
+                                                        <span className="relative block w-full px-1.5 pt-1.5 shrink-0">
+                                                            {/* Square photo box: border + rounded + padding andar */}
+                                                            <span className={`relative flex items-center justify-center w-full aspect-square overflow-hidden rounded-sm border border-gray-200 p-2 ${isSelected ? 'bg-white' : 'bg-white'}`}>
+                                                                {photoUrl && (
+                                                                    <img
+                                                                        src={photoUrl}
+                                                                        alt=""
+                                                                        loading="lazy"
+                                                                        className="w-full h-full object-contain block"
+                                                                        onError={(e) => {
+                                                                            (e.currentTarget as HTMLImageElement).style.display = 'none';
+                                                                            const ph = (e.currentTarget as HTMLImageElement).parentElement?.querySelector<HTMLElement>('[data-no-image]');
+                                                                            if (ph) ph.style.display = 'flex';
+                                                                        }}
+                                                                    />
+                                                                )}
+                                                                <span data-no-image className="absolute inset-0 items-center justify-center bg-gray-50" style={{ display: photoUrl ? 'none' : 'flex' }}>
+                                                                    <FiCamera size={22} strokeWidth={1.5} className="text-gray-300" />
+                                                                </span>
+                                                            </span>
+                                                            {/* Discount ribbon: box ke bahar rakha hai taaki clip na ho */}
+                                                            {discPct > 0 && (
+                                                                <span className="absolute top-0 left-3 px-1.5 pt-[3px] pb-[7px] bg-blue-600 text-white text-[10px] leading-[12px] font-bold text-center whitespace-nowrap [clip-path:polygon(0_0,100%_0,100%_100%,50%_82%,0_100%)]">
+                                                                    {discPct}%<br />OFF
+                                                                </span>
+                                                            )}
+                                                        </span>
+
+                                                        {/* Name */}
+                                                        <span className="block w-full px-1.5 pt-1.5 pb-1">
+                                                            <span
+                                                                className="block overflow-hidden text-[12px] leading-4 font-semibold text-gray-900 break-words [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] h-8"
+                                                                title={item.name}
+                                                            >
+                                                                {item.name}
+                                                            </span>
+                                                        </span>
+                                                    </button>
+
+                                                    {/* Footer: price (left) + ADD / stepper (right) */}
+                                                    <div className="flex items-end justify-between gap-1 min-h-[30px] px-1.5 pb-1.5 mt-auto">
+                                                        <span className="flex flex-col min-w-0 tabular-nums leading-[1.15]">
+                                                            {isSelected ? (
+                                                                <span className="text-xs font-bold text-blue-600 whitespace-nowrap">
+                                                                    ₹{lineSubtotal.toLocaleString('en-IN')}
+                                                                </span>
+                                                            ) : (
+                                                                <>
+                                                                    <span className="text-[13px] font-bold text-gray-900 whitespace-nowrap">₹{Number(sp).toLocaleString('en-IN')}</span>
+                                                                    {discPct > 0 && mrp > 0 && Number(sp) < mrp && (
+                                                                        <span className="truncate text-[10px] text-gray-500 line-through whitespace-nowrap">₹{mrp.toLocaleString('en-IN')}</span>
+                                                                    )}
+                                                                </>
+                                                            )}
+                                                        </span>
+
+                                                        {isSelected ? (
+                                                            <span className="flex items-center h-7 flex-shrink-0 rounded-sm bg-blue-600 text-white">
+                                                                <button
+                                                                    type="button"
+                                                                    aria-label={`${atMin ? 'Remove' : 'One less'} ${item.name}`}
+                                                                    onClick={handleMinusOne}
+                                                                    className="grid place-items-center w-6 h-full rounded-l-sm hover:bg-white/20 transition-colors"
+                                                                >
+                                                                    <FiMinus size={14} />
+                                                                </button>
+                                                                <span className="min-w-[18px] text-center text-xs font-bold tabular-nums">{quantity}</span>
+                                                                <button
+                                                                    type="button"
+                                                                    aria-label={`One more ${item.name}`}
+                                                                    onClick={handleAddOne}
+                                                                    className="grid place-items-center w-6 h-full rounded-r-sm hover:bg-white/20 transition-colors"
+                                                                >
+                                                                    <FiPlus size={14} />
+                                                                </button>
+                                                            </span>
+                                                        ) : (
+                                                            <button
+                                                                type="button"
+                                                                aria-label={`Add ${item.name}`}
+                                                                onClick={handleAddOne}
+                                                                className="h-7 min-w-[56px] px-2 flex-shrink-0 rounded-sm border-[1.5px] border-blue-600 bg-blue-50 text-blue-600 text-xs font-bold hover:bg-blue-600 hover:text-white transition-colors"
+                                                            >
+                                                                ADD
+                                                            </button>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Edit: hamesha dikhta hai (phone par bhi) */}
+                                                    {canEditItems && (
+                                                        <button
+                                                            type="button"
+                                                            aria-label={`Edit ${item.name}`}
+                                                            onClick={openEdit}
+                                                            className="absolute top-2 right-2 z-[1] grid place-items-center w-[26px] h-[26px] rounded-sm bg-white text-gray-600 border border-gray-200 hover:text-blue-600 hover:border-blue-600 transition-colors"
+                                                        >
+                                                            <FiEdit size={14} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            );
+                                        }
+
+                                        // ───────── COMPACT CARD (bina photo): bilkul original, koi change nahi ─────────
+                                        return (
+                                            <div key={item.id} className="relative min-w-0">
+                                                <button
+                                                    type="button"
+                                                    aria-label={`Add one ${item.name}${isSelected ? `, ${quantity} in bill` : ''}`}
+                                                    onClick={handleTileTap}
+                                                    onPointerDown={(e) => {
+                                                        if (e.pointerType !== 'touch') return;
+                                                        tileHoldFired.current = false;
+                                                        clearTimeout(tileHoldTimer.current);
+                                                        tileHoldTimer.current = setTimeout(() => { tileHoldFired.current = true; openEdit(); }, 450);
+                                                    }}
+                                                    onPointerUp={() => clearTimeout(tileHoldTimer.current)}
+                                                    onPointerLeave={() => clearTimeout(tileHoldTimer.current)}
+                                                    onPointerCancel={() => clearTimeout(tileHoldTimer.current)}
+                                                    onContextMenu={(e) => e.preventDefault()}
+                                                    className={`relative flex flex-col w-full overflow-hidden p-0 text-left rounded-sm border-2 select-none cursor-pointer transition active:scale-[0.97] [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent]
+                h-[100px]
+                ${isSelected ? 'bg-blue-50 border-blue-600' : 'bg-white border-transparent ring-1 ring-gray-200 hover:ring-gray-300'}`}
+                                                >
+                                                    {/* Name + price row */}
+                                                    <span className="flex flex-col flex-1 min-w-0 gap-1 p-1.5">
+                                                        <span
+                                                            className={`block overflow-hidden text-[12px] leading-4 font-semibold text-gray-900 break-words [display:-webkit-box] [-webkit-box-orient:vertical] ${isSelected ? 'pr-7 [-webkit-line-clamp:2] h-8' : 'pr-7 [-webkit-line-clamp:3] h-12'}`}
+                                                            title={item.name}
+                                                        >
+                                                            {item.name}
+                                                        </span>
+                                                        <span className="flex items-center gap-1 mt-auto min-w-0 tabular-nums h-8">
+                                                            {isSelected ? (
+                                                                <span className="max-w-[calc(100%-72px)] md:max-w-none truncate text-[11px] md:text-xs leading-4 font-bold text-blue-600 whitespace-nowrap">
+                                                                    ₹{lineSubtotal.toLocaleString('en-IN')}
+                                                                </span>
+                                                            ) : (
+                                                                <>
+                                                                    <span className="text-[13px] leading-4 font-bold text-gray-900 whitespace-nowrap">₹{Number(sp).toLocaleString('en-IN')}</span>
+                                                                    {discPct > 0 && mrp > 0 && Number(sp) < mrp && (
+                                                                        <span className="min-w-0 truncate text-[11px] leading-[14px] text-gray-500 line-through whitespace-nowrap">₹{mrp.toLocaleString('en-IN')}</span>
+                                                                    )}
+                                                                </>
+                                                            )}
+                                                        </span>
+                                                    </span>
+                                                </button>
+
+                                                {/* Qty stepper: right end (photo card jaisa), wide */}
+                                                {isSelected && (
+                                                    <span className="absolute z-[1] bottom-2 right-1.5 h-7 flex items-center rounded-sm bg-blue-600 text-white">
+                                                        <button
+                                                            type="button"
+                                                            aria-label={`${atMin ? 'Remove' : 'One less'} ${item.name}`}
+                                                            onClick={handleMinusOne}
+                                                            className="grid place-items-center w-6 md:w-9 h-full rounded-l-sm hover:bg-white/20 transition-colors"
+                                                        >
+                                                            <FiMinus size={14} />
+                                                        </button>
+                                                        <span className="min-w-[20px] md:min-w-[32px] text-center text-xs md:text-sm font-bold tabular-nums">{quantity}</span>
+                                                        <button
+                                                            type="button"
+                                                            aria-label={`One more ${item.name}`}
+                                                            onClick={handleAddOne}
+                                                            className="grid place-items-center w-6 md:w-9 h-full rounded-r-sm hover:bg-white/20 transition-colors"
+                                                        >
+                                                            <FiPlus size={14} />
+                                                        </button>
+                                                    </span>
+                                                )}
+
+                                                {/* Edit: top-right, hamesha dikhta hai (phone par bhi) */}
+                                                {canEditItems && (
+                                                    <button
+                                                        type="button"
+                                                        aria-label={`Edit ${item.name}`}
+                                                        onClick={openEdit}
+                                                        className="grid absolute top-1 right-1 z-[1] place-items-center w-6 h-6 rounded-sm bg-white text-gray-600 border border-gray-200 hover:text-blue-600 hover:border-blue-600 transition-colors"
+                                                    >
+                                                        <FiEdit size={14} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </TutorialStep>
+                        </div>
+
+                        {/* Mobile footer — ONCE only */}
+                        <TutorialStep step={6} {...tour} text="Check the total here, then tap View bill and Pay to complete the sale." onNext={finishTutorial} isLast position="top">
+                            <div data-tour="6" className="md:hidden">
+                                <GenericBillFooter
+                                    isExpanded={isFooterExpanded}
+                                    onToggleExpand={() => setIsFooterExpanded(!isFooterExpanded)}
+                                    totalQuantity={totalQuantity} subtotal={subtotal}
+                                    totalDiscount={totalDiscount} taxAmount={taxAmount}
+                                    finalAmount={finalAmount} showTaxRow={showTaxRow}
+                                    taxLabel={`Tax (${activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})`}
+                                    actionLabel={isEditMode ? 'Update invoice' : 'View bill'}
+                                    onActionClick={() => setIsBillOpen(true)}
+                                    secondaryAction={showQuickPrint ? { label: 'Print', icon: <IconPrint />, onClick: startQuickPrint } : undefined}
+                                    disableAction={items.length === 0}>
+                                </GenericBillFooter>
+                            </div>
+                        </TutorialStep>
+                        {renderTabletCheckoutBar(isEditMode ? 'Update invoice' : 'View bill', () => setIsBillOpen(true))}
+                    </div>
+
+                    {/* RIGHT PANEL — desktop only */}
+                    <div className="hidden xl:flex w-[360px] flex-shrink-0 flex-col bg-white h-full relative border-l border-[#dfe6fb] z-10">
+                        {renderBillPanel(handleProceedToPayment)}
+                    </div>
+                </div>
+
+                {/* Phone/tablet: bill sheet first, payment drawer after "Pay" */}
+                {renderBillSheet()}
+
+                {/* Duplicate item popup: bill panel ke "+" se bhi khulta hai */}
+                {renderDuplicateItemPrompt()}
+
+                {/* Drawers & modals — rendered ONCE */}
+                <PaymentDrawer
+                    mode='sale' isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)}
+                    {...loyaltyDrawerProps}
+                    enableCustomerDetails={true}
+                    subtotal={subtotal} billTotal={amountToPayNow}
+                    totalTax={taxAmount}
+                    onPaymentComplete={handleSavePaymentWithOptions}
+                    showBillOptions={!isEditMode}
+                    isPartyNameEditable={!isEditMode}
+                    originalBillTotal={calculatedOriginalTotal}
+                    initialPartyName={isEditMode ? invoiceToEdit?.partyName : customerName}
+                    initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : customerPhone}
+                    onPartyChange={isEditMode ? undefined : handleDrawerPartyChange}
+                    onPartyInput={isEditMode ? undefined : handleDrawerPartyInput}
+                    partyOffer={customerPricing.offer}
+                    initialPaymentMethods={isEditMode ? invoiceToEdit?.paymentMethods : undefined}
+                    totalItemDiscount={totalDiscount} totalQuantity={totalQuantity}
+                    totalMrp={totalMrp}
+                    taxMode={activeTaxMode}
+                    isTaxToggleLocked={true}
+                    initialDiscount={invoiceToEdit?.manualDiscount}
+                    requireCustomerName={salesSettings?.requireCustomerName}
+                    requireCustomerMobile={salesSettings?.requireCustomerMobile}
+                    allowDueBilling={salesSettings?.allowDueBilling ?? false}
+                    initialPartyAddress={isEditMode ? invoiceToEdit?.partyAddress : ''}
+                    initialPartyGST={isEditMode ? invoiceToEdit?.partyGstin : ''}
+                    initialShippingName={isEditMode ? invoiceToEdit?.shippingName : ''}
+                    initialShippingNumber={isEditMode ? invoiceToEdit?.shippingNumber : ''}
+                    initialShippingAddress={isEditMode ? invoiceToEdit?.shippingAddress : ''}
+                    initialShippingGST={isEditMode ? invoiceToEdit?.shippingGST : ''}
+                    initialPlaceOfSupply={isEditMode ? invoiceToEdit?.placeOfSupply : ''}
+                    initialShippingState={isEditMode ? invoiceToEdit?.shippingState : ''}
+                    initialExpenses={isEditMode ? (invoiceToEdit?.expenses || (invoiceToEdit?.extraExpenseName ? [{ name: invoiceToEdit.extraExpenseName, amount: invoiceToEdit.extraExpenseAmount }] : [])) : []}
+                    initialNarration={isEditMode ? invoiceToEdit?.narration : ''}
+                    initialTransportDetails={isEditMode ? invoiceToEdit?.transportDetails : undefined}
+                    enableShippingDetails={salesSettings?.enableShippingDetails}
+                    enableExtraExpense={salesSettings?.enableExtraExpense}
+                    enableNarration={salesSettings?.enableNarration}
+                    enableTransportDetails={salesSettings?.enableTransportDetails ?? false}
+                    maxBillDiscountValue={salesSettings?.maxBillDiscountValue}
+                    maxBillDiscountType={salesSettings?.maxBillDiscountType}
+                    lockBillDiscountByDefault={salesSettings?.lockBillDiscountByDefault ?? true}
+                    taxableSubtotal={activeTaxMode === 'inclusive' ? netAmount - taxAmount : netAmount}
+                />
+                <ItemEditDrawer item={selectedItemForEdit} isOpen={isItemDrawerOpen} onClose={handleCloseEditDrawer} onSaveSuccess={handleSaveSuccess} />
+                <TierPickerModal
+                    item={tierPickerItem}
+                    isOpen={!!tierPickerItem}
+                    onClose={() => setTierPickerItem(null)}
+                    onSelect={(item, tier) => {
+                        handleItemSelected(item, tier.id === '__base__' ? undefined : tier);
+                    }}
+                />
+                {renderAddOnPopup()}
+                {renderCustomerModal()}
+                {showPricingInfo && currentUser?.companyId && (
+                    <CustomerPricingEditorModal
+                        companyId={currentUser.companyId}
+                        uid={currentUser.uid}
+                        party={{
+                            name: isEditMode ? (invoiceToEdit?.partyName || '') : customerName,
+                            number: isEditMode ? (invoiceToEdit?.partyNumber || '') : customerPhone,
+                        }}
+                        rule={customerPricing.rule}
+                        onClose={() => setShowPricingInfo(false)}
+                        onSaved={refreshCustomerPricing}
+                    />
+                )}
+                {renderSavedBillModals()}
+            </div >
+        );
+    }
+
+    // ═════════════════════════ CALCULATOR VIEW ═════════════════════════
+    if (isCalculatorView) {
+        return (
+            <div className="flex flex-col h-full w-full bg-[#eef2ff] overflow-hidden">
+                {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
+
+                {/* Header */}
+                <div className="shrink-0 bg-white border-b border-[#dfe6fb] flex items-center gap-1 h-14 px-2 md:px-6 md:h-auto md:py-4">
+                    <div className="flex-shrink-0 md:hidden">
+                        <BackButton />
+                    </div>
+                    <h1 className="m-0 text-lg md:text-[22px] md:leading-[30px] font-semibold text-[#0f172b] flex items-baseline gap-2">
+                        New sale
+                        <span className="text-xs font-normal text-[#5b6b86]">
+                            Calculator billing{invoiceNumber ? ` · ${invoiceNumber}` : ''}
+                        </span>
+                    </h1>
+                </div>
+
+                {/* Calculator card (full-bleed on phone, centred card on desktop) */}
+                <div className="flex-1 min-h-0 flex justify-center md:p-5">
+                    <div className="w-full md:max-w-[520px] md:max-h-[640px] flex flex-col min-h-0 bg-[#f5f7ff] md:rounded-sm md:border md:border-[#dfe6fb] md:overflow-hidden md:shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)]">
+
+                        {/* Grand total strip */}
+                        <div className="shrink-0 flex items-center gap-2.5 px-4 py-3 bg-white border-b border-[#dfe6fb]">
+                            <div>
+                                <div className="text-xs leading-4 text-[#45556c]">Grand total</div>
+                                <div className="text-xs leading-4 text-[#5b6b86]">{liveItemCount} {liveItemCount === 1 ? 'item' : 'items'}</div>
+                            </div>
+                            <b className="ml-auto text-[22px] font-semibold tabular-nums text-[#0f172b]">₹{liveTotal.toFixed(2)}</b>
+                        </div>
+
+                        <div className="flex-1 min-h-0 flex flex-col gap-2 px-3 pt-2 pb-3">
+
+                            {/* Empty-state hint */}
+                            {liveItemCount === 0 && !calcInput && (
+                                <p className="shrink-0 m-0 pt-1 text-center text-[13px] text-[#5b6b86]">
+                                    Type an amount and press <b className="text-[#0f172b]">+ Add line</b>.<br />
+                                    Use × for quantity, % for a discount on that line.
+                                </p>
+                            )}
+
+                            {/* Display */}
+                            <div className="shrink-0 relative text-right px-1 pt-1 cursor-text overflow-hidden" onClick={() => displayRef.current?.focus()}>
+                                {/* Hidden textarea — drives all input logic unchanged */}
+                                <textarea
+                                    ref={displayRef}
+                                    inputMode="none"
+                                    value={calcInput}
+                                    placeholder=""
+                                    onChange={(e) => {
+                                        const val = e.target.value.replace(/[^0-9*.\-+%]/g, '');
+                                        setCalcInput(val);
+                                    }}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') e.preventDefault();
+                                    }}
+                                    className="absolute opacity-0 pointer-events-none w-0 h-0"
+                                    rows={1}
+                                />
+                                <CalcDisplay value={calcInput} />
+                            </div>
+
+                            {/* Keypad */}
+                            <div className="grid grid-cols-4 auto-rows-fr gap-2 flex-1 min-h-0">
+                                {calcKeys.map((key) => {
+                                    const { label, icon: Icon, colClass, type, value } = key;
+                                    const isFunction = type === 'function';
+                                    const isAddLine = value === '+';
+                                    const isOperator = type === 'operator' && !isAddLine;
+                                    const isBackspace = value === 'Backspace';
+
+                                    return (
+                                        <button
+                                            key={value}
+                                            type="button"
+                                            aria-label={isAddLine ? 'Add line' : isBackspace ? 'Backspace' : undefined}
+                                            onPointerDown={(e) => {
+                                                e.preventDefault();
+                                                if (isBackspace) {
+                                                    handlePointerDown(key);
+                                                } else {
+                                                    handleKeypadPress(key);
+                                                }
+                                            }}
+                                            onPointerUp={isBackspace ? () => handlePointerUp(key) : undefined}
+                                            onPointerLeave={isBackspace ? () => handlePointerLeave(key) : undefined}
+                                            className={`h-full w-full flex items-center justify-center rounded-sm text-[22px] font-medium tabular-nums transition-all active:scale-95 select-none shadow-[0_1px_0_#dfe6fb,0_1px_2px_rgba(21,48,140,0.06)]
+${isFunction ? 'bg-[#ffeef0] text-[#d5000c] hover:bg-[#ffdde1]' :
+                                                    isAddLine ? 'bg-[#155dfc] text-white hover:bg-[#1447e6] text-[28px]' :
+                                                        isOperator ? 'bg-[#e6eeff] text-[#155dfc] hover:bg-[#dbe6ff] text-2xl' :
+                                                            'bg-white text-[#0f172b] hover:bg-[#f5f7ff]'}
+${colClass || ''}`}
+                                        >
+                                            {Icon ? <Icon size={26} /> : isAddLine ? (
+                                                <span className="flex flex-col items-center leading-none">
+                                                    +<small className="mt-1 text-[11px] font-medium opacity-85">Add line</small>
+                                                </span>
+                                            ) : label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Pay */}
+                            <div className="shrink-0 flex gap-2">
+                                <button
+                                    type="button"
+                                    onClick={handleCheckoutClick}
+                                    disabled={liveItemCount === 0}
+                                    className="flex-1 h-[54px] inline-flex items-center justify-center gap-2 rounded-sm bg-[#155dfc] hover:bg-[#1447e6] text-white font-medium text-base transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed active:scale-[0.98]"
+                                >
+                                    Proceed to pay
+                                    <FiChevronRight size={16} />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Modals & Drawers */}
+                <PaymentDrawer
+                    mode='calculator'
+                    {...loyaltyDrawerProps}
+                    isOpen={isDrawerOpen}
+                    originalBillTotal={calculatedOriginalTotal}
+                    onClose={() => {
+                        setIsDrawerOpen(false);
+                        if (stagedCalcInput) {
+                            setCalcInput(stagedCalcInput);
+                            setItems(prev => prev.filter(i => !i.isStagedCalcItem));
+                            setStagedCalcInput('');
+                        }
+                    }}
+                    enableCustomerDetails={salesSettings?.enableCustomerInfoToggle ?? false}
+                    subtotal={subtotal}
+                    billTotal={amountToPayNow}
+                    onPaymentComplete={handleSavePayment}
+                    enableShippingDetails={false}
+                    enableExtraExpense={false}
+                    enableNarration={false}
+                    allowDueBilling={salesSettings?.allowDueBilling ?? false}
+                    requireCustomerName={salesSettings?.requireCustomerName ?? false}
+                    requireCustomerMobile={salesSettings?.requireCustomerMobile ?? false}
+                    isPartyNameEditable={true}
+                    initialPartyName={customerName}
+                    initialPartyNumber={customerPhone}
+                    onPartyChange={handleDrawerPartyChange}
+                    totalItemDiscount={totalDiscount}
+                    totalQuantity={totalQuantity}
+                    maxBillDiscountValue={salesSettings?.maxBillDiscountValue}
+                    maxBillDiscountType={salesSettings?.maxBillDiscountType}
+                    lockBillDiscountByDefault={salesSettings?.lockBillDiscountByDefault ?? true}
+                />
+            </div>
+        );
+    }
+
+    // ═════════════════════════ LIST VIEW ═════════════════════════
+    return (
+        <div className="flex flex-col h-full bg-[#eef2ff] w-full overflow-hidden">
+            {modal && (
+                <Modal
+                    message={modal.message}
+                    onClose={() => {
+                        setModal(null);
+                        setShowClearCartConfirm(false);
+                    }}
+                    onConfirm={showClearCartConfirm ? () => {
+                        handleConfirmClearCart();
+                        setModal(null);
+                    } : undefined}
+                    showConfirmButton={showClearCartConfirm}
+                    type={modal.type}
+                />
+            )}
+            {renderClearCartConfirm()}
+            {/* Duplicate item popup */}
+            {/* {renderDuplicateItemPrompt()} */}
+            <BarcodeScanner continuous isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
+            <BarcodeLinkModal
+                isOpen={isBarcodeLinkModalOpen}
+                barcode={barcodeToLink}
+                items={availableItems}
+                isLinking={isLinkingBarcode}
+                onClose={closeBarcodeLinkModal}
+                onLink={handleLinkScannedBarcode}
+            />
+            <AddUserModal isOpen={isAddUserModalOpen} onClose={() => setIsAddUserModalOpen(false)} />
+            {renderQuickItemSheet()}
+            <div className="hidden md:block">{renderHeader()}</div>
+            {renderMobileHeader()}
+            {renderMoreSheet()}
+
+            <div className="flex-1 flex flex-col xl:flex-row overflow-hidden">
+
+                <div className="flex flex-col w-full xl:flex-1 min-w-0 h-full relative">
+
+                    <TutorialStep step={2} {...tour} text="Search for an item by name or barcode, or tap Scan to use the camera." onNext={() => nextStep(3)} mobileArrowAlign="left">
+                        <div data-tour="2" className="flex-shrink-0 px-4 md:px-5 py-3 bg-white border-b border-[#dfe6fb]">
+                            <div className="flex gap-2 items-center w-full">
+                                <div className="flex-grow">
+                                    <SearchableItemInput
+                                        label="Search item"
+                                        placeholder="Search item name or barcode"
+                                        items={availableItems}
+                                        onItemSelected={handleItemSelectedWrapper}
+                                        isLoading={pageIsLoading}
+                                        error={error}
+                                        onAddItem={(query) => navigate(ROUTES.ITEM_ADD, { state: { prefillName: query } })}
+                                        onQuickAdd={handleListQuickAdd}
+                                        categories={categories}
+                                        itemGroupMap={itemGroupMap}
+                                        onSearchChange={setCartSearchQuery}
+                                    />
+                                </div>
+                                <button type="button" onClick={() => setIsScannerOpen(true)} title="Scan barcode" aria-label="Scan barcode" className={SCAN_BTN_CLS}>
+                                    <IconScanCircle width={20} height={20} />
+                                    <span className="hidden md:inline">Scan</span>
+                                </button>
+                                {/* Phone only: clear cart at the end of the search row (same as card view) */}
+                                {items.length > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={handleClearCart}
+                                        aria-label="Clear cart"
+                                        className="md:hidden inline-flex items-center justify-center w-12 h-12 flex-shrink-0 rounded-sm text-[#d5000c] bg-[#ffeef0] hover:bg-[#ffdde1] transition-colors"
+                                    >
+                                        <FiTrash2 size={18} />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </TutorialStep>
+
+                    {/* Cart List Container */}
+                    <div className="flex-1 flex flex-col bg-[#eef2ff] overflow-y-hidden">
+                        {renderCartBar()}
+                        {(discountInfo || priceInfo) && (
+                            <div className="flex-shrink-0 flex flex-col items-start gap-1.5 px-4 md:px-5 pt-2" role="status" aria-live="polite">
+                                {discountInfo && (
+                                    <div className="px-3 py-2 rounded-sm bg-[#ffeef0] text-[#d5000c] text-[13px] font-medium">{discountInfo}</div>
+                                )}
+                                {priceInfo && (
+                                    <div className="px-3 py-2 rounded-sm bg-[#ffeef0] text-[#d5000c] text-[13px] font-medium">{priceInfo}</div>
+                                )}
+                            </div>
+                        )}
+                        <TutorialStep step={4} {...tour} text="Items you add appear here. You can change the quantity, price and discount on each line." onNext={() => nextStep(5)}>
+                            <div data-tour="4" className="flex-1 min-h-0 flex flex-col">
+                                <GenericCartList
+                                    items={showSampleCart ? TUTORIAL_SAMPLE_LINES : displayItems.map(i => decorateLine(
+                                        (i.addOns?.length ?? 0) > 0
+                                            ? { ...i, addOnText: i.addOns!.map(a => a.name).join(', ') }
+                                            : i
+                                    ))}
+                                    availableItems={availableItems}
+                                    scrollRef={cartListRef}
+                                    basePriceKey="mrp"
+                                    priceLabel="MRP"
+                                    settings={{
+                                        enableRounding: salesSettings?.enableRounding ?? true,
+                                        roundingInterval: (salesSettings as any)?.roundingInterval ?? 1,
+                                        enableItemWiseDiscount: salesSettings?.enableItemWiseDiscount ?? true,
+                                        enableDiscount2: (salesSettings as any)?.enableDiscount2 ?? false,
+                                        lockDiscount: isDiscountLocked,
+                                        lockPrice: isPriceLocked,
+                                        hideMrp: hideMrp
+                                    }}
+                                    applyRounding={applyRounding}
+                                    State={State}
+                                    setModal={setModal}
+                                    onOpenEditDrawer={canEditItems ? handleOpenEditDrawer : undefined}
+                                    onNameClick={(line: any) => openAddOnEdit(line)}
+                                    onDeleteItem={handleDeleteItem}
+                                    onDiscountChange={handleDiscountChange}
+                                    onDiscount2Change={handleDiscount2Change}
+                                    onCustomPriceChange={handleCustomPriceChange}
+                                    onCustomPriceBlur={handleCustomPriceBlur}
+                                    onQuantityChange={handleQuantityChange}
+                                    onDiscountPressStart={handleDiscountPressStart}
+                                    onDiscountPressEnd={handleDiscountPressEnd}
+                                    onDiscountClick={handleDiscountClick}
+                                    onPricePressStart={handlePricePressStart}
+                                    onPricePressEnd={handlePricePressEnd}
+                                    onPriceClick={handlePriceClick}
+                                    onNewItemFieldChange={handleNewItemFieldChange}
+                                    newItemExtraPrice={{ key: 'purchasePrice', label: 'Purchase' }}
+                                    focusLineId={focusLineId}
+                                />
+                            </div>
+                        </TutorialStep>
+                        <div className="xl:hidden px-4 pb-3">{renderSaveBox()}</div>
+                        {/* MOBILE FOOTER (Visible only on small screens) */}
+                        <TutorialStep step={6} {...tour} text="Check the total here, then tap View bill and Pay to complete the sale." onNext={finishTutorial} isLast position="top">
+                            <div data-tour="6" className="md:hidden">
+                                <GenericBillFooter
+                                    isExpanded={isFooterExpanded}
+                                    onToggleExpand={() => setIsFooterExpanded(!isFooterExpanded)}
+                                    totalQuantity={totalQuantity}
+                                    subtotal={subtotal}
+                                    totalDiscount={totalDiscount}
+                                    taxAmount={taxAmount}
+                                    finalAmount={finalAmount}
+                                    showTaxRow={showTaxRow}
+                                    taxLabel={`Tax (${activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})`}
+                                    actionLabel={isEditMode ? 'Update invoice' : 'View bill'}
+                                    onActionClick={() => setIsBillOpen(true)}
+                                    secondaryAction={showQuickPrint ? { label: 'Print', icon: <IconPrint />, onClick: startQuickPrint } : undefined}
+                                    disableAction={items.length === 0}
+                                >
+                                </GenericBillFooter>
+                            </div>
+                        </TutorialStep>
+                        {renderTabletCheckoutBar(isEditMode ? 'Update invoice' : 'View bill', () => setIsBillOpen(true))}
+                    </div>
+                </div>
+
+                {/* RIGHT PANEL — desktop only */}
+                <div className="hidden xl:flex w-[360px] flex-shrink-0 flex-col bg-white h-full relative border-l border-[#dfe6fb] z-10">
+                    {renderBillPanel(handleProceedToPayment)}
+                </div>
+            </div>
+
+            {/* Phone/tablet: bill sheet first, payment drawer after "Pay" */}
+            {renderBillSheet()}
+
+            {/* Duplicate item popup: bill panel ke "+" se bhi khulta hai */}
+            {renderDuplicateItemPrompt()}
+
+            <PaymentDrawer isOpen={isDrawerOpen}
+                mode='sale'
+                {...loyaltyDrawerProps}
+                onClose={() => setIsDrawerOpen(false)}
+                subtotal={subtotal} billTotal={amountToPayNow}
+                totalTax={taxAmount}
+                originalBillTotal={calculatedOriginalTotal}
+                onPaymentComplete={handleSavePaymentWithOptions}
+                showBillOptions={!isEditMode}
+                initialDiscount={invoiceToEdit?.manualDiscount}
+                allowDueBilling={salesSettings?.allowDueBilling ?? false}
+                isPartyNameEditable={!isEditMode}
+                enableCustomerDetails={true}
+                initialPartyName={isEditMode ? invoiceToEdit?.partyName : customerName}
+                initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : customerPhone}
+                onPartyChange={isEditMode ? undefined : handleDrawerPartyChange}
+                onPartyInput={isEditMode ? undefined : handleDrawerPartyInput}
+                partyOffer={customerPricing.offer}
+                initialPaymentMethods={isEditMode ? invoiceToEdit?.paymentMethods : undefined}
+                totalItemDiscount={totalDiscount} totalQuantity={totalQuantity}
+                requireCustomerName={salesSettings?.requireCustomerName}
+                requireCustomerMobile={salesSettings?.requireCustomerMobile}
+                initialPartyAddress={isEditMode ? invoiceToEdit?.partyAddress : ''}
+                initialPartyGST={isEditMode ? invoiceToEdit?.partyGstin : ''}
+                initialShippingName={isEditMode ? invoiceToEdit?.shippingName : ''}
+                initialShippingNumber={isEditMode ? invoiceToEdit?.shippingNumber : ''}
+                initialShippingAddress={isEditMode ? invoiceToEdit?.shippingAddress : ''}
+                initialShippingGST={isEditMode ? invoiceToEdit?.shippingGST : ''}
+                initialExpenses={isEditMode ? (invoiceToEdit?.expenses || (invoiceToEdit?.extraExpenseName ? [{ name: invoiceToEdit.extraExpenseName, amount: invoiceToEdit.extraExpenseAmount }] : [])) : []}
+                initialNarration={isEditMode ? invoiceToEdit?.narration : ''}
+                initialTransportDetails={isEditMode ? invoiceToEdit?.transportDetails : undefined}
+                enableShippingDetails={salesSettings?.enableShippingDetails}
+                enableExtraExpense={salesSettings?.enableExtraExpense}
+                enableNarration={salesSettings?.enableNarration}
+                enableTransportDetails={salesSettings?.enableTransportDetails ?? false}
+                taxMode={activeTaxMode}
+                isTaxToggleLocked={true}
+                totalMrp={totalMrp}
+                taxableSubtotal={activeTaxMode === 'inclusive' ? netAmount - taxAmount : netAmount}
+                maxBillDiscountValue={salesSettings?.maxBillDiscountValue}
+                maxBillDiscountType={salesSettings?.maxBillDiscountType}
+                lockBillDiscountByDefault={salesSettings?.lockBillDiscountByDefault ?? true}
+            />
+            <ItemEditDrawer item={selectedItemForEdit} isOpen={isItemDrawerOpen} onClose={handleCloseEditDrawer} onSaveSuccess={handleSaveSuccess} />
+
+            <TierPickerModal
+                item={tierPickerItem}
+                isOpen={!!tierPickerItem}
+                onClose={() => setTierPickerItem(null)}
+                onSelect={(item, tier) => {
+                    handleItemSelected(item, tier.id === '__base__' ? undefined : tier);
+                }}
+            />
+            {renderAddOnPopup()}
+            {renderCustomerModal()}
+            {showPricingInfo && currentUser?.companyId && (
+                <CustomerPricingEditorModal
+                    companyId={currentUser.companyId}
+                    uid={currentUser.uid}
+                    party={{
+                        name: isEditMode ? (invoiceToEdit?.partyName || '') : customerName,
+                        number: isEditMode ? (invoiceToEdit?.partyNumber || '') : customerPhone,
+                    }}
+                    rule={customerPricing.rule}
+                    onClose={() => setShowPricingInfo(false)}
+                    onSaved={refreshCustomerPricing}
+                />
+            )}
+            {renderSavedBillModals()}
+        </div >
+    );
+};
+
+export default Sales;

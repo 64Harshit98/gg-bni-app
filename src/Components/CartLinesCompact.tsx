@@ -1,0 +1,98 @@
+import { FiEdit } from 'react-icons/fi';
+import { PriceFlag, type PriceFlagData } from './PriceFlag';
+
+export interface CompactCartLine {
+  id: string;
+  name: string;
+  quantity: number;
+  addOns?: { name: string; price?: number }[];
+  /** Quick-added on this bill (not in the catalogue yet). */
+  isNewItem?: boolean;
+}
+
+interface CartLinesCompactProps<T extends CompactCartLine> {
+  items: T[];
+  getUnitPrice: (item: T) => number;
+  onQuantityChange: (id: string, quantity: number) => void;
+  onDelete: (id: string) => void;
+  onEditAddOns?: (item: T) => void;
+  /** Optional price flag shown under a line (flags only — never changes the price). */
+  getPriceFlag?: (item: T) => PriceFlagData | PriceFlagData[] | null | undefined;
+  /** NEW (quick-added) lines get an "Edit details" link that opens QuickItemSheet. */
+  onEditNewItem?: (item: T) => void;
+}
+
+// Desktop side-panel cart lines (name, line total, "qty × ₹unit", −/+ stepper).
+// Shared by Sales and Purchase so both panels list what's in the bill.
+export const CartLinesCompact = <T extends CompactCartLine>({
+  items,
+  getUnitPrice,
+  onQuantityChange,
+  onDelete,
+  onEditAddOns,
+  getPriceFlag,
+  onEditNewItem,
+}: CartLinesCompactProps<T>) => (
+  <div>
+    {items.map((i) => {
+      const unit = Number(getUnitPrice(i) || 0);
+      const hasAddOns = (i.addOns?.length ?? 0) > 0;
+      const addOnSum = (i.addOns ?? []).reduce((s, a) => s + (Number(a.price) || 0), 0);
+      const basePrice = unit - addOnSum;
+      const rawFlag = getPriceFlag?.(i);
+      const flags = Array.isArray(rawFlag) ? rawFlag : rawFlag ? [rawFlag] : [];
+      return (
+        <div key={i.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2.5 gap-y-0.5 py-2.5 border-b border-[#dfe6fb] items-center">
+          <b className="text-[13px] font-medium text-[#0f172b] truncate">
+            {i.isNewItem && (
+              <span className="inline-block align-[1px] mr-1.5 text-[9px] font-bold tracking-wide uppercase bg-amber-500 text-white px-1 py-px rounded-sm">New</span>
+            )}
+            {i.name || 'Unnamed item'}
+            {hasAddOns && <span className="font-normal text-[#5b6b86] tabular-nums"> · ₹{basePrice.toLocaleString('en-IN')}</span>}
+          </b>
+          <b className="text-[13px] font-medium text-[#0f172b] tabular-nums">₹{(unit * i.quantity).toLocaleString('en-IN')}</b>
+          <div className="min-w-0">
+            <span className="text-xs text-[#5b6b86]">{i.quantity} × ₹{unit.toLocaleString('en-IN')}</span>
+            {(i.addOns?.length ?? 0) > 0 && (
+              <div className="mt-0.5 flex flex-col gap-0.5">
+                {i.addOns!.map((a, idx) => {
+                  const p = Number(a.price) || 0;
+                  return (
+                    <p key={`${a.name}-${idx}`} className="m-0 text-xs text-[#155dfc] [overflow-wrap:anywhere]">
+                      + {a.name}{' '}
+                      <span className="tabular-nums text-[#5b6b86]">
+                        · {p > 0 ? `₹${p.toLocaleString('en-IN')}` : 'Free'}
+                      </span>
+                    </p>
+                  );
+                })}
+              </div>
+            )}
+            {i.isNewItem && onEditNewItem && (
+              <button type="button" onClick={() => onEditNewItem(i)}
+                className={`mt-1 inline-flex items-center gap-1 text-xs font-semibold hover:underline ${unit > 0 ? 'text-[#155dfc]' : 'text-[#d5000c]'}`}>
+                <FiEdit size={12} /> {unit > 0 ? 'Edit details' : 'Add price'}
+              </button>
+            )}
+            {onEditAddOns && (i.addOns?.length ?? 0) > 0 && (
+              <button type="button" onClick={() => onEditAddOns(i)}
+                className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-[#155dfc] hover:underline">
+                <FiEdit size={12} /> Edit add-ons
+              </button>
+            )}
+          </div>
+          <div className="inline-flex items-center border border-[#7a8aa3] rounded-sm bg-white h-7 justify-self-end">
+            <button onClick={() => i.quantity > 1 ? onQuantityChange(i.id, i.quantity - 1) : onDelete(i.id)} aria-label="Less" className="w-6 h-[26px] text-[#45556c]">−</button>
+            <span className="min-w-[20px] text-center text-xs font-semibold tabular-nums">{i.quantity}</span>
+            <button onClick={() => onQuantityChange(i.id, i.quantity + 1)} aria-label="More" className="w-6 h-[26px] text-[#45556c]">+</button>
+          </div>
+          {flags.length > 0 && (
+            <div className="col-span-2 -mx-1 mt-1 overflow-hidden rounded-sm">
+              {flags.map((f, idx) => <PriceFlag key={idx} flag={f} compact />)}
+            </div>
+          )}
+        </div>
+      );
+    })}
+  </div>
+);

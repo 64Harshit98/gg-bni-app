@@ -160,7 +160,10 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   doc.setLineWidth(0.1);
 
   const safeScheme = (data.gstScheme && data.gstScheme.trim() !== '') ? data.gstScheme.toUpperCase() : 'NONE';
-  const safeTaxType = (data.taxType && data.taxType.trim() !== '') ? data.taxType.toLowerCase() : 'EXCLUSIVE';
+  // Upper-case for the EXEMPT / NONE checks below (sales are saved as 'none' / 'exclusive' / 'inclusive');
+  // displayTaxType keeps the text printed next to "GST Type" as it was.
+  const safeTaxType = (data.taxType && data.taxType.trim() !== '') ? data.taxType.toUpperCase() : 'EXCLUSIVE';
+  const displayTaxType = (data.taxType && data.taxType.trim() !== '') ? data.taxType.toLowerCase() : 'EXCLUSIVE';
 
   // NEW: exempt (NONE scheme / exempt taxType) bills lose GST columns just like an estimate,
   // but heading/bank/terms/signature stay normal (SCRUM-1266).
@@ -376,9 +379,12 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   // --- STRICT MATH FIX ---
   // We DO NOT subtract billDiscount here because the items table already factors it in!
   const pureCalculated = grossTotal + totalExtraExpenses;
-  let invoiceTotal = Number(data.finalAmount || (data as any).grandTotal || 0);
+  const storedInvoiceTotal = Number(data.finalAmount || (data as any).grandTotal || 0);
+  let invoiceTotal = storedInvoiceTotal;
 
-  const isExemptOrEstimate = isEstimate || safeScheme === 'NONE' || safeTaxType === 'EXEMPT' || safeTaxType === 'NONE';
+  // Exempt-mode bills (tax mode 'none' under Regular) keep their saved total: they were saved with
+  // zero tax, so there's nothing to strip, and recomputing could only move the total by rounding.
+  const isExemptOrEstimate = isEstimate || safeScheme === 'NONE';
   if (isExemptOrEstimate || !invoiceTotal) {
     invoiceTotal = Math.round(pureCalculated);
   }
@@ -386,7 +392,19 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   const roundOffAmt = invoiceTotal - pureCalculated;
 
   // Lock the settled amount to a minimum of 0
-  const settledAmount = data.due !== undefined ? Number(data.due) : Math.max(0, invoiceTotal - advance);
+  let settledAmount = data.due !== undefined ? Number(data.due) : Math.max(0, invoiceTotal - advance);
+
+  // An estimate re-prices the items without GST, so its printed total is lower than the
+  // invoice's saved total, and the saved `due` (which includes tax) no longer matches it.
+  // Keep only what the customer has actually paid on the invoice and derive the due
+  // from the printed total, so Grand Total + Previous Balance = Total Balance Due.
+  let paidAmount = advance;
+  if (isEstimate) {
+    if (storedInvoiceTotal > 0 && data.due !== undefined) {
+      paidAmount = Math.max(0, storedInvoiceTotal - Number(data.due));
+    }
+    settledAmount = Math.max(0, invoiceTotal - paidAmount);
+  }
 
   // UPI QR fixed to the unpaid amount (fully paid bill: plain QR, no amount)
   const billQr = isEstimate ? null : await makeBillUpiQr({
@@ -403,7 +421,8 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   const creditNoteBal = Number(data.creditNoteBalance) || 0;
   const hasCreditNote = creditNoteBal > 0;
   const totalDue = prevBal + currentDue;
-  const hasPrevOrDue = prevBal > 0 || currentDue > 0;
+  // prevBal can be negative for a "Both" party (you owe them on purchases) — still show it
+  const hasPrevOrDue = prevBal !== 0 || currentDue > 0;
   const wordsH = hasPrevOrDue ? (hasCreditNote ? 18 : 12) : 8;
   const leftColW = contentWidth - (hasPrevOrDue ? 70 : 0);
 
@@ -477,7 +496,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     doc.text(`Place of Supply : ${displayPos}`, (pageWidth / 2) + 2, cursorY + 5);
     if (showGstinDetails) {
       doc.setFont('helvetica', 'bold');
-      doc.text(`GST Type: ${safeScheme}${safeScheme === 'REGULAR' ? ` (tax ${safeTaxType})` : ''}`, (pageWidth / 2) + 2, cursorY + 10);
+      doc.text(`GST Type: ${safeScheme}${safeScheme === 'REGULAR' ? ` (tax ${displayTaxType})` : ''}`, (pageWidth / 2) + 2, cursorY + 10);
       doc.setFont('helvetica', 'normal');
     }
     cursorY += metaHeight;
@@ -707,8 +726,8 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     finalY += 8;
 
     // --- ADVANCE & SETTLED AMOUNT ---
-    if (advance > 0 && !isEstimate) {
-      addRow('Amount Paid (-)', advance, 6, false, true);          // no bottom border (joins with Balance Due)
+    if (paidAmount > 0) {
+      addRow('Amount Paid (-)', paidAmount, 6, false, true);       // no bottom border (joins with Balance Due)
       addRow('Balance Due', settledAmount, 6, true, false, true);  // no top border, bold, same text offset as Amount Paid
     }
     if (data.narration && data.narration.trim() !== '') {

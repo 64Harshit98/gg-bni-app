@@ -161,6 +161,9 @@ export const CatalogueBill = async (
 
         const isTaxEnabled = safeScheme === "REGULAR" && safeTaxType !== "EXEMPT" && safeTaxType !== "NONE";
         const effectiveTaxRate = isTaxEnabled ? taxPercent : 0;
+        // Row's own saved tax mode first, same as the catalogue A4 bill below
+        const itemTaxTypeRaw = String(item.taxType || '').toUpperCase();
+        const rowTaxType = (itemTaxTypeRaw === 'INCLUSIVE' || itemTaxTypeRaw === 'EXCLUSIVE') ? itemTaxTypeRaw : safeTaxType;
 
         let subtotal = 0;
         let gstAmount = 0;
@@ -171,7 +174,7 @@ export const CatalogueBill = async (
           gstAmount = 0;
           finalRowTotal = subtotal;
         } else {
-          if (safeTaxType === "EXCLUSIVE") {
+          if (rowTaxType === "EXCLUSIVE") {
             subtotal = rawPrice * qty;
             gstAmount = subtotal * (effectiveTaxRate / 100);
             finalRowTotal = subtotal + gstAmount;
@@ -206,9 +209,18 @@ export const CatalogueBill = async (
           discountAmount: discountAmt,
           // % of MRP (not sales price) so it matches the Catalogue A4 / settings preview
           discountPercent: (mrp * qty) > 0 ? (discountAmt / (mrp * qty)) * 100 : 0,
-          amount: finalRowTotal
+          amount: finalRowTotal,
+          // Pre-tax value + tax of the row, so A5 prints them instead of adding tax
+          // on top of `amount` again (which is already tax-inclusive for exclusive rows)
+          taxableAmount: subtotal,
+          taxAmount: gstAmount,
+          taxType: rowTaxType,
         };
       }),
+      // Bill discount + expenses, so an estimate's recomputed total matches the catalogue A4
+      billDiscount: Number(data.billDiscount) || 0,
+      expenses: data.extraExpenses || [],
+      extraExpenseAmount: data.extraExpenseAmount || 0,
       finalAmount: data.grandTotal,
       // unpaid part, so the A5 payment QR asks for what's still due
       due: Math.max(0, (Number(data.grandTotal) || 0) - (Number(data.advancePaid) || 0)),
@@ -799,7 +811,9 @@ export const CatalogueBill = async (
     doc.text(invoiceTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 }), endX - 2, finalY + 5.5, { align: 'right' });
     finalY += 8;
 
-    if (advance > 0 && !isEstimate) {
+    // Shown on estimates too: currentDue below subtracts the advance, so hiding it
+    // would make Total Balance Due not add up on the printed estimate.
+    if (advance > 0) {
       // Advance Paid row — no bottom border (so it joins visually with Balance Due below)
       doc.line(startX, finalY, startX, finalY + 6);       // left
       doc.line(endX, finalY, endX, finalY + 6);           // right
@@ -1120,7 +1134,7 @@ export const prepareCatalogueBillData = async (invoiceData: any) => {
     invoiceData.shippingDetails?.state ||
     invoiceData.billingDetails?.state;
 
-  // --- STRICT MATH FIX: Calculate true post-tax total ---
+  // --- Saved tax scheme / mode of the order ---
   // Matches Sales' own PDF generator exactly (src/UseComponents/pdfGenerator.ts:913-914):
   // `taxType: invoiceData.taxType || 'exclusive'`, `gstScheme: invoiceData.gstScheme || 'regular'`
   // — NO live-settings fallback at all, ever. Once a bill is saved, its tax
@@ -1132,47 +1146,13 @@ export const prepareCatalogueBillData = async (invoiceData: any) => {
   const scheme = (invoiceData.gstScheme || 'regular').toLowerCase();
   const taxType = invoiceData.taxType || 'exclusive';
   const totalBillDiscount = Number(invoiceData.manualDiscount || invoiceData.billDiscount || 0);
-  const sumPostDiscountAmounts = (invoiceData.items || []).reduce((sum: number, item: any) => {
-    const mrp = Number(item.mrp || 0);
-    const salesPrice = Number(item.salesPrice || 0);
-    const actualPrice = item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
-    return sum + (actualPrice * Number(item.quantity || 0));
-  }, 0);
 
-  let trueGrandTotal = 0;
-
-  invoiceData.items?.forEach((item: any) => {
-    const mrp = Number(item.mrp || 0);
-    const salesPrice = Number(item.salesPrice || 0);
-
-    // 👉 Pull the pure base price, NOT the tax-included customPrice
-    const actualPrice = item.effectiveUnitPrice ?? item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
-    const qty = Number(item.quantity || 0);
-
-    let rowGross = actualPrice * qty;
-    let billDisc = sumPostDiscountAmounts > 0 ? (rowGross / sumPostDiscountAmounts) * totalBillDiscount : 0;
-    let rowNet = rowGross - billDisc;
-
-    let finalRowAmount = rowNet;
-    const itemTaxRate = Number(item.tax ?? item.taxRate ?? 0);
-
-    // 👉 If exclusive, add tax on top of the row net — but ONLY under a
-    // Regular scheme. A Composition/Exempt/None order can still have
-    // taxType: 'exclusive' saved on it (that field reflects the company's
-    // generic tax-mode setting, independent of scheme), so checking taxType
-    // alone was silently adding tax back onto Composition orders here.
-    if (scheme === 'regular' && taxType === 'exclusive' && itemTaxRate > 0) {
-      finalRowAmount = rowNet + (rowNet * (itemTaxRate / 100));
-    }
-
-    trueGrandTotal += finalRowAmount;
-  });
-
-  const totalExpenses = (invoiceData.expenses || invoiceData.extraExpenses || []).reduce((sum: number, e: any) => sum + (parseFloat(String(e.amount)) || 0), 0) + Number(invoiceData.extraExpenseAmount || 0);
-  trueGrandTotal = Math.max(0, trueGrandTotal + totalExpenses);
-
+  // grandTotal stays the order's saved totalAmount, as passed in by the caller.
+  // (A recompute used to replace it here, but it read item.quantity while bill
+  // items carry `qty`, so every row came out 0 and the A5 total, due and QR
+  // showed roughly just the expenses.)
   let advanceAmount = Number(invoiceData.paidAmount || invoiceData.advancePaid || invoiceData.advance || invoiceData.advanceAmount || 0);
-  if (invoiceData.status === 'Paid') advanceAmount = trueGrandTotal;
+  if (invoiceData.status === 'Paid') advanceAmount = Number(invoiceData.grandTotal) || 0;
 
   // Loyalty points line — only for orders that earned / used points, when Loyalty settings say to print
   let printLoyalty: BillLoyalty | null = null;
@@ -1190,7 +1170,6 @@ export const prepareCatalogueBillData = async (invoiceData: any) => {
 
   return {
     ...invoiceData,
-    grandTotal: trueGrandTotal, // OVERRIDE PRE-TAX DB TOTAL
     previousBalance: invoiceData.previousBalance || 0,
     printLoyalty,
     advancePaid: advanceAmount,

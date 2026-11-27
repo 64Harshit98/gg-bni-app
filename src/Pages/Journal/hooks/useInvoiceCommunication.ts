@@ -13,6 +13,7 @@ import { sendCompanyWhatsappMessage } from '../../Additional/Whatsapp/sendCompan
 import type { Invoice, PdfData } from '../journal.types';
 import { useOptionalLoyaltySettings } from '../../../context/SettingsContext';
 import { loyaltyForPrint } from '../../../lib/loyalty';
+import { fetchPosPreviousBalance } from '../../../lib/partyBalance';
 
 interface UseInvoiceCommunicationParams {
   currentUser: any;
@@ -75,37 +76,13 @@ export const useInvoiceCommunication = ({
     // resolved. Starting it here lets it run concurrently with those instead
     // of adding its own round-trip time on top — same queries, same result,
     // just no longer serialized.
-    const previousBalancePromise = (async (): Promise<number> => {
-      if (!currentUser?.companyId || !invoice.partyNumber) return 0;
-      try {
-        const { getDocs, collection, query, where, } = await import('firebase/firestore');
-        const salesRef = collection(db, 'companies', currentUser.companyId, 'sales');
-        const snap = await getDocs(query(
-          salesRef,
-          where('partyNumber', '==', invoice.partyNumber)
-        ));
-        let total = 0;
-        snap.forEach(d => {
-          // Exclude current invoice, sum all other dues
-          if (d.id !== invoice.id) {
-            total += Number(d.data().paymentMethods?.due ?? 0);
-          }
-        });
-        const obRef = collection(db, 'companies', currentUser.companyId, 'openingBalances');
-        const obSnap = await getDocs(query(
-          obRef,
-          where('partyNumber', '==', invoice.partyNumber)
-        ));
-        obSnap.forEach(d => {
-          const data = d.data();
-          // Sirf 'due' type OB add karo, 'advance' nahi
-          if ((data.balanceType ?? 'due') === 'due') {
-            total += Number(data.dueAmount ?? data.amount ?? 0);
-          }
-        });
-        return total;
-      } catch { return 0; }
-    })();
+    // Same figure the Party Ledger shows: sale dues + opening dues − purchase dues,
+    // across merged numbers. On a purchase bill it's flipped to "what you owe them".
+    const previousBalancePromise = fetchPosPreviousBalance(
+      currentUser.companyId,
+      invoice.partyNumber,
+      { id: invoice.id, kind: isPurchase ? 'purchase' : 'sale' },
+    );
 
     // Credit note balance (informational row on A4 bill) — sirf sales bills ke liye
     const creditNotePromise = (async (): Promise<number> => {
@@ -233,7 +210,8 @@ export const useInvoiceCommunication = ({
       enableTriplicate: billSettings.enableTriplicate || false,
       enableItemImages: billSettings.enableItemImages || false, // NEW
       enableWatermark: billSettings.enableWatermark ?? true,
-      gstScheme: salesSettings?.gstScheme || '',
+      // The bill's own saved scheme; live settings only for bills saved without one
+      gstScheme: invoice.gstScheme || salesSettings?.gstScheme || '',
       taxType: invoice.taxType || salesSettings?.taxType || '',
       companyName: businessInfo?.name || '',
       companyAddress: businessInfo?.address || '',

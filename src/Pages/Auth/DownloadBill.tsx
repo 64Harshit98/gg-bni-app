@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { db } from '../../lib/Firebase';
-import { doc, getDoc, getDocs, collection, query, where } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
+import { fetchPosPreviousBalance } from '../../lib/partyBalance';
 import { generatePdf } from '../../UseComponents/pdfGenerator';
 import { ACTION, PLANS } from '../../enums';
 import { normalizePlan } from '../../context/Plan';
@@ -65,29 +66,10 @@ const DownloadBill: React.FC = () => {
         setStatus('generating');
 
         // 5. Previous balance + credit note (wrapped: if rules block them, they become 0)
-        let previousBalance = 0;
+        //    Same figure the Party Ledger shows (net of purchase dues, merged numbers)
         const partyNumber = invoiceData.partyNumber;
-        if (partyNumber) {
-          try {
-            const salesSnapAll = await getDocs(
-              query(collection(db, 'companies', companyId, 'sales'), where('partyNumber', '==', partyNumber))
-            );
-            salesSnapAll.forEach((d) => {
-              if (d.id !== invoiceId) previousBalance += Number(d.data().paymentMethods?.due ?? 0);
-            });
-            const obSnap = await getDocs(
-              query(collection(db, 'companies', companyId, 'openingBalances'), where('partyNumber', '==', partyNumber))
-            );
-            obSnap.forEach((d) => {
-              const data: any = d.data();
-              if ((data.balanceType ?? 'due') === 'due') {
-                previousBalance += Number(data.dueAmount ?? data.amount ?? 0);
-              }
-            });
-          } catch {
-            previousBalance = 0;
-          }
-        }
+        const previousBalance = await fetchPosPreviousBalance(companyId, partyNumber, { id: invoiceId, kind: 'sale' })
+          .catch(() => 0);
 
         let creditNoteBalance = 0;
         if (partyNumber) {
@@ -185,7 +167,8 @@ const DownloadBill: React.FC = () => {
           printFormat,
           enableTriplicate: billSettings.enableTriplicate || false,
           enableItemImages: false, // item photos need item master; skipped on public page
-          gstScheme: salesSettings?.gstScheme || '',
+          // The bill's own saved scheme; live settings only for bills saved without one
+          gstScheme: invoiceData.gstScheme || salesSettings?.gstScheme || '',
           taxType: resolvedInvoiceTaxType,
 
           companyName: businessInfo?.businessName || businessInfo?.name || '',

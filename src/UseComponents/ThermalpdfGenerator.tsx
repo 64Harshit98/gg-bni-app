@@ -6,6 +6,7 @@ import { splitAddOns, nameWithBase } from './addOnText';
 import { needsImageText, textToImage, installUnicodeText } from './textToImage';
 import { loyaltyBillLine } from './loyaltyBillLine';
 import { makeBillUpiQr, qrPayAmount, scanToPayLabel } from './upiQr';
+import { settleBillTotal, sumExpenses } from './billTotals';
 
 export const generateThermalReceipt = async (
     data: InvoiceData,
@@ -48,6 +49,8 @@ export const generateThermalReceipt = async (
     let subTotal = 0;
     let totalTaxAmt = 0;
     let grossTotal = 0;
+    let taxedGrossTotal = 0; // row amounts with tax kept, only to compare with the saved total
+    let allRowsSaved = data.items.length > 0;
     const taxBreakdown: Record<string, { taxable: number; cgst: number; sgst: number; igst: number }> = {};
 
     // Estimate item height requirements
@@ -62,10 +65,17 @@ export const generateThermalReceipt = async (
         let taxAmt = Number((item as any).taxAmount || 0);
         let taxableAmt = Number((item as any).taxableAmount || (item as any).subtotal || 0);
 
-        // Safety fallback if taxableAmount is missing
-        if (!taxableAmt && finalAmount > 0) {
+        // Saved lines: the row amount is taxable + tax, same rule as A4 (pdfGenerator.ts).
+        // finalPrice / amount are from before the bill discount, so they don't add up to the saved total.
+        const hasSavedValues = taxableAmt > 0 || taxAmt > 0;
+        if (hasSavedValues) {
+            finalAmount = taxableAmt + taxAmt;
+        } else if (!taxableAmt && finalAmount > 0) {
+            // Safety fallback if taxableAmount is missing (older bills)
             taxableAmt = finalAmount - taxAmt;
         }
+        if (!hasSavedValues) allRowsSaved = false;
+        taxedGrossTotal += finalAmount;
 
         // Fallback for discount
         let discountAmt = Number(item.discountAmount || (item as any).manualDiscount || (item as any).discount || 0);
@@ -85,11 +95,13 @@ export const generateThermalReceipt = async (
         // Zero out taxes for Exempt/None/Estimate
         if (!showTaxDetails) {
             taxRate = 0;
+            // Same as A4: an inclusive line keeps its full price, an exclusive line drops its tax
+            const rowTaxType = String((item as any).taxType || safeTaxType).toUpperCase();
+            finalAmount = rowTaxType === 'INCLUSIVE' ? taxableAmt + taxAmt : taxableAmt;
             taxAmt = 0;
-            finalAmount = taxableAmt; // Drop the tax from the row's final amount
         }
 
-        subTotal += taxableAmt;
+        subTotal += showTaxDetails ? taxableAmt : finalAmount;
         totalTaxAmt += taxAmt;
         grossTotal += finalAmount;
 
@@ -120,20 +132,28 @@ export const generateThermalReceipt = async (
     });
 
     const billDiscount = Number(data.billDiscount) || 0;
-    const extraExpense = Number(data.extraExpenseAmount) || 0;
+    // POS bills save expenses as a list; older/other flows send one extraExpenseAmount
+    const expenseRows = (data.expenses || [])
+        .map(e => ({ name: e.name, amount: Number(e.amount) || 0 }))
+        .filter(e => e.amount !== 0);
+    const expensesTotal = sumExpenses(data.expenses, data.extraExpenseAmount);
+    const expenseLineCount = expenseRows.length > 0 ? expenseRows.length : (expensesTotal !== 0 ? 1 : 0);
 
-    let finalRoundTotal = Number(data.finalAmount || (data as any).grandTotal || 0);
-    const pureCalculated = grossTotal - billDiscount + extraExpense;
-
-    if (!finalRoundTotal) {
-        finalRoundTotal = Math.round(pureCalculated);
-    }
-    const roundOffAmt = finalRoundTotal - pureCalculated;
+    // Printed total is the saved one (recomputed only for estimates, like A4)
+    const { total: finalRoundTotal, roundOff: roundOffAmt, discountInLines } = settleBillTotal({
+        linesTotal: grossTotal,
+        taxedLinesTotal: taxedGrossTotal,
+        expensesTotal,
+        billDiscount,
+        savedTotal: Number(data.finalAmount || (data as any).grandTotal || 0),
+        recompute: isEstimate,
+        discountInLinesByDefault: allRowsSaved,
+    });
 
     // Dynamic Height calculation
     const baseHeight = 75; // Headers & basic layout
     const taxLinesCount = Object.keys(taxBreakdown).length * (isIgst ? 1 : 2); // 1 IGST line, or CGST + SGST per rate
-    const taxAreaHeight = 15 + (taxLinesCount * 3);
+    const taxAreaHeight = 15 + (taxLinesCount * 3) + (expenseLineCount * 3.5);
     const narrationHeight = data.narration ? Math.ceil(data.narration.length / 30) * 3 + 5 : 0;
     const termsHeight = data.terms ? Math.ceil(data.terms.length / 30) * 3 + 10 : 10;
     const loyaltyLine = isEstimate ? '' : loyaltyBillLine(data.loyalty);
@@ -272,7 +292,7 @@ export const generateThermalReceipt = async (
     currentY += 1;
 
     // --- TAX & TOTALS SECTION ---
-    if (Object.keys(taxBreakdown).length > 0 || billDiscount > 0 || extraExpense > 0 || Math.abs(roundOffAmt) > 0) {
+    if (Object.keys(taxBreakdown).length > 0 || billDiscount > 0 || expensesTotal !== 0 || Math.abs(roundOffAmt) > 0) {
         doc.text('Sub Total :', colPrice, currentY, { align: 'right' });
         doc.text(subTotal.toFixed(2), colAmount, currentY, { align: 'right' });
         currentY += 4;
@@ -298,14 +318,21 @@ export const generateThermalReceipt = async (
         });
     }
 
-    if (extraExpense > 0) {
+    if (expenseRows.length > 0) {
+        expenseRows.forEach((exp) => {
+            doc.text(`${(exp.name || 'Extra').substring(0, 10)} (+) :`, colPrice, currentY, { align: 'right' });
+            doc.text(exp.amount.toFixed(2), colAmount, currentY, { align: 'right' });
+            currentY += 3.5;
+        });
+    } else if (expensesTotal !== 0) {
         doc.text(`${data.extraExpenseName?.substring(0, 10) || 'Extra'} (+) :`, colPrice, currentY, { align: 'right' });
-        doc.text(extraExpense.toFixed(2), colAmount, currentY, { align: 'right' });
+        doc.text(expensesTotal.toFixed(2), colAmount, currentY, { align: 'right' });
         currentY += 3.5;
     }
 
     if (billDiscount > 0) {
-        doc.text('Discount (-) :', colPrice, currentY, { align: 'right' });
+        // POS bills already have the discount inside the line amounts — show it, don't subtract it again
+        doc.text(discountInLines ? 'Disc. (incl.) :' : 'Discount (-) :', colPrice, currentY, { align: 'right' });
         doc.text(billDiscount.toFixed(2), colAmount, currentY, { align: 'right' });
         currentY += 3.5;
     }

@@ -13,6 +13,7 @@ import { calculatePdfItemDiscounts } from '../sales.calculations';
 import type { SalesItem } from '../sales.types';
 import { useOptionalLoyaltySettings } from '../../../../context/SettingsContext';
 import { loyaltyForPrint } from '../../../../lib/loyalty';
+import { fetchPosPreviousBalance } from '../../../../lib/partyBalance';
 
 interface UseSalesCommunicationParams {
     currentUser: any;
@@ -146,8 +147,9 @@ export const useSalesCommunication = ({
             enableTriplicate: billSettings.enableTriplicate || false,
             enableItemImages: billSettings.enableItemImages || false, // NEW
             enableWatermark: billSettings.enableWatermark ?? true,
-            gstScheme: salesSettings?.gstScheme || '',
-            taxType: salesSettings?.taxType || '',
+            // The bill's own saved scheme / tax mode; live settings only for bills saved without them
+            gstScheme: invoice.gstScheme || salesSettings?.gstScheme || '',
+            taxType: invoice.taxType || salesSettings?.taxType || '',
             enableDiscount2: salesSettings?.enableDiscount2 || false,
             upiId: billSettings.upiId || '',   //  ADDED: without this, QR never generates
             companyName: businessInfo?.name || 'Your Company',
@@ -194,29 +196,8 @@ export const useSalesCommunication = ({
                 return total > 0 ? total : 0;
             })(),
             due: invoice.dueAmount || 0,
-            previousBalance: await (async () => {
-                if (!currentUser?.companyId || !invoice.partyNumber) return 0;
-                try {
-                    const { getDocs, collection, query, where } = await import('firebase/firestore');
-                    const salesRef = collection(db, 'companies', currentUser.companyId, 'sales');
-                    const snap = await getDocs(query(salesRef, where('partyNumber', '==', invoice.partyNumber)));
-                    let total = 0;
-                    snap.forEach(d => {
-                        if (d.id !== invoice.id) {
-                            total += Number(d.data().paymentMethods?.due ?? 0);
-                        }
-                    });
-                    const obRef = collection(db, 'companies', currentUser.companyId, 'openingBalances');
-                    const obSnap = await getDocs(query(obRef, where('partyNumber', '==', invoice.partyNumber)));
-                    obSnap.forEach(d => {
-                        const data = d.data();
-                        if ((data.balanceType ?? 'due') === 'due') {
-                            total += Number(data.dueAmount ?? data.amount ?? 0);
-                        }
-                    });
-                    return total;
-                } catch { return 0; }
-            })(),
+            // Same figure the Party Ledger shows (net of purchase dues, merged numbers)
+            previousBalance: await fetchPosPreviousBalance(currentUser?.companyId, invoice.partyNumber, { id: invoice.id, kind: 'sale' }),
             // Credit note balance (informational row on A4 bill)
             creditNoteBalance: await (async () => {
                 if (!currentUser?.companyId || !invoice.partyNumber) return 0;

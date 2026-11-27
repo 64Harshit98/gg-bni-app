@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { doc, getDoc, getDocs, collection, query, where } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
+import { fetchCataloguePreviousBalance } from '../../../lib/partyBalance';
 import { db } from '../../../lib/Firebase';
 import { storage } from '../../../lib/Firebase'; // Ensure 'storage' is exported from your Firebase config
 import { getFirestoreOperations } from '../../../lib/ItemsFirebase';
@@ -105,43 +106,18 @@ const buildBillItems = async (
 // to compute this twice — once into a dead `previousBalance` variable that
 // was never read, once into `wpPreviousBalance` which was actually used).
 // Only handlePdfAction calls this.
-const fetchPreviousBalance = async (
+// Same figure the Catalogue Party Ledger shows for this customer (unpaid orders
+// other than this one, skipping "Upcoming", + catalogue "due" opening balances,
+// across merged numbers).
+const fetchPreviousBalance = (
     companyId: string | undefined,
     customerPhone: string,
     excludeOrderId: string
-): Promise<number> => {
-    let previousBalance = 0;
-    if (!companyId || !customerPhone) return previousBalance;
-
-    try {
-        // 1. Due from other Orders
-        const salesRef = collection(db, 'companies', companyId, 'Orders');
-        const snap = await getDocs(query(salesRef, where('userLoginPhone', '==', customerPhone)));
-        snap.forEach(d => {
-            if (d.id !== excludeOrderId) {
-                const data = d.data();
-                const total = Number(data.totalAmount || 0);
-                const paid = Number(data.paidAmount || 0);
-                previousBalance += Math.max(0, total - paid);
-            }
-        });
-
-        // 2. Due from openingBalances (same party phone)
-        const obRef = collection(db, 'companies', companyId, 'openingBalances');
-        const obSnap = await getDocs(query(obRef, where('partyNumber', '==', customerPhone)));
-        obSnap.forEach(d => {
-            const data = d.data();
-            // Only 'due' type OB adds to previous balance, 'advance' does not
-            if ((data.balanceType ?? 'due') === 'due') {
-                previousBalance += Number(data.dueAmount ?? data.amount ?? 0);
-            }
-        });
-    } catch (e) {
+): Promise<number> =>
+    fetchCataloguePreviousBalance(companyId, customerPhone, excludeOrderId).catch((e) => {
         console.error('Previous balance fetch error:', e);
-    }
-
-    return previousBalance;
-};
+        return 0;
+    });
 // Customer's unused credit note balance (informational row on A4 bill).
 // Same source as Sales/Journal: customers/{last 10 digits of phone}.creditBalance
 const fetchCreditNoteBalance = async (

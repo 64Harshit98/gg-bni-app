@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../context/auth-context';
+import { useKBillingEnabled } from '../context/SettingsContext';
 import { Permissions } from '../enums';
 
 // K bills ("exempt" series) are saved in their own Firestore collection,
@@ -33,10 +34,14 @@ export const BILL_SERIES_LABEL: Record<BillSeriesMode, string> = {
   all: 'Regular + K bills',
 };
 
-/** Owners (by default) and staff the owner allowed may see K bills in reports. */
+/**
+ * Owners (by default) and staff the owner allowed may see K bills in reports,
+ * but only while K billing is turned on in Sales settings.
+ */
 export const useCanViewKBills = (): boolean => {
   const { hasPermission } = useAuth();
-  return hasPermission(Permissions.ViewKBills);
+  const kBillingEnabled = useKBillingEnabled();
+  return kBillingEnabled && hasPermission(Permissions.ViewKBills);
 };
 
 /**

@@ -149,7 +149,7 @@ useEffect(() => {
             } catch {
                 hasCartItems = false;
             }
-            if (!isEditMode && hasCartItems && savedExemptDraft === 'true') {
+            if (!isEditMode && hasCartItems && savedExemptDraft === 'true' && salesSettings.enableKBilling) {
                 setIsExemptBill(true);
                 setActiveTaxMode('exempt');
             } else if (
@@ -176,8 +176,13 @@ useEffect(() => {
         }
     }, [loadingSettings, salesSettings, isEditMode, invoiceToEdit]);
 
+    // "K bill (exempt) series" in Sales settings. Off → no K button, no Alt+K,
+    // and new bills always go to the regular series.
+    const kBillingEnabled = Boolean(salesSettings?.enableKBilling);
+
     const handleExemptBillToggle = (nextExempt: boolean) => {
         if (isEditMode) return;
+        if (nextExempt && !kBillingEnabled) return;
         setIsExemptBill(nextExempt);
         isInvoiceNumberManuallyEdited.current = false;
         if (nextExempt) {
@@ -193,6 +198,14 @@ useEffect(() => {
             setActiveTaxMode((salesSettings.taxType as any) || 'exclusive');
         }
     };
+
+    // Setting switched off (e.g. from another tab) while a new bill is in K
+    // mode: drop back to the regular series so the bill can't save as a K bill.
+    useEffect(() => {
+        if (isEditMode || loadingSettings || !salesSettings) return;
+        if (!kBillingEnabled && isExemptBill) handleExemptBillToggle(false);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [kBillingEnabled, isExemptBill, isEditMode, loadingSettings, salesSettings]);
 
     // --- Settings doc id lookup + real-time invoice counter (multi-tab fix) ---
     // Page-specific, unrelated to the shared catalogue data above.
@@ -306,6 +319,7 @@ useEffect(() => {
         salesSettings,
         activeTaxMode, setActiveTaxMode,
         isExemptBill, setIsExemptBill,
+        kBillingEnabled,
         handleExemptBillToggle,
         invoiceNumber, setInvoiceNumber,
         isInvoiceNumberManuallyEdited,

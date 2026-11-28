@@ -69,6 +69,9 @@ export interface SalesSettings {
     voucherName?: string;
     voucherPrefix?: string;
     currentVoucherNumber?: number;
+    // K bill (exempt) series: shows the K button on the Sales screen and the K
+    // filter on Home / Transactions / reports. Off by default.
+    enableKBilling?: boolean;
     exemptVoucherPrefix?: string;
     currentExemptVoucherNumber?: number;
     copyVoucherAfterSaving?: boolean;
@@ -130,6 +133,7 @@ export const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
     voucherName: 'Invoice',
     voucherPrefix: 'INV',
     currentVoucherNumber: 1,
+    enableKBilling: false,
     exemptVoucherPrefix: 'EXM',
     currentExemptVoucherNumber: 1,
     copyVoucherAfterSaving: false,
@@ -1438,12 +1442,18 @@ const SalesSettingsPage: React.FC = () => {
                                     </div>
                                 </Opt>
                                 <Opt
-                                    label="Exempt bill numbering"
-                                    description="Separate prefix and counter used when creating an Exempt bill on the Sales screen."
+                                    id="k-billing"
+                                    label="Test bill series (K)"
+                                    description="Show the K button on the Sales screen to make test bills in a separate series with its own prefix and counter."
+                                    icon={ico(FileText)}
+                                    checked={settings.enableKBilling ?? false}
+                                    onChange={(checked) => handleCheckboxChange('enableKBilling', checked)}
                                 >
+                                    {settings.enableKBilling && (
+                                    <>
                                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                                         <div>
-                                            <label htmlFor="exempt-voucher-prefix" className={FIELD_LABEL}>Exempt prefix</label>
+                                            <label htmlFor="exempt-voucher-prefix" className={FIELD_LABEL}>Test bill prefix</label>
                                             <div className={FIELD}>
                                                 <input
                                                     type="text"
@@ -1457,7 +1467,7 @@ const SalesSettingsPage: React.FC = () => {
                                             </div>
                                         </div>
                                         <div>
-                                            <label htmlFor="exempt-current-number" className={FIELD_LABEL}>Next exempt number</label>
+                                            <label htmlFor="exempt-current-number" className={FIELD_LABEL}>Next test bill number</label>
                                             <div className={FIELD}>
                                                 <input
                                                     type="number"
@@ -1473,8 +1483,10 @@ const SalesSettingsPage: React.FC = () => {
                                         </div>
                                     </div>
                                     <div className={PREVIEW}>
-                                        Next exempt bill will be <b>{nextExemptBillLabel}</b>
+                                        Next test bill will be <b>{nextExemptBillLabel}</b>
                                     </div>
+                                    </>
+                                    )}
                                 </Opt>
                             </Section>
                         </form>

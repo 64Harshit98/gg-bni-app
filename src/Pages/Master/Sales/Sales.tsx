@@ -275,6 +275,7 @@ const Sales: React.FC = () => {
         salesSettings,
         activeTaxMode,
         isExemptBill,
+        kBillingEnabled,
         handleExemptBillToggle,
         invoiceNumber, setInvoiceNumber,
         isInvoiceNumberManuallyEdited,
@@ -867,7 +868,7 @@ const Sales: React.FC = () => {
     // (Option+K types "˚") and non-English keyboard layouts. Skipped while
     // editing (series is fixed), while the payment drawer is open (it would
     // re-price a bill mid-payment) and while the "bill saved" screen is up.
-    const exemptShortcutBlocked = pageIsLoading || isEditMode || isDrawerOpen || Boolean(savedBillData);
+    const exemptShortcutBlocked = !kBillingEnabled || pageIsLoading || isEditMode || isDrawerOpen || Boolean(savedBillData);
     useAltShortcut(SHORTCUTS.kBill.code, () => handleExemptBillToggle(!isExemptBill), !exemptShortcutBlocked);
 
     const tour = { currentStep: activeStep, onSkip: finishTutorial };
@@ -911,7 +912,9 @@ const Sales: React.FC = () => {
 
     // Shared K button (same look on every page). Click or Alt+K selects it,
     // click again to go back to the regular series.
-    const renderExemptSwitch = () => (
+    // Hidden unless "K bill (exempt) series" is on in Sales settings. Still shown
+    // (disabled) when editing an existing K bill, so the series stays visible.
+    const renderExemptSwitch = () => (kBillingEnabled || isExemptBill) && (
         <KBillToggle
             checked={isExemptBill}
             onToggle={() => handleExemptBillToggle(!isExemptBill)}
@@ -1484,7 +1487,7 @@ const Sales: React.FC = () => {
                         <button type="button" onClick={() => setIsMoreOpen(false)} aria-label="Close" className={ICON_BTN_CLS}><FiX size={18} /></button>
                     </div>
 
-                    {!isEditMode && (
+                    {!isEditMode && kBillingEnabled && (
                         <div className="flex items-center justify-between">
                             <span className={LABEL_CLS}>Bill series</span>
                             {renderExemptSwitch()}

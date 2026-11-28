@@ -329,6 +329,16 @@ export const useSalesSettings = () => {
     return { salesSettings: context.salesSettings, loadingSettings: context.loadingSalesSettings };
 };
 
+/**
+ * Whether the company turned on "K bill (exempt) series" in Sales settings.
+ * Doesn't throw outside a SettingsProvider (returns false), so shared
+ * components like the K button can call it from anywhere.
+ */
+export const useKBillingEnabled = (): boolean => {
+    const context = useContext(SettingsContext);
+    return Boolean(context?.salesSettings?.enableKBilling);
+};
+
 export const usePurchaseSettings = () => {
     const context = useContext(SettingsContext);
     if (context === undefined) {
